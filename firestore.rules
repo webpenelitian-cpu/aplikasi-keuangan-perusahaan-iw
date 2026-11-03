@@ -1,0 +1,45 @@
+rules_version = '2';
+// Aturan keamanan Firestore: tempel di Firebase Console → Firestore Database → Rules → Publish.
+// Setiap pengguna hanya bisa membaca dan menulis datanya sendiri; tidak ada yang bisa melihat data orang lain.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['username', 'createdAt'])
+        && request.resource.data.username is string
+        && request.resource.data.username.matches('^[a-z0-9._-]{3,30}$');
+      allow delete: if false;
+
+      match /data/{docId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && (docId == 'meta' || docId.matches('^c[0-9]{1,2}$'))
+          && (docId != 'meta' || (request.resource.data.chunks is int && request.resource.data.chunks <= 50))
+          && (docId == 'meta' || (request.resource.data.s is string && request.resource.data.s.size() <= 900000));
+      }
+    }
+
+    // Daftar username agar setiap username unik
+    match /usernames/{name} {
+      allow get: if request.auth != null;
+      allow list: if false;
+      allow create: if request.auth != null
+        && name.matches('^[a-z0-9._-]{3,30}$')
+        && request.resource.data.keys().hasOnly(['uid'])
+        && request.resource.data.uid == request.auth.uid;
+      allow update: if false;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+    // Semua jalur lain tertutup
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

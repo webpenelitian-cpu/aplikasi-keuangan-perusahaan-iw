@@ -1,8 +1,11 @@
 'use strict';
 /* Catatan Keuangan Perusahaan — semua data tersimpan di perangkat, tidak ada yang dikirim ke server. */
 
-const KEY = 'keuangan-perusahaan-v1';
+const KEY = 'keuangan-perusahaan-v1';            // data mode tanpa akun; mode akun memakai KEY + ':' + uid
 const LOCK_KEY = 'keuangan-perusahaan-lock';
+const MODE_KEY = 'keuangan-mode';                 // 'lokal' bila pengguna memilih tanpa akun
+const LAST_UID_KEY = 'keuangan-last-uid';
+const DEVICE_KEY = 'keuangan-device-id';
 const PBKDF2_ITER = 600000;
 const MIN_PW = 8;
 const MONTHS = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
@@ -166,11 +169,69 @@ const envIter = env => Number.isInteger(env.iter) && env.iter >= 100000 && env.i
 let state = null;
 let vault = null; // {key, salt, iter} selama kata sandi aktif dan aplikasi terbuka
 let saving = Promise.resolve();
+let storeKey = KEY;
+
+/* ---------- Akun & sinkron server ---------- */
+let Cloud = null;          // modul cloud.js bila konfigurasi Firebase terisi
+let cloudUser = null, cloudInfo = null, offlineAccount = false;
+let dirty = false, pushTimer = null, syncMsg = '';
+const deviceId = (() => {
+  try { let id = localStorage.getItem(DEVICE_KEY); if (!id) { id = uid() + uid(); localStorage.setItem(DEVICE_KEY, id); } return id; }
+  catch { return uid(); }
+})();
+const metaKey = () => storeKey + '-meta';
+function readMeta() { try { return JSON.parse(localStorage.getItem(metaKey())) || {updatedAt: 0}; } catch { return {updatedAt: 0}; } }
+const writeMeta = updatedAt => localStorage.setItem(metaKey(), JSON.stringify({updatedAt}));
+
+function setSync(msg) {
+  syncMsg = msg;
+  const el = document.getElementById('syncStatus'); if (el) el.textContent = msg;
+}
+function schedulePush() {
+  clearTimeout(pushTimer);
+  setSync('Menyimpan ke server…');
+  pushTimer = setTimeout(pushNow, 1500);
+}
+async function pushNow() {
+  clearTimeout(pushTimer);
+  if (!cloudUser || !dirty) return;
+  if (!navigator.onLine) return setSync('Offline — perubahan disinkron otomatis saat online.');
+  try {
+    await saving;
+    dirty = false;
+    await Cloud.push(localStorage.getItem(storeKey) || '', readMeta().updatedAt, deviceId);
+    setSync('Tersimpan di server · ' + new Date().toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}));
+  } catch {
+    dirty = true;
+    setSync('Gagal menyimpan ke server — dicoba lagi otomatis.');
+    pushTimer = setTimeout(pushNow, 15000);
+  }
+}
+addEventListener('online', () => { if (dirty) pushNow(); });
+
+// Perubahan dari perangkat lain (data yang lebih baru di server)
+async function applyRemote(meta) {
+  if (!state || dirty || meta.deviceId === deviceId || !(meta.updatedAt > readMeta().updatedAt)) return;
+  let r; try { r = await Cloud.pull(); } catch { return; }
+  if (!r || dirty) return;
+  localStorage.setItem(storeKey, r.payload); writeMeta(r.updatedAt);
+  let d; try { d = JSON.parse(r.payload); } catch { return; }
+  if (isEnvelope(d)) {
+    if (!vault) return location.reload();
+    try { d = await unseal(vault.key, d); } catch { return location.reload(); } // kata sandi diganti di perangkat lain
+  } else vault = null;
+  try { state = sanitizeState(d); } catch { return; }
+  migrate();
+  document.querySelectorAll('dialog[open]').forEach(x => x.close());
+  renderAll(); setSync('Tersinkron dengan perangkat lain'); toast('Data diperbarui dari perangkat lain');
+}
 
 function persist() {
   const json = JSON.stringify(state), v = vault;
   saving = saving.then(async () => {
-    localStorage.setItem(KEY, v ? JSON.stringify(await seal(v, json)) : json);
+    localStorage.setItem(storeKey, v ? JSON.stringify(await seal(v, json)) : json);
+    writeMeta(Date.now());
+    if (cloudUser) { dirty = true; schedulePush(); }
   }).catch(() => toast('Gagal menyimpan di perangkat — segera lakukan backup!'));
   return saving;
 }
@@ -244,7 +305,9 @@ function showLock(env) {
   $('btnLockReset').onclick = () => {
     if (!confirm('Hapus SEMUA data keuangan di perangkat ini? Data hanya bisa kembali dari file backup.')) return;
     if (prompt('Ketik HAPUS untuk konfirmasi') !== 'HAPUS') return;
-    localStorage.removeItem(KEY); setLockInfo({fails: 0, until: 0}); location.reload();
+    localStorage.removeItem(storeKey); localStorage.removeItem(metaKey()); setLockInfo({fails: 0, until: 0});
+    // Di mode akun, salinan di server juga dihapus agar tidak terunduh lagi
+    (cloudUser ? Cloud.wipe().catch(() => {}) : Promise.resolve()).then(() => location.reload());
   };
 }
 
@@ -290,7 +353,7 @@ async function verifyCurrent() {
     // Kata sandi benar bila kuncinya bisa membuka data terenkripsi yang tersimpan
     const key = await deriveKey(pw, vault.salt, vault.iter);
     await saving;
-    await unseal(key, JSON.parse(localStorage.getItem(KEY)));
+    await unseal(key, JSON.parse(localStorage.getItem(storeKey)));
     return true;
   } catch { toast('Kata sandi salah'); return false; }
 }
@@ -822,6 +885,33 @@ function renderSettings() {
     <td><input type="checkbox" ${c.lr !== false ? 'checked' : ''} data-act="toggleLR" data-id="${esc(c.id)}" title="Dihitung di Laba Rugi"></td>
     <td class="num" style="white-space:nowrap"><button class="btn sm" data-act="editCat" data-id="${esc(c.id)}">Ubah</button> <button class="btn sm danger" data-act="delCat" data-id="${esc(c.id)}">Hapus</button></td></tr>`).join('');
   renderSecurity();
+  renderAccount();
+}
+function renderAccount() {
+  const box = $('accountBox');
+  if (!Cloud?.enabled()) {
+    box.innerHTML = '<div class="muted">Penyimpanan server belum diaktifkan (konfigurasi Firebase di <code>firebase-config.js</code> masih kosong). Data hanya tersimpan di perangkat ini; pindahkan antar perangkat dengan Backup &amp; Pulihkan.</div>';
+    return;
+  }
+  if (offlineAccount) {
+    box.innerHTML = '<div class="notice">Offline: memakai salinan data akun di perangkat ini. Perubahan akan tersimpan ke server setelah aplikasi dibuka kembali saat online.</div>';
+    return;
+  }
+  if (!cloudUser) {
+    box.innerHTML = `<div class="notice">Anda memakai aplikasi <b>tanpa akun</b>; data hanya ada di perangkat ini.</div>
+      <button class="btn primary" data-act="goLogin">Masuk / Daftar akun</button>`;
+    return;
+  }
+  box.innerHTML = `<div>Masuk sebagai <b>@${esc(cloudInfo.username || '—')}</b></div>
+    <div class="muted" style="font-size:12px">${cloudInfo.google ? 'Akun Google · ' + esc(cloudInfo.email || '') : 'Akun username & kata sandi'}</div>
+    <div class="muted" id="syncStatus" style="margin:8px 0">${esc(syncMsg)}</div>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">${vault
+      ? 'Data dienkripsi di perangkat sebelum dikirim, sehingga server pun tidak bisa membacanya.'
+      : 'Tips: pasang kata sandi di kartu Keamanan agar data dienkripsi sebelum dikirim ke server.'}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" data-act="syncNow">Sinkron sekarang</button>
+      <button class="btn danger" data-act="logout">Keluar</button>
+    </div>`;
 }
 $('btnSaveCompany').onclick = () => {
   Object.entries(PROFILE_FIELDS).forEach(([id, k]) => {
@@ -893,6 +983,19 @@ const ACTIONS = {
   },
   print: () => window.print(),
   backup: () => $('btnBackup').click(),
+  goLogin: () => { localStorage.removeItem(MODE_KEY); location.reload(); },
+  syncNow: async () => {
+    if (!cloudUser) return;
+    dirty = true; await pushNow();
+  },
+  logout: async () => {
+    if (!confirm('Keluar dari akun? Salinan data di perangkat ini dihapus; data tetap aman di server dan muncul lagi saat Anda masuk.')) return;
+    if (dirty) await pushNow();
+    if (dirty && !confirm('Ada perubahan yang BELUM tersimpan ke server (offline?). Tetap keluar dan buang perubahan itu?')) return;
+    await Cloud.signOut().catch(() => {});
+    [storeKey, metaKey(), LAST_UID_KEY].forEach(k => localStorage.removeItem(k));
+    location.reload();
+  },
   goProfile: () => { document.querySelector('nav button[data-view="pengaturan"]').click(); $('pName').focus(); },
   goSecurity: () => { document.querySelector('nav button[data-view="pengaturan"]').click(); $('btnSetPw').focus(); },
 };
@@ -987,8 +1090,123 @@ function start(data) {
   migrate();
   document.body.className = '';
   initReportDates(); renderAll(); renderInstall(); armAutoLock();
+  if (cloudUser) { if (dirty) schedulePush(); else setSync('Tersinkron dengan server'); }
 }
-function boot() {
+
+// Buka data dari penyimpanan perangkat (key = mode tanpa akun atau salinan akun)
+function openStore(key) {
+  storeKey = key;
+  let raw = null, parsed = null;
+  try { raw = localStorage.getItem(key); } catch {}
+  try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = {broken: true}; }
+  if (isEnvelope(parsed)) {
+    if (!hasCrypto) { document.body.className = ''; document.body.innerHTML = '<p style="padding:20px">Data terenkripsi hanya bisa dibuka lewat alamat https.</p>'; return; }
+    showLock(parsed);
+  } else start(parsed);
+}
+
+/* ---------- Layar login ---------- */
+const AUTH_ERR = {
+  'auth/invalid-credential': 'Username atau kata sandi salah.', 'auth/wrong-password': 'Username atau kata sandi salah.',
+  'auth/user-not-found': 'Username atau kata sandi salah.', 'auth/invalid-email': 'Username tidak valid.',
+  'auth/email-already-in-use': 'Username sudah dipakai. Pilih yang lain.', 'username-taken': 'Username sudah dipakai. Pilih yang lain.',
+  'username-invalid': 'Username 3–30 karakter: huruf kecil, angka, titik, garis bawah, atau tanda hubung.',
+  'auth/weak-password': `Kata sandi terlalu lemah (minimal ${MIN_PW} karakter).`,
+  'auth/too-many-requests': 'Terlalu banyak percobaan. Tunggu beberapa menit lalu coba lagi.',
+  'auth/network-request-failed': 'Tidak ada koneksi internet.',
+  'auth/unauthorized-domain': 'Alamat situs ini belum diizinkan di Firebase (Authentication → Settings → Authorized domains).',
+  'auth/operation-not-allowed': 'Metode login ini belum diaktifkan di Firebase (Authentication → Sign-in method).',
+  'auth/popup-closed-by-user': '', 'auth/cancelled-popup-request': '',
+};
+const authErr = e => AUTH_ERR[e?.code]
+  ?? (/api-key|invalid-api|project/.test(e?.code || '') ? 'Konfigurasi Firebase tidak valid. Periksa isi firebase-config.js.' : 'Gagal masuk. Coba lagi.');
+let authMode = 'login';
+function showAuth(msg = '') {
+  document.body.className = 'auth';
+  $('authMsg').textContent = msg;
+  const setMode = m => {
+    authMode = m;
+    document.querySelectorAll('#authTabs button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+    $('authPw2Wrap').style.display = m === 'register' ? '' : 'none';
+    $('authPw').autocomplete = m === 'register' ? 'new-password' : 'current-password';
+    $('authSubmit').textContent = m === 'register' ? 'Daftar' : 'Masuk';
+    $('authMsg').textContent = '';
+  };
+  document.querySelectorAll('#authTabs button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+  const busy = on => document.querySelectorAll('#auth button, #auth input').forEach(x => x.disabled = on);
+  const run = async fn => {
+    busy(true); $('authMsg').textContent = 'Memproses…';
+    try { const u = await fn(); if (u) { $('authPw').value = $('authPw2').value = ''; await openAccount(u); } }
+    catch (e) { $('authMsg').textContent = authErr(e); }
+    finally { busy(false); }
+  };
+  $('btnGoogle').onclick = () => run(() => Cloud.signInGoogle());
+  $('authForm').onsubmit = e => {
+    e.preventDefault();
+    const u = $('authUser').value.trim().toLowerCase(), pw = $('authPw').value;
+    if (!Cloud.USERNAME_RE.test(u)) return $('authMsg').textContent = AUTH_ERR['username-invalid'];
+    if (authMode === 'register') {
+      if (pw.length < MIN_PW) return $('authMsg').textContent = `Kata sandi minimal ${MIN_PW} karakter.`;
+      if (pw !== $('authPw2').value) return $('authMsg').textContent = 'Kedua kata sandi tidak sama.';
+      return run(() => Cloud.registerUsername(u, pw));
+    }
+    if (!pw) return $('authMsg').textContent = 'Isi kata sandi.';
+    run(() => Cloud.signInUsername(u, pw));
+  };
+  $('btnLocalMode').onclick = () => {
+    if (!confirm('Pakai tanpa akun? Data hanya tersimpan di perangkat ini dan tidak bisa dibuka dari perangkat lain. Anda bisa masuk ke akun kapan saja dari menu Atur.')) return;
+    localStorage.setItem(MODE_KEY, 'lokal'); openStore(KEY);
+  };
+}
+function askUsername() {
+  return new Promise(resolve => {
+    const dlg = $('unameDialog'); $('unameInput').value = ''; $('unameErr').textContent = '';
+    const done = v => { dlg.close(); resolve(v); };
+    $('unameForm').onsubmit = async e => {
+      e.preventDefault();
+      const u = $('unameInput').value.trim().toLowerCase();
+      if (!Cloud.USERNAME_RE.test(u)) return $('unameErr').textContent = AUTH_ERR['username-invalid'];
+      try { await Cloud.claimUsername(u); done(u); }
+      catch (err) { $('unameErr').textContent = authErr(err); }
+    };
+    $('btnUnameCancel').onclick = () => done(null);
+    dlg.oncancel = e => { e.preventDefault(); done(null); };
+    dlg.showModal(); $('unameInput').focus();
+  });
+}
+
+async function openAccount(user) {
+  cloudUser = user;
+  storeKey = KEY + ':' + user.uid;
+  localStorage.setItem(LAST_UID_KEY, user.uid);
+  localStorage.removeItem(MODE_KEY);
+  $('authMsg').textContent = 'Memuat data akun…';
+  let username = null;
+  try { username = await Cloud.getUsername(); } catch {}
+  if (!username && user.email?.endsWith('@pengguna.invalid')) username = user.email.split('@')[0];
+  if (!username) {
+    username = await askUsername();
+    if (username === null) { await Cloud.signOut(); cloudUser = null; return showAuth(); }
+  }
+  cloudInfo = {username, email: user.email, google: user.providerData.some(p => p.providerId === 'google.com')};
+
+  let remote = null, reachable = true;
+  try { remote = await Cloud.pull(); } catch { reachable = false; }
+  const localRaw = localStorage.getItem(storeKey), lm = readMeta();
+  if (remote && (!localRaw || remote.updatedAt > lm.updatedAt)) {
+    localStorage.setItem(storeKey, remote.payload); writeMeta(remote.updatedAt);
+  } else if (reachable && !remote && !localRaw && localStorage.getItem(KEY)
+             && confirm('Ada data keuangan di perangkat ini yang belum terhubung ke akun. Pindahkan ke akun ini agar tersimpan di server?')) {
+    localStorage.setItem(storeKey, localStorage.getItem(KEY)); writeMeta(Date.now());
+    localStorage.removeItem(KEY); localStorage.removeItem(KEY + '-meta');
+  }
+  dirty = !!localStorage.getItem(storeKey) && (!remote || readMeta().updatedAt > remote.updatedAt);
+  setSync(reachable ? 'Tersinkron dengan server' : 'Tidak terhubung ke server — perubahan disinkron saat online.');
+  Cloud.watch(applyRemote);
+  openStore(storeKey);
+}
+
+async function boot() {
   // Anti-clickjacking: aplikasi menolak dibuka di dalam bingkai (iframe) situs lain
   if (window.top !== window.self) {
     document.body.className = '';
@@ -999,12 +1217,17 @@ function boot() {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   // Minta browser tidak menghapus data saat ruang penyimpanan HP menipis
   navigator.storage?.persist?.().catch(() => {});
-  let raw = null, parsed = null;
-  try { raw = localStorage.getItem(KEY); } catch {}
-  try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = {broken: true}; }
-  if (isEnvelope(parsed)) {
-    if (!hasCrypto) { document.body.className = ''; document.body.innerHTML = '<p style="padding:20px">Data terenkripsi hanya bisa dibuka lewat alamat https.</p>'; return; }
-    showLock(parsed);
-  } else start(parsed);
+
+  try { Cloud = await import('./cloud.js'); } catch { Cloud = null; }
+  if (!Cloud?.enabled() || localStorage.getItem(MODE_KEY) === 'lokal') return openStore(KEY);
+  const res = await Cloud.init();
+  if (res.user) return openAccount(res.user);
+  if (!res.online) {
+    // Tanpa internet: buka salinan akun terakhir di perangkat ini bila ada
+    const last = localStorage.getItem(LAST_UID_KEY);
+    if (last && localStorage.getItem(KEY + ':' + last)) { offlineAccount = true; return openStore(KEY + ':' + last); }
+    return showAuth('Tidak bisa terhubung ke server. Periksa internet, atau pakai tanpa akun.');
+  }
+  showAuth();
 }
 boot();
