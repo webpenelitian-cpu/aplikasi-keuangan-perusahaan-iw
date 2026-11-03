@@ -1,7 +1,7 @@
 {
-  "name": "Catatan Keuangan Perusahaan",
-  "short_name": "Keuangan",
-  "description": "Pencatatan keuangan perusahaan: kas & bank, piutang & utang, laba rugi, dan PPh final.",
+  "name": "Aplikasi Keuangan Perusahaan (UMKM)",
+  "short_name": "Keuangan UMKM",
+  "description": "Aplikasi keuangan perusahaan (UMKM): kas & bank, piutang & utang, laba rugi, dan PPh final.",
   "lang": "id",
   "start_url": "./index.html",
   "scope": "./",

@@ -1,5 +1,5 @@
 'use strict';
-/* Catatan Keuangan Perusahaan — semua data tersimpan di perangkat, tidak ada yang dikirim ke server. */
+/* Aplikasi Keuangan Perusahaan (UMKM) — semua data tersimpan di perangkat, tidak ada yang dikirim ke server. */
 
 const KEY = 'keuangan-perusahaan-v1';            // data mode tanpa akun; mode akun memakai KEY + ':' + uid
 const LOCK_KEY = 'keuangan-perusahaan-lock';
@@ -24,7 +24,8 @@ const PROFILE = {
   checkedName: '', checkedTitle: 'Pimpinan',
   pphRate: 0.5,
 };
-const displayName = () => state.company.name || 'Catatan Keuangan';
+const APP_NAME = 'Aplikasi Keuangan Perusahaan (UMKM)';
+const displayName = () => state.company.name || APP_NAME;
 
 // Logo unggahan, atau inisial nama perusahaan bila belum ada logo
 function logoHTML(size) {
@@ -872,7 +873,7 @@ function renderSettings() {
   const c = state.company;
   $('companyName').textContent = displayName();
   $('companyTagline').textContent = c.tagline;
-  document.title = c.name ? 'Keuangan · ' + c.name : 'Catatan Keuangan';
+  document.title = c.name ? 'Keuangan UMKM · ' + c.name : APP_NAME;
   $('brandLogo').innerHTML = logoHTML(38);
   $('logoPreview').innerHTML = logoHTML(64);
   $('btnLogoRemove').style.display = c.logo ? '' : 'none';

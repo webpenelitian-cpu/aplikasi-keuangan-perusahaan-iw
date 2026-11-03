@@ -6,13 +6,13 @@
 <!-- Skrip hanya dari situs ini dan SDK resmi Firebase/Google; koneksi hanya ke layanan Google untuk login & penyimpanan -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com; frame-src https://*.firebaseapp.com https://*.web.app https://accounts.google.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="referrer" content="no-referrer">
-<title>Catatan Keuangan</title>
-<meta name="description" content="Pencatatan keuangan perusahaan: kas & bank, piutang & utang, laba rugi, dan PPh final.">
+<title>Aplikasi Keuangan Perusahaan (UMKM)</title>
+<meta name="description" content="Aplikasi keuangan perusahaan (UMKM): kas & bank, piutang & utang, laba rugi, dan PPh final.">
 <meta name="theme-color" content="#14304a">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Keuangan">
+<meta name="apple-mobile-web-app-title" content="Keuangan UMKM">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -161,7 +161,7 @@ dialog .ft{padding:12px 18px;border-top:1px solid var(--line);display:flex;justi
 <div id="auth">
   <div class="box">
     <svg viewBox="0 0 64 64" width="56" height="56" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#14304a"/><text x="32" y="41" text-anchor="middle" font-family="Georgia,serif" font-size="25" font-weight="700" fill="#e5a100">Rp</text></svg>
-    <h2>Catatan Keuangan</h2>
+    <h2>Aplikasi Keuangan Perusahaan (UMKM)</h2>
     <div class="muted">Masuk agar data tersimpan aman di server dan bisa dibuka dari HP maupun komputer.</div>
     <div style="margin-top:16px">
       <button class="btn google" type="button" id="btnGoogle">
@@ -175,9 +175,9 @@ dialog .ft{padding:12px 18px;border-top:1px solid var(--line);display:flex;justi
       <button type="button" data-mode="register" style="flex:1">Daftar baru</button>
     </div>
     <form id="authForm" autocomplete="on">
-      <label class="f">Username<input id="authUser" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="30" placeholder="huruf kecil, angka, . _ -"></label>
-      <label class="f">Kata sandi<input type="password" id="authPw" autocomplete="current-password"></label>
-      <label class="f" id="authPw2Wrap" style="display:none">Ulangi kata sandi<input type="password" id="authPw2" autocomplete="new-password"></label>
+      <label class="f">Username<input id="authUser" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="30" placeholder="Username"></label>
+      <label class="f">Kata sandi<input type="password" id="authPw" autocomplete="current-password" placeholder="Password"></label>
+      <label class="f" id="authPw2Wrap" style="display:none">Ulangi kata sandi<input type="password" id="authPw2" autocomplete="new-password" placeholder="Ulangi password"></label>
       <button class="btn primary" type="submit" id="authSubmit">Masuk</button>
     </form>
     <p class="out" id="authMsg" style="min-height:1.3em;font-size:13px" role="status" aria-live="polite"></p>
@@ -189,7 +189,8 @@ dialog .ft{padding:12px 18px;border-top:1px solid var(--line);display:flex;justi
 <div id="lock">
   <form class="box" id="lockForm" autocomplete="off">
     <svg viewBox="0 0 64 64" width="56" height="56" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#14304a"/><text x="32" y="41" text-anchor="middle" font-family="Georgia,serif" font-size="25" font-weight="700" fill="#e5a100">Rp</text></svg>
-    <h2>Catatan Keuangan terkunci</h2>
+    <h2>Aplikasi terkunci</h2>
+    <div class="muted" style="font-size:13px">Aplikasi Keuangan Perusahaan (UMKM)</div>
     <div class="muted">Masukkan kata sandi aplikasi.</div>
     <input type="password" id="lockPw" autocomplete="current-password" aria-label="Kata sandi">
     <button class="btn primary" type="submit" style="width:100%" id="lockBtn">Buka</button>
@@ -203,7 +204,7 @@ dialog .ft{padding:12px 18px;border-top:1px solid var(--line);display:flex;justi
   <div class="brand">
     <span id="brandLogo"></span>
     <div>
-      <h1 id="companyName">Catatan Keuangan</h1>
+      <h1 id="companyName">Aplikasi Keuangan Perusahaan (UMKM)</h1>
       <div class="company" id="companyTagline"></div>
     </div>
   </div>
