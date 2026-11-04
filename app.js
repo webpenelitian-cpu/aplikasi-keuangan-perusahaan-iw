@@ -1933,6 +1933,7 @@ $('btnLock').onclick = () => {
   if (!DATE_RE.test(d)) return toast('Pilih tanggal tutup buku');
   if (d > today()) return toast('Tanggal tutup buku tidak boleh di masa depan');
   if (state.lockedUntil && d < state.lockedUntil) {
+    if (company && company.role !== 'owner') return toast('Hanya pimpinan yang bisa membuka kembali periode yang sudah ditutup.');
     const reason = askReason(`membuka kembali periode ${fmtDate(d)}–${fmtDate(state.lockedUntil)}`); if (!reason) return;
     log('buka', 'tutup buku', '', `Tutup buku dimundurkan dari ${state.lockedUntil} ke ${d} · alasan: ${reason}`);
   } else {

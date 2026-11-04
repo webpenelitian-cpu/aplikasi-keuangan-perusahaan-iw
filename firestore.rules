@@ -22,7 +22,15 @@ service cloud.firestore {
     function openPeriod(cid, b) {
       let ym = b.split('~')[1];
       let settings = /databases/$(database)/documents/companies/$(cid)/buckets/$('settings~~0');
-      return role(cid) == 'owner' || ym == '' || !exists(settings) || ym > get(settings).data.r.lockedUntil.v;
+      return role(cid) == 'owner' || ym == '' || !exists(settings) || ym > get(settings).data.r.get(['lockedUntil', 'v'], '');
+    }
+    // Pengaturan: pimpinan bebas; keuangan hanya boleh memajukan tutup buku; SDM hanya boleh mengubah pengaturan SDM
+    function settingsOk(cid) {
+      let old = resource == null ? {} : resource.data.r;
+      let next = request.resource.data.r;
+      return role(cid) == 'owner'
+        || (role(cid) == 'finance' && next.get(['lockedUntil', 'v'], '') >= old.get(['lockedUntil', 'v'], ''))
+        || (role(cid) == 'hr' && next.diff(old).affectedKeys().hasOnly(['hr']));
     }
     match /users/{uid} {
       allow read, delete: if isOwner(uid);
@@ -87,7 +95,7 @@ service cloud.firestore {
             ? (role(cid) != 'viewer' && (resource == null
                 || (request.resource.data.r.diff(resource.data.r).changedKeys().size() == 0
                   && request.resource.data.r.diff(resource.data.r).removedKeys().size() == 0)))
-            : (openPeriod(cid, b) && (role(cid) in ['owner', 'finance']
+            : (openPeriod(cid, b) && (!b.matches('^settings~.*') || (b == 'settings~~0' && settingsOk(cid))) && (role(cid) in ['owner', 'finance']
               || (role(cid) == 'sales' && b.matches('^(tx|debts|trades|returns|orders|customers|contacts)~.*'))
               || (role(cid) == 'warehouse' && b.matches('^(tx|debts|trades|returns|orders|items|vendors|adjusts|transfers|warehouses|batches)~.*'))
               || (role(cid) == 'hr' && b.matches('^(tx|settings)~.*')))));
