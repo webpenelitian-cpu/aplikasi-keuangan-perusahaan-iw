@@ -78,7 +78,9 @@ function flatten(s) {
   return m;
 }
 let shadow = new Map(), remote = new Map(), remoteReady = {buckets: false, hrdata: false}, rebuildTimer = null, unwatch = [];
-const companyShadow = () => { shadow = flatten(state); };
+// companyFresh: data perusahaan belum ada di server, jadi seluruh isi state harus diunggah
+let companyFresh = false;
+const companyShadow = () => { shadow = companyFresh ? new Map() : flatten(state); companyFresh = false; };
 function companyData() {
   const d = {version: DATA_VERSION, audit: [], accounts: [], categories: [], tx: [], debts: [], security: state?.security || {autoLockMin: 5}};
   for (const col of Object.keys(SYNC_COLS)) d[col] ||= [];
@@ -97,7 +99,7 @@ function companyPersist() {
   for (const [k, e] of now) {
     const old = shadow.get(k);
     if (old && old.bid === e.bid && old.json === e.json) continue;
-    group(e).set[e.rid] = e.rec;
+    group(e).set[e.rid] = JSON.parse(e.json); // lewat JSON: Firestore menolak nilai undefined
     // data yang pindah kelompok (mis. tanggal berubah) dihapus dari kelompok lama
     if (old && old.bid !== e.bid) group(old).del.push(old.rid);
   }
@@ -106,10 +108,15 @@ function companyPersist() {
   try { localStorage.setItem(storeKey, JSON.stringify(state)); } catch {}
   if (!groups.size) return Promise.resolve();
   setSync('Menyimpan ke server…');
-  const writes = [...groups.values()].map(g => Cloud.writeBucket(company.id, g.sub, g.bid, g.set, g.del));
+  const writes = [...groups.values()].map(async g => Cloud.writeBucket(company.id, g.sub, g.bid, g.set, g.del));
   return Promise.allSettled(writes).then(res => {
-    if (res.some(r => r.status === 'rejected')) { toast('Sebagian perubahan ditolak server: peran Anda tidak mengizinkannya.'); companyRebuild(); }
-    else setSync('Tersimpan di server · ' + new Date().toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}));
+    const bad = res.find(r => r.status === 'rejected');
+    if (bad) {
+      const code = bad.reason?.code || bad.reason?.message || 'tidak diketahui';
+      setSync('Gagal menyimpan ke server: ' + code);
+      toast(code === 'permission-denied' ? 'Sebagian perubahan ditolak server: peran Anda tidak mengizinkannya, atau aturan Firestore belum terpasang.' : 'Gagal menyimpan ke server: ' + code);
+      companyRebuild();
+    } else setSync('Tersimpan di server · ' + new Date().toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}));
   });
 }
 function companyRebuild() {
@@ -140,8 +147,22 @@ async function openCompany() {
   storeKey = KEY + ':co:' + cid;
   await companyWatch();
   setSync('Tersinkron dengan server perusahaan');
-  start(companyData());
+  let data = companyData();
+  // Perusahaan masih kosong: pimpinan mengisinya dari data pribadi di server, yang tidak pernah dihapus
+  if (member.role === 'owner' && !data.accounts.length) { data = await personalData(); companyFresh = true; }
+  start(data);
   return true;
+}
+async function personalData() {
+  let r = null; try { r = await Cloud.pull(); } catch {}
+  if (!r?.payload) return defaultState();
+  let d = JSON.parse(r.payload);
+  while (isEnvelope(d)) {
+    const pw = await askPassword({title: 'Kata sandi data pribadi', hint: 'Data pribadi Anda terenkripsi. Masukkan kata sandinya agar bisa disalin ke perusahaan.'});
+    if (pw === null) return defaultState();
+    try { d = await unseal(await deriveKey(pw, fromB64(d.salt), envIter(d)), d); } catch { toast('Kata sandi salah'); }
+  }
+  return d;
 }
 function applyRole() {
   const role = company?.role || 'owner', views = ROLE_VIEWS[role];
@@ -165,17 +186,15 @@ Object.assign(ACTIONS, {
     const name = prompt('Nama perusahaan:', state.company.name); if (!name?.trim()) return;
     if (!confirm('Seluruh data di akun ini akan disalin ke perusahaan bersama. Anggota dapat melihat data sesuai perannya, dan kata sandi enkripsi perangkat tidak dipakai lagi untuk data ini. Salinan pribadi tetap tersimpan. Lanjutkan?')) return;
     try {
-      const cid = await Cloud.createCompany(name.trim().slice(0, 120), cloudInfo?.username || '');
-      company = {id: cid, name: name.trim(), role: 'owner'}; storeKey = KEY + ':co:' + cid; vault = null; shadow = new Map();
-      log('tambah', 'perusahaan', '', `Perusahaan bersama dibuat: ${name.trim()}`);
-      await companyPersist();
-      toast('Perusahaan dibuat. Memuat ulang…'); setTimeout(() => location.reload(), 1200);
-    } catch (e) { company = null; toast(e?.code === 'permission-denied' ? 'Ditolak server: aturan Firestore terbaru belum dipasang.' : 'Gagal membuat perusahaan.'); }
+      await saving; if (dirty) await pushNow();
+      await Cloud.createCompany(name.trim().slice(0, 120), cloudInfo?.username || '');
+      toast('Perusahaan dibuat. Memuat ulang…'); setTimeout(() => location.reload(), 1000); // data disalin saat aplikasi terbuka kembali
+    } catch (e) { toast(e?.code === 'permission-denied' ? 'Ditolak server: aturan Firestore terbaru belum dipasang.' : 'Gagal membuat perusahaan: ' + (e?.code || e?.message)); }
   },
   joinCompany: async () => {
     const code = prompt('Masukkan kode undangan:'); if (!code?.trim()) return;
     try { await Cloud.joinCompany(code.trim().toLowerCase(), cloudInfo?.username || ''); location.reload(); }
-    catch { toast('Kode undangan tidak berlaku.'); }
+    catch (e) { toast(e?.code === 'invite-invalid' ? 'Kode undangan tidak berlaku.' : 'Gagal bergabung: ' + (e?.code || e?.message)); }
   },
   leaveCompany: async () => { if (confirm('Keluar dari perusahaan ini?')) { await Cloud.leaveCompany(company.id); localStorage.removeItem(storeKey); location.reload(); } },
   loadMembers: async () => {
