@@ -167,6 +167,10 @@ dialog.big{width:min(900px,96vw)}
 .inv-stamp{width:74px;height:50px;border:1px dashed #9fb0bf;color:#7a8896;font-size:10px;display:flex;align-items:center;justify-content:center;margin:8px auto}
 .inv-foot{margin-top:18px;padding-top:8px;border-top:1px solid #d3dce1;font-size:10.5px;color:#566878;text-align:center}
 nav .ns{display:none}
+[hidden]{display:none!important}
+.seg.scroll{display:flex;overflow-x:auto;max-width:100%}.seg.scroll button{flex:0 0 auto;white-space:nowrap}
+.onlymobile{display:none}
+body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{display:none!important}
 .privacy{font-size:11px;color:var(--muted);text-align:left;margin-top:12px;line-height:1.5}
 #printArea{display:none}
 .toast{position:fixed;bottom:20px;right:20px;left:auto;background:#14304a;color:#fff;padding:10px 16px;border-radius:8px;opacity:0;transition:.25s;pointer-events:none;z-index:50}
@@ -180,6 +184,8 @@ nav .ns{display:none}
   nav button{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;padding:6px 0;border-radius:8px}
   nav button svg{display:block}
   nav .nl{display:none}nav .ns{display:inline}
+  nav button[data-view=hutang]{display:none}
+  .onlymobile{display:inline-block}
   .tline{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto}.tline .tl-item{grid-column:1/-1}
   dialog.big{width:100vw}
   #btnAdd{position:fixed;right:16px;bottom:calc(70px + var(--safe-bottom));z-index:21;border-radius:28px;padding:14px 20px;
@@ -215,6 +221,7 @@ nav .ns{display:none}
 }
 </style>
 <script src="app.js" defer></script>
+<script src="erp.js" defer></script>
 </head>
 <body class="booting">
 <noscript><p style="padding:20px">Aktifkan JavaScript untuk memakai aplikasi ini.</p></noscript>
@@ -280,6 +287,7 @@ nav .ns{display:none}
     <button data-view="dashboard" class="active"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-8 9 8M5 10v10h14V10"/></svg>Dasbor</button>
     <button data-view="transaksi"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Transaksi</button>
     <button data-view="jualbeli"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 4h2l3 12h11l2-8H6"/><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/></svg>Jual/Beli</button>
+    <button data-view="erp"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>ERP</button>
     <button data-view="hutang"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h13l-3-3M17 17H4l3 3"/></svg><span class="nl">Piutang/Utang</span><span class="ns">Utang</span></button>
     <button data-view="karyawan"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-5 4-7 8-7s7 2 8 7"/></svg>Karyawan</button>
     <button data-view="laporan"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l4 4v14H6zM9 13h6M9 17h6"/></svg>Laporan</button>
@@ -348,7 +356,7 @@ nav .ns{display:none}
 
   <!-- JUAL BELI -->
   <section class="view" id="view-jualbeli">
-    <div class="seg ttabs" id="tradeTabs">
+    <div class="seg ttabs scroll" id="tradeTabs">
       <button type="button" data-tab="trades" class="on">Jual &amp; Beli</button>
       <button type="button" data-tab="items">Barang &amp; Stok</button>
       <button type="button" data-tab="vendors">Vendor</button>
@@ -424,11 +432,21 @@ nav .ns{display:none}
     </div>
   </section>
 
+  <!-- ERP -->
+  <section class="view" id="view-erp">
+    <button class="btn sm onlymobile" data-act="goDebts" style="margin-bottom:10px">Buka Piutang &amp; Utang</button>
+    <div class="seg ttabs scroll" id="erpTabs"></div>
+    <div id="erpBody"></div>
+  </section>
+
   <!-- KARYAWAN -->
   <section class="view" id="view-karyawan">
-    <div class="seg ttabs" id="hrTabs">
+    <div class="seg ttabs scroll" id="hrTabs">
       <button type="button" data-tab="emp" class="on">Data Karyawan</button>
       <button type="button" data-tab="pay">Penggajian</button>
+      <button type="button" data-tab="att">Absensi</button>
+      <button type="button" data-tab="leave">Cuti</button>
+      <button type="button" data-tab="kas">Kasbon</button>
       <button type="button" data-tab="rules">Aturan</button>
     </div>
     <div class="grid cards" id="hrCards" style="margin-bottom:12px"></div>
@@ -453,6 +471,19 @@ nav .ns{display:none}
         <thead><tr><th>Periode</th><th>No. Bukti</th><th>Karyawan</th><th class="num">Gaji bersih</th><th class="num">PPh 21</th><th class="num">BPJS perusahaan</th><th class="num">BPJS karyawan</th><th class="no-print"></th></tr></thead>
         <tbody id="payBody"></tbody>
       </table></div>
+    </div>
+    <div id="hr-att">
+      <div class="toolbar"><label class="f">Tanggal<input type="date" id="attDate"></label></div>
+      <div class="table-wrap"><table class="rtable"><thead><tr><th>Nama</th><th>Kehadiran</th></tr></thead><tbody id="attBody"></tbody></table></div>
+    </div>
+    <div id="hr-leave">
+      <div class="toolbar"><button class="btn primary" id="btnNewLeave">+ Pengajuan cuti</button></div>
+      <div class="table-wrap"><table class="rtable"><thead><tr><th>Nama</th><th>Jenis</th><th>Tanggal</th><th class="num">Hari</th><th class="num">Sisa cuti</th><th>Status</th><th class="no-print"></th></tr></thead><tbody id="leaveBody"></tbody></table></div>
+    </div>
+    <div id="hr-kas">
+      <div class="toolbar"><button class="btn primary" id="btnNewKasbon">+ Kasbon</button></div>
+      <div class="table-wrap"><table class="rtable"><thead><tr><th>Tanggal</th><th>No.</th><th>Nama</th><th class="num">Jumlah</th><th class="num">Sisa</th><th class="no-print"></th></tr></thead><tbody id="kasBody"></tbody></table></div>
+      <p class="muted" style="font-size:12px">Kasbon dipotong lewat kolom Potongan kasbon saat proses gaji.</p>
     </div>
     <div id="hr-rules">
       <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
@@ -537,10 +568,17 @@ nav .ns{display:none}
           <option value="beli">Pembelian per Vendor</option>
           <option value="faktur">Rekap Faktur &amp; Pajak (PPN, WAPU, PPh)</option>
         </optgroup>
+        <optgroup label="Akuntansi lanjutan">
+          <option value="aruskas">Laporan Arus Kas</option>
+          <option value="aset">Daftar Aset Tetap</option>
+          <option value="anggaran">Anggaran dan Realisasi</option>
+          <option value="pusat">Kas per Cabang/Proyek</option>
+        </optgroup>
         <optgroup label="Karyawan">
           <option value="upah">Daftar Upah</option>
           <option value="bpjs">Rekap PPh 21 &amp; BPJS</option>
           <option value="sdm">Data Ketenagakerjaan</option>
+          <option value="absensi">Rekap Kehadiran</option>
         </optgroup>
         <optgroup label="Pajak">
           <option value="pph">Rekap PPh Final (PP 55/2022)</option>
@@ -678,6 +716,7 @@ nav .ns{display:none}
         <label class="f" id="txCatWrap">Kategori<select id="txCat"></select></label>
         <label class="f"><span id="txAccLabel">Akun</span><select id="txAcc"></select></label>
         <label class="f" id="txToWrap">Ke akun<select id="txTo"></select></label>
+        <label class="f" id="txCenterWrap">Cabang/proyek<select id="txCenter"></select></label>
         <label class="f wide">Uraian<textarea id="txDesc" rows="2" maxlength="500" placeholder="Pihak, keperluan, dan dokumen pendukung (no. faktur/kuitansi)"></textarea></label>
       </div>
       <p class="muted" id="txHint" style="font-size:12px;margin-bottom:0"></p>
@@ -758,6 +797,7 @@ nav .ns{display:none}
         <label class="f">Pembayaran<select id="tPay"><option value="cash">Tunai / transfer</option><option value="credit">Kredit (tempo)</option></select></label>
         <label class="f" id="tAccWrap"><span id="tAccLabel">Akun</span><select id="tAcc"></select></label>
         <label class="f" id="tDueWrap">Jatuh tempo<input type="date" id="tDue"></label>
+        <label class="f" id="tWhWrap">Gudang<select id="tWh"></select></label>
         <label class="f" id="tPoWrap">No. PO / kontrak<input id="tPo" maxlength="60"></label>
         <label class="f" id="tCustNpwpWrap">NPWP pelanggan<input id="tCustNpwp" inputmode="numeric" maxlength="30"></label>
         <label class="f wide" id="tAddrWrap">Alamat penagihan<input id="tCustAddr" maxlength="300"></label>
@@ -832,6 +872,49 @@ nav .ns{display:none}
     <div class="ft">
       <button type="button" class="btn" id="btnCancelOp">Tutup</button>
       <button type="submit" class="btn primary">Simpan Opname</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- DIALOG FORM ERP -->
+<dialog id="efDialog">
+  <form method="dialog" id="efForm">
+    <div class="hd" id="efTitle">Data</div>
+    <div class="bd"><p class="out" id="efNote" style="margin-top:0"></p><div class="form-grid" id="efFields"></div></div>
+    <div class="ft">
+      <button type="button" class="btn danger" id="btnEfDel" style="margin-right:auto">Hapus</button>
+      <button type="button" class="btn" id="btnEfCancel">Tutup</button>
+      <button type="submit" class="btn primary" id="btnEfSave">Simpan</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- DIALOG DOKUMEN PENAWARAN, PESANAN, PERMINTAAN, PO -->
+<dialog id="oDialog" class="big">
+  <form method="dialog" id="oForm">
+    <div class="hd" id="oTitle">Dokumen</div>
+    <div class="bd">
+      <div class="form-grid">
+        <label class="f">Tanggal<input type="date" id="oDate"></label>
+        <label class="f">No. dokumen<input id="oRef" maxlength="40"></label>
+        <label class="f"><span id="oPartyLabel">Pihak</span><select id="oParty"></select></label>
+        <label class="f">Berlaku / diperlukan s.d.<input type="date" id="oDue"></label>
+      </div>
+      <h3 style="font-size:13px;margin:14px 0 6px">Barang / jasa</h3>
+      <div id="oLines"></div>
+      <button type="button" class="btn sm" id="btnOAddLine">+ Baris</button>
+      <label class="f" style="margin-top:10px">Catatan<textarea id="oNote" rows="2" maxlength="500"></textarea></label>
+      <div class="tsum" id="oTotal"></div>
+    </div>
+    <div class="ft">
+      <button type="button" class="btn danger" id="btnOCancel" style="margin-right:auto">Batalkan</button>
+      <button type="button" class="btn" id="btnOPrint">Cetak</button>
+      <button type="button" class="btn" id="btnODeliv">Surat jalan</button>
+      <button type="button" class="btn" id="btnOClose">Tutup</button>
+      <button type="submit" class="btn" id="btnOSave">Simpan</button>
+      <button type="button" class="btn primary" id="btnOApprove">Setujui</button>
+      <button type="button" class="btn primary" id="btnONext">Lanjut</button>
+      <button type="button" class="btn primary" id="btnOInv">Buat invoice</button>
     </div>
   </form>
 </dialog>

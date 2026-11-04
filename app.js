@@ -20,7 +20,7 @@ const REF_PREFIX = {in:'BKM', out:'BKK', transfer:'BM'};
 const LOGO_MAX_PX = 256;
 const LOGO_RE = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
 const APP_NAME = 'Aplikasi Keuangan Perusahaan (UMKM)';
-const DATA_VERSION = 4; // naikkan bila struktur data berubah; versi lama aplikasi tidak boleh menimpa data yang lebih baru
+const DATA_VERSION = 5; // naikkan bila struktur data berubah; versi lama aplikasi tidak boleh menimpa data yang lebih baru
 const STORE_WARN = 3500000; // peringatan sebelum penyimpanan perangkat (sekitar 5 juta karakter) penuh
 
 // Akun sistem untuk jurnal otomatis (double entry)
@@ -178,7 +178,7 @@ function defaultState() {
     tx: [],
     debts: [],
     items: [], vendors: [], trades: [], returns: [], adjusts: [], employees: [], payrolls: [],
-    hr: {...HR}, tax: {...TAX},
+    hr: {...HR}, tax: {...TAX}, ...erpDefaults(),
   });
 }
 const isSysCat = c => SYS_CATS.some(([code]) => code === c?.code);
@@ -267,6 +267,8 @@ function sanitizeState(d) {
       if (cleanId(t?.tradeId)) x.tradeId = t.tradeId;
       if (cleanId(t?.payrollId)) x.payrollId = t.payrollId;
       if (cleanId(t?.returnId)) x.returnId = t.returnId;
+      if (cleanId(t?.kasbonId)) x.kasbonId = t.kasbonId;
+      if (cleanId(t?.centerId)) x.centerId = t.centerId;
       return x;
     }).filter(t => t.id && t.type && t.date && t.accountId),
     debts: (Array.isArray(d.debts) ? d.debts : []).map(x => {
@@ -289,6 +291,7 @@ function sanitizeState(d) {
       pay: t?.pay === 'credit' ? 'credit' : 'cash', accountId: t?.accountId ? cleanId(t.accountId) : null, due: cleanDate(t?.due), desc: cleanStr(t?.desc),
       ppn: Math.abs(cleanNum(t?.ppn)), pph: Math.abs(cleanNum(t?.pph)), wapu: t?.wapu === true, wapuKind: t?.wapuKind === 'gov' ? 'gov' : 'other', cut: t?.cut === true, ppnCredit: t?.ppnCredit === true,
       pphParts: list(t?.pphParts).map(x => ({code: Object.hasOwn(PPH_LABEL, x?.code) ? x.code : '23', base: Math.abs(cleanNum(x?.base)), rate: cleanPct(x?.rate, 0), amt: Math.abs(cleanNum(x?.amt))})),
+      srcId: t?.srcId ? cleanId(t.srcId) : null, whId: t?.whId ? cleanId(t.whId) : null,
       fpNo: cleanStr(t?.fpNo, 40), fpDate: cleanDate(t?.fpDate), poNo: cleanStr(t?.poNo, 60), custAddr: cleanStr(t?.custAddr, 300), custNpwp: cleanStr(t?.custNpwp, 30)}))
       .filter(t => t.id && t.date && t.lines.length),
     returns: list(d.returns).map(r => ({id: cleanId(r?.id), created: cleanNum(r?.created), kind: r?.kind === 'purchase' ? 'purchase' : 'sale', origId: cleanId(r?.origId),
@@ -308,7 +311,7 @@ function sanitizeState(d) {
     payrolls: list(d.payrolls).map(p => ({id: cleanId(p?.id), created: cleanNum(p?.created), period: /^\d{4}-(0[1-9]|1[0-2])$/.test(String(p?.period ?? '')) ? p.period : '',
       date: cleanDate(p?.date), ref: cleanStr(p?.ref, 40), accountId: cleanId(p?.accountId), lines: list(p?.lines).map(cleanPayLine).filter(l => l.empId)}))
       .filter(p => p.id && p.period && p.date && p.lines.length),
-    hr: sanitizeHr(d.hr), tax: sanitizeTax(d.tax),
+    hr: sanitizeHr(d.hr), tax: sanitizeTax(d.tax), ...sanitizeErp(d),
   };
 }
 
@@ -585,6 +588,7 @@ function mergeStates(A, L) {
       lines: p.lines.map(l => ({...l, empId: empMap.get(l.empId) ?? l.empId}))});
     stats.payrolls++;
   }
+  mergeErp(S, L, {itemMap, venMap, empMap, accMap, catMap});
   for (const k of ['name', 'tagline', 'logo', 'address', 'npwp', 'nib', 'phone', 'email', 'preparedName', 'checkedName', 'taxYear', 'bankInfo', 'invoiceNote'])
     if (!S.company[k] && L.company[k]) S.company[k] = L.company[k];
   const seen = new Set(S.audit.map(auditKey));
@@ -603,7 +607,7 @@ function finishLocalMerge() {
   renderAll();
 }
 async function mergeLocalData() {
-  if (mergeBusy || !cloudUser || !cloudReachable || !state) return;
+  if (mergeBusy || !cloudUser || !cloudReachable || !state || company) return;
   const raw = localStorage.getItem(KEY);
   if (!raw) return;
   mergeBusy = true; mergeAgain = false;
@@ -663,6 +667,7 @@ async function applyRemote(meta, force = false) {
 }
 
 function persist() {
+  if (company) return companyPersist();
   const json = JSON.stringify(state), v = vault;
   saving = saving.then(async () => {
     localStorage.setItem(storeKey, v ? JSON.stringify(await seal(v, json)) : json);
@@ -769,6 +774,7 @@ function armAutoLock() {
 
 /* ---------- Pengaturan keamanan ---------- */
 function renderSecurity() {
+  if (company) { $('secStatus').innerHTML = '<div class="notice">Data perusahaan dipakai bersama sehingga tidak memakai kata sandi enkripsi perangkat. Aksesnya dijaga peran anggota di server.</div>'; ['btnSetPw', 'btnRemovePw', 'btnLockNow'].forEach(id => $(id).style.display = 'none'); $('secAuto').disabled = true; return; }
   const noCrypto = !hasCrypto;
   $('secStatus').innerHTML = noCrypto
     ? '<div class="notice">Kata sandi & enkripsi hanya tersedia bila aplikasi dibuka lewat alamat https (mis. GitHub Pages).</div>'
@@ -895,6 +901,7 @@ function buildJournal() {
       else add(r.date, r.ref, 'Selisih retur ' + o.ref, ACC_PERSEDIAAN, ACC_HPP, -v, 'retur');
     }
   });
+  erpJournal(add);
   state.adjusts.forEach(a => {
     const v = adj.get(a.id) || 0;
     if (v < 0) add(a.date, a.ref, 'Stok opname: kekurangan', ACC_SELISIH, ACC_PERSEDIAAN, -v, 'opname');
@@ -1032,7 +1039,7 @@ function restoreView() {
   let s = null;
   try { s = JSON.parse(sessionStorage.getItem(VIEW_KEY)); } catch {}
   if (['trades', 'items', 'vendors', 'tax'].includes(s?.trade)) tradeTab = s.trade;
-  if (['emp', 'pay', 'rules'].includes(s?.hr)) hrTab = s.hr;
+  if (['emp', 'pay', 'rules', 'att', 'leave', 'kas'].includes(s?.hr)) hrTab = s.hr;
   if ([...$('rType').options].some(o => o.value === s?.report)) $('rType').value = s.report;
   showView(Object.hasOwn(VIEWS, s?.view) ? s.view : currentView);
 }
@@ -1249,14 +1256,17 @@ function openTx(id) {
   setTxType(t.type);
   if (t.categoryId) $('txCat').value = t.categoryId;
   const debt = editing?.debtId && state.debts.find(d => d.id === editing.debtId);
-  const linked = editing && (editing.tradeId || editing.payrollId || editing.returnId);
+  const linked = editing && (editing.tradeId || editing.payrollId || editing.returnId || editing.kasbonId);
   const locked = editing && (isLocked(editing.date) || !!linked);
   $('txLink').style.display = debt || locked ? '' : 'none';
-  $('txLink').textContent = [linked ? `Transaksi ini dibuat otomatis dari menu ${editing.payrollId ? 'Karyawan → Penggajian' : 'Jual/Beli'}; ubah atau hapus dari sana.` : locked ? lockMsg() : '', debt ? `Pembayaran ${KIND_LABEL[debt.kind].toLowerCase()} — ${debt.party}${debt.ref ? ' · ' + debt.ref : ''}` : ''].filter(Boolean).join(' ');
+  $('txLink').textContent = [linked ? `Transaksi ini dibuat otomatis dari menu ${editing.payrollId || editing.kasbonId ? 'Karyawan' : 'Jual/Beli'}; ubah atau hapus dari sana.` : locked ? lockMsg() : '', debt ? `Pembayaran ${KIND_LABEL[debt.kind].toLowerCase()} — ${debt.party}${debt.ref ? ' · ' + debt.ref : ''}` : ''].filter(Boolean).join(' ');
   document.querySelectorAll('#txTypeSeg button').forEach(b => b.disabled = !!debt || locked);
   $('txDialogTitle').textContent = editing ? (locked ? 'Detail Transaksi' : 'Ubah Transaksi') : 'Transaksi Baru';
   $('txAmount').value = t.amount ? t.amount.toLocaleString('id-ID') : '';
   $('txDesc').value = t.desc || '';
+  fillSelect($('txCenter'), state.centers, 'Tanpa pusat biaya');
+  $('txCenterWrap').style.display = state.centers.length ? '' : 'none';
+  $('txCenter').value = t.centerId || '';
   if (t.accountId) $('txAcc').value = t.accountId;
   if (t.toAccountId) $('txTo').value = t.toAccountId;
   else if (state.accounts[1]) $('txTo').value = state.accounts[1].id;
@@ -1271,7 +1281,7 @@ $('btnAdd').onclick = () => openTx();
 $('btnCancelTx').onclick = () => $('txDialog').close();
 $('btnPrintTx').onclick = () => { if (editing) printVoucher(editing); };
 $('btnDeleteTx').onclick = () => {
-  if (!editing || isLocked(editing.date) || editing.tradeId || editing.payrollId || editing.returnId) return toast(lockMsg());
+  if (!editing || isLocked(editing.date) || editing.tradeId || editing.payrollId || editing.returnId || editing.kasbonId) return toast(lockMsg());
   const reason = askReason('menghapus transaksi'); if (!reason) return;
   log('hapus', 'transaksi', editing.id, `${txSummary(editing)} · alasan: ${reason}`);
   state.tx = state.tx.filter(t => t !== editing);
@@ -1280,7 +1290,7 @@ $('btnDeleteTx').onclick = () => {
 $('txForm').onsubmit = e => {
   const amount = parseNum($('txAmount').value), date = $('txDate').value;
   const fail = msg => { e.preventDefault(); toast(msg); };
-  if (editing && (isLocked(editing.date) || editing.tradeId || editing.payrollId || editing.returnId)) return fail(lockMsg());
+  if (editing && (isLocked(editing.date) || editing.tradeId || editing.payrollId || editing.returnId || editing.kasbonId)) return fail(lockMsg());
   if (!DATE_RE.test(date)) return fail('Isi tanggal transaksi');
   if (isLocked(date)) return fail(lockMsg());
   if (amount <= 0) return fail('Jumlah harus lebih dari 0');
@@ -1297,6 +1307,7 @@ $('txForm').onsubmit = e => {
     accountId: $('txAcc').value, desc: $('txDesc').value.trim().slice(0, 500),
     categoryId: txType === 'transfer' ? null : $('txCat').value,
     toAccountId: txType === 'transfer' ? $('txTo').value : null,
+    centerId: $('txCenter').value || undefined,
   };
   if (editing) {
     const before = txSummary(editing);
@@ -1567,7 +1578,7 @@ function notesHTML(from, to, N, L) {
     <li><b>Piutang usaha</b> dicatat sebesar nilai faktur dikurangi pelunasan. Rincian per ${fmtDate(N.asOf)}:<table>${debtRows('piutang')}</table></li>
     <li><b>Utang usaha</b> dicatat sebesar nilai tagihan dikurangi pembayaran. Rincian per ${fmtDate(N.asOf)}:<table>${debtRows('utang')}</table></li>
     ${state.items.some(i => i.kind === 'barang') ? `<li><b>Persediaan</b> dicatat sebesar biaya perolehan dengan metode rata-rata tertimbang (moving average). Nilai per ${fmtDate(N.asOf)}: ${rp(stockValue(N.asOf))}.</li>` : ''}
-    <li><b>Aset tetap</b> dicatat sebesar biaya perolehan. Penyusutan belum dihitung otomatis oleh aplikasi; bila material, catat beban penyusutan sesuai kebijakan entitas.</li>
+    <li><b>Aset tetap</b> dicatat sebesar biaya perolehan. Aset yang didaftarkan di menu ERP → Aset disusutkan otomatis dengan metode garis lurus.</li>
     <li><b>Perpajakan.</b> ${last ? `Entitas memakai PPh final ${String(c.pphRate).replace('.', ',')}% atas peredaran bruto (PP 55/2022) sampai tahun pajak ${last}.` : `Tarif PPh final yang dipakai ${String(c.pphRate).replace('.', ',')}% atas peredaran bruto (PP 55/2022).`} Beban PPh final periode ini termasuk dalam beban usaha.</li>
     <li><b>Pemisahan harta.</b> Penarikan untuk keperluan pribadi pemilik (prive) periode ini: ${rp(prive)}, dicatat sebagai pengurang ekuitas, bukan beban usaha.</li>
     <li><b>Laba (rugi)</b> periode ini ${rp(L.net)}.</li>
@@ -1715,7 +1726,7 @@ function renderReport() {
         || '<tr><td colspan="5" class="muted">Belum ada catatan pada periode ini.</td></tr>'}
     </table><p class="muted" style="font-size:12px">Jejak audit mencatat setiap penambahan, perubahan, dan penghapusan data beserta alasannya. Catatan ini tidak dapat diubah dari aplikasi.</p>`;
   }
-  html ||= bizReport(type, from, to, period);
+  html ||= bizReport(type, from, to, period) || erpReport(type, from, to, period);
   $('reportOut').innerHTML = html + (type !== 'audit' ? footerNote() : '');
 }
 ['rType', 'rFrom', 'rTo', 'rAcc'].forEach(id => $(id).oninput = renderReport);
@@ -1789,6 +1800,7 @@ function renderAccount() {
       ? 'Data dienkripsi di perangkat sebelum dikirim, sehingga server pun tidak bisa membacanya.'
       : 'Tips: pasang kata sandi di kartu Keamanan agar data dienkripsi sebelum dikirim ke server.'}</div>
     ${conflicts.length ? `<div class="notice">Salinan dari konflik sinkron (data perangkat ini yang tidak terkirim): ${conflicts.map(k => `<button class="btn sm" data-act="dlConflict" data-id="${esc(k.split('-konflik-')[1])}">${esc(new Date(+k.split('-konflik-')[1]).toLocaleString('id-ID'))}</button>`).join(' ')} <button class="btn sm danger" data-act="clearConflicts">Hapus salinan</button></div>` : ''}
+    ${companyBoxHTML()}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn" data-act="syncNow">Sinkron sekarang</button>
       <button class="btn" data-act="logout">Keluar</button>
@@ -1905,7 +1917,7 @@ const ACTIONS = {
   goLogin: () => { localStorage.removeItem(MODE_KEY); location.reload(); },
   mergeLocal: () => mergeLocalData(),
   goLock: () => { goView('pengaturan'); $('lockDate').focus(); $('lockDate').scrollIntoView({block: 'center'}); },
-  syncNow: async () => { if (!cloudUser) return; dirty = true; await pushNow(); },
+  syncNow: async () => { if (!cloudUser) return; if (company) return companyPersist(); dirty = true; await pushNow(); },
   dlConflict: ts => { const raw = localStorage.getItem(`${storeKey}-konflik-${ts}`); if (raw) download(raw, `salinan-konflik-${ts}.json`, 'application/json'); },
   clearConflicts: () => { if (confirm('Hapus semua salinan konflik di perangkat ini?')) { conflictKeys().forEach(k => localStorage.removeItem(k)); renderAll(); } },
   logout: async () => {
@@ -2131,7 +2143,7 @@ function stockCalc(trades = state.trades, items = state.items, returns = state.r
 const stockAsOf = upTo => upTo ? stockCalc(state.trades.filter(t => t.date <= upTo), state.items, state.returns.filter(r => r.date <= upTo), state.adjusts.filter(a => a.date <= upTo)).stock : M().stock.stock;
 const stockValue = upTo => [...stockAsOf(upTo).values()].reduce((s, x) => s + x.value, 0);
 
-let tradeTab = 'trades', tradeKind = 'sale', editingTrade = null, tradeLines = [], tradeLimit = TX_PAGE;
+let tradeTab = 'trades', tradeKind = 'sale', editingTrade = null, tradeLines = [], tradeLimit = TX_PAGE, tradeSrc = null;
 function renderTrade() {
   document.querySelectorAll('#tradeTabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === tradeTab); b.setAttribute('aria-pressed', b.dataset.tab === tradeTab); });
   ['trades', 'items', 'vendors', 'tax'].forEach(k => $('trade-' + k).style.display = k === tradeTab ? '' : 'none');
@@ -2340,6 +2352,7 @@ function tradeDraft() {
     extra: tradeKind === 'purchase' ? parseMoney($('tExtra').value) : 0, pay: $('tPay').value === 'credit' ? 'credit' : 'cash',
     vendorId: tradeKind === 'purchase' ? $('tVendor').value || null : null, party: tradeKind === 'sale' ? $('tCust').value.trim().slice(0, 120) : '',
     accountId: $('tPay').value === 'credit' ? null : $('tAcc').value, due: $('tPay').value === 'credit' ? $('tDue').value : '', desc: $('tDesc').value.trim().slice(0, 500),
+    srcId: editingTrade?.srcId || tradeSrc?.srcId || null, whId: $('tWh').value || null,
     wapu: tradeKind === 'sale' && $('tWapu').checked, wapuKind: $('tWapuKind').value === 'gov' ? 'gov' : 'other', cut: tradeKind === 'sale' && $('tCut').checked, fpNo: $('tFpNo').value.trim().slice(0, 40), fpDate: $('tFpDate').value,
     poNo: tradeKind === 'sale' ? $('tPo').value.trim().slice(0, 60) : '', custAddr: tradeKind === 'sale' ? $('tCustAddr').value.trim().slice(0, 300) : '', custNpwp: tradeKind === 'sale' ? $('tCustNpwp').value.trim().slice(0, 30) : ''};
   return Object.assign(d, taxCalc(d));
@@ -2403,8 +2416,13 @@ function openTrade(id, kind) {
   $('tPo').value = t.poNo || ''; $('tCustAddr').value = t.custAddr || ''; $('tCustNpwp').value = t.custNpwp || '';
   $('tDiscount').value = t.discount ? t.discount.toLocaleString('id-ID') : '';
   $('tExtra').value = t.extra ? t.extra.toLocaleString('id-ID') : '';
-  $('custList').innerHTML = [...new Set(state.trades.filter(x => x.kind === 'sale' && x.party).map(x => x.party))].map(p => `<option value="${esc(p)}">`).join('');
+  $('custList').innerHTML = [...new Set([...state.customers.map(x => x.name), ...state.trades.filter(x => x.kind === 'sale' && x.party).map(x => x.party)])].map(p => `<option value="${esc(p)}">`).join('');
   tradeLines = t.lines.length ? t.lines.map(l => ({...l})) : [{itemId: '', qty: 1, price: 0}];
+  if (editingTrade) tradeSrc = null;
+  if (tradeSrc) { tradeLines = tradeSrc.lines.map(l => ({...l})); $('tCust').value = tradeSrc.party || ''; $('tCustAddr').value = tradeSrc.addr || ''; $('tCustNpwp').value = tradeSrc.npwp || ''; $('tVendor').value = tradeSrc.vendorId || ''; $('tPo').value = tradeSrc.ref || ''; }
+  fillSelect($('tWh'), state.warehouses, 'Gudang utama');
+  $('tWhWrap').style.display = state.warehouses.length ? '' : 'none';
+  $('tWh').value = t.whId || '';
   setTradeKind(t.kind); setTradePay();
   const ro = tradeReadOnly(editingTrade);
   $('tradeTitle').textContent = editingTrade ? (t.kind === 'sale' ? 'Detail Penjualan' : 'Detail Pembelian') : 'Jual / Beli Baru';
@@ -2434,6 +2452,8 @@ function postTrade(t) {
   }
 }
 $('btnCancelTrade').onclick = () => $('tradeDialog').close();
+$('tCust').addEventListener('change', () => { const c = state.customers.find(x => x.name === $('tCust').value.trim()); if (c) { $('tCustAddr').value ||= c.address; $('tCustNpwp').value ||= c.npwp; $('tWapu').checked = c.wapu; $('tWapu').onchange(); } });
+$('tradeDialog').addEventListener('close', () => { tradeSrc = null; });
 $('tradeForm').onsubmit = e => {
   const fail = msg => { e.preventDefault(); toast(msg); };
   if (tradeReadOnly(editingTrade)) return fail(tradeReadOnly(editingTrade));
@@ -2807,7 +2827,7 @@ function journalBal(acc) {
 let hrTab = 'emp';
 function renderHr() {
   document.querySelectorAll('#hrTabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === hrTab); b.setAttribute('aria-pressed', b.dataset.tab === hrTab); });
-  ['emp', 'pay', 'rules'].forEach(k => $('hr-' + k).style.display = k === hrTab ? '' : 'none');
+  ['emp', 'pay', 'rules', 'att', 'leave', 'kas'].forEach(k => $('hr-' + k).style.display = k === hrTab ? '' : 'none');
   const hr = state.hr, ym = today().slice(0, 7), act = state.employees.filter(e => empActive(e, ym));
   const lastRun = state.payrolls.slice().sort((a, b) => b.period.localeCompare(a.period))[0], s = lastRun && paySum(lastRun);
   $('hrCards').innerHTML = [
@@ -2818,6 +2838,7 @@ function renderHr() {
     ['Utang BPJS', rp(journalBal(ACC_BPJS)), '', 'Belum disetor'],
   ].map(statCard).join('');
   if (hrTab === 'rules') return renderRules();
+  if (['att', 'leave', 'kas'].includes(hrTab)) return renderHrExtra();
   if (hrTab === 'pay') {
     $('payBody').innerHTML = state.payrolls.length ? state.payrolls.slice().sort((a, b) => b.period.localeCompare(a.period)).map(p => {
       const t = paySum(p);
@@ -3006,6 +3027,7 @@ function renderRun() {
     ${belowMin(e) ? `<div class="out" style="font-size:12px;margin-top:6px">Upah di bawah UMP/UMK ${rp(state.hr.ump)}.</div>` : ''}
     <div class="pcalc"></div></div>`).join('') : '<div class="empty">Tidak ada karyawan yang perlu digaji pada periode ini.</div>';
   $('runRef').value = nextCode('GJ', $('runDate').value || today(), state.payrolls.map(p => p.ref));
+  erpRunPrefill(ym);
   runRefresh();
 }
 $('runRows').addEventListener('input', e => {
@@ -3119,6 +3141,7 @@ Object.assign(ACTIONS, {
 /* Pengingat & laporan modul usaha */
 function bizObligations() {
   const out = [], now = today(), ym = now.slice(0, 7), hr = state.hr;
+  out.push(...erpObligations());
   const ppn = journalBal(ACC_PPN), ppnW = journalBal(ACC_PPN_WAPU), pot = journalBal(ACC_PPH_POT);
   if (ppn > 0) out.push(['warn', `Utang PPN belum disetor: <b>${rp(ppn)}</b> (sudah dikurangi PPN masukan masa yang lewat). Lihat Rekap Faktur &amp; Pajak.`]);
   if (ppnW > 0) out.push(['warn', `PPN yang dipungut dari vendor (WAPU) belum disetor: <b>${rp(ppnW)}</b>.`]);
@@ -3235,7 +3258,7 @@ function bizReport(type, from, to, period) {
   return '';
 }
 
-const VIEWS = {dashboard: renderDashboard, transaksi: renderTx, jualbeli: renderTrade, hutang: renderDebts, karyawan: renderHr, laporan: renderReport, pengaturan: renderSettings};
+const VIEWS = {dashboard: renderDashboard, transaksi: renderTx, jualbeli: renderTrade, erp: () => renderErp(), hutang: renderDebts, karyawan: renderHr, laporan: renderReport, pengaturan: renderSettings};
 function renderView(v) { VIEWS[v]?.(); }
 function renderAll() { memo = null; renderHeader(); renderView(currentView); }
 
@@ -3253,10 +3276,12 @@ function start(data) {
     state = defaultState();
     setTimeout(() => toast('Data tersimpan rusak; salinannya diamankan. Pulihkan dari backup.'), 500);
   }
+  if (company) companyShadow();
   migrate();
   document.body.className = '';
-  initReportDates(); restoreView(); renderAll(); renderInstall(); armAutoLock();
-  if (cloudUser) {
+  initReportDates(); restoreView(); applyRole(); renderAll(); renderInstall(); armAutoLock();
+  if (company) { companyPersist(); setSync('Tersinkron dengan server perusahaan'); }
+  else if (cloudUser) {
     if (dirty) schedulePush(); else setSync('Tersinkron dengan server');
     mergeLocalData();
   }
@@ -3359,6 +3384,7 @@ async function openAccount(user) {
     if (username === null) { await Cloud.signOut(); cloudUser = null; return showAuth(); }
   }
   cloudInfo = {username, email: user.email, google: user.providerData.some(p => p.providerId === 'google.com')};
+  if (await openCompany()) return;
 
   let remote = null, reachable = true;
   try { remote = await Cloud.pull(); } catch { reachable = false; }
@@ -3398,4 +3424,5 @@ async function boot() {
   }
   showAuth();
 }
-boot();
+// Menunggu erp.js selesai dimuat
+addEventListener('DOMContentLoaded', boot);

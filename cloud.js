@@ -23,7 +23,9 @@ export async function init() {
     const app = appMod.initializeApp(config);
     auth = A.getAuth(app);
     auth.languageCode = 'id';
-    db = F.getFirestore(app);
+    // Salinan data di perangkat: aplikasi tetap bisa dipakai offline dan kuota baca server lebih hemat
+    try { db = F.initializeFirestore(app, {localCache: F.persistentLocalCache({tabManager: F.persistentMultipleTabManager()})}); }
+    catch { db = F.getFirestore(app); }
     try { await A.getRedirectResult(auth); } catch {}
     user = await new Promise(res => { const off = A.onAuthStateChanged(auth, u => { off(); res(u); }); });
     return {enabled: true, online: true, user};
@@ -124,4 +126,68 @@ export function watch(cb) {
   return F.onSnapshot(dataDoc('meta'), snap => { if (snap.exists() && !snap.metadata.hasPendingWrites) cb(snap.data()); }, () => {});
 }
 
-export async function signOut() { await A.signOut(auth); user = null; }
+export async function signOut() {
+  await A.signOut(auth); user = null;
+  // Salinan data perusahaan di perangkat ikut dihapus saat keluar
+  try { await F.terminate(db); await F.clearIndexedDbPersistence(db); } catch {}
+}
+
+/* ---------- Perusahaan bersama: anggota, peran, undangan, data per kelompok ---------- */
+const coDoc = (cid, ...p) => F.doc(db, 'companies', cid, ...p);
+
+export async function getCompanyId() {
+  const snap = await F.getDoc(F.doc(db, 'users', user.uid));
+  return snap.exists() ? snap.data().companyId || null : null;
+}
+export async function getCompany(cid) { const s = await F.getDoc(coDoc(cid)); return s.exists() ? s.data() : null; }
+export async function getMember(cid) { const s = await F.getDoc(coDoc(cid, 'members', user.uid)); return s.exists() ? s.data() : null; }
+
+export async function createCompany(name, memberName) {
+  const ref = F.doc(F.collection(db, 'companies'));
+  const b = F.writeBatch(db);
+  b.set(ref, {name, ownerUid: user.uid, createdAt: F.serverTimestamp()});
+  b.set(F.doc(ref, 'members', user.uid), {role: 'owner', name: memberName, active: true});
+  b.set(F.doc(db, 'users', user.uid), {companyId: ref.id}, {merge: true});
+  await b.commit();
+  return ref.id;
+}
+export async function createInvite(cid, role) {
+  const code = Array.from(crypto.getRandomValues(new Uint8Array(15)), x => x.toString(16).padStart(2, '0')).join('');
+  await F.setDoc(F.doc(db, 'invites', code), {cid, role, expires: Date.now() + 7 * 864e5, by: user.uid});
+  return code;
+}
+export async function joinCompany(code, memberName) {
+  const inv = await F.getDoc(F.doc(db, 'invites', code));
+  if (!inv.exists() || inv.data().expires < Date.now()) throw err('invite-invalid');
+  const {cid, role} = inv.data();
+  const b = F.writeBatch(db);
+  b.set(coDoc(cid, 'members', user.uid), {role, name: memberName, active: true, invite: code});
+  b.delete(F.doc(db, 'invites', code));
+  b.set(F.doc(db, 'users', user.uid), {companyId: cid}, {merge: true});
+  await b.commit();
+  return cid;
+}
+export async function listMembers(cid) {
+  const s = await F.getDocs(F.collection(db, 'companies', cid, 'members'));
+  return s.docs.map(d => ({uid: d.id, ...d.data()}));
+}
+export const setMember = (cid, uid, data) => F.updateDoc(coDoc(cid, 'members', uid), data);
+export const removeMember = (cid, uid) => F.deleteDoc(coDoc(cid, 'members', uid));
+export async function leaveCompany(cid) {
+  const b = F.writeBatch(db);
+  b.delete(coDoc(cid, 'members', user.uid));
+  b.set(F.doc(db, 'users', user.uid), {companyId: F.deleteField()}, {merge: true});
+  await b.commit();
+}
+// Memantau satu koleksi data; cb menerima perubahan dokumen, onDenied bila peran tidak boleh membukanya
+export function watchBuckets(cid, sub, cb, onDenied) {
+  return F.onSnapshot(F.collection(db, 'companies', cid, sub), snap => {
+    cb(snap.docChanges().map(c => ({id: c.doc.id, removed: c.type === 'removed', r: c.doc.data().r || {}})));
+  }, onDenied);
+}
+// Satu kelompok = satu penulisan; hanya data yang berubah yang ditimpa, jadi dua pengguna tidak saling menghapus
+export function writeBucket(cid, sub, id, set, del) {
+  const data = {r: {...set}}, paths = Object.keys(set).map(k => new F.FieldPath('r', k));
+  for (const k of del) { data.r[k] = F.deleteField(); paths.push(new F.FieldPath('r', k)); }
+  return F.setDoc(F.doc(db, 'companies', cid, sub, id), data, {mergeFields: paths});
+}
