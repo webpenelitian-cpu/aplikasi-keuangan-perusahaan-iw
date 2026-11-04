@@ -168,6 +168,10 @@ function sanitizeState(d) {
   };
 }
 
+const fillLr = s => s.categories.forEach(c => {
+  if (c.lr === undefined) c.lr = !/modal|setoran pemilik|pinjaman|prive/i.test(c.name);
+});
+
 // Melengkapi data versi lama
 function migrate() {
   // Data versi pertama tanpa transaksi diganti daftar akun & kategori bawaan terbaru
@@ -176,9 +180,7 @@ function migrate() {
     state.accounts = d.accounts; state.categories = d.categories;
   }
   state.version = 3;
-  state.categories.forEach(c => {
-    if (c.lr === undefined) c.lr = !/modal|setoran pemilik|pinjaman|prive/i.test(c.name);
-  });
+  fillLr(state);
 }
 
 /* ---------- Enkripsi (AES-GCM 256, kunci dari kata sandi lewat PBKDF2-SHA256) ---------- */
@@ -251,6 +253,7 @@ function askReason(what) {
 let Cloud = null;          // modul cloud.js bila konfigurasi Firebase terisi
 let cloudUser = null, cloudInfo = null, offlineAccount = false;
 let dirty = false, pushTimer = null, syncMsg = '', syncBase = null;
+let cloudReachable = false, localMergePending = false, mergeBusy = false, mergeAgain = false, mergeNote = '';
 const deviceId = (() => {
   try { let id = localStorage.getItem(DEVICE_KEY); if (!id) { id = uid() + uid(); localStorage.setItem(DEVICE_KEY, id); } return id; }
   catch { return uid(); }
@@ -280,6 +283,7 @@ async function pushNow() {
     await Cloud.push(localStorage.getItem(storeKey) || '', updatedAt, deviceId, syncBase);
     syncBase = updatedAt;
     setSync('Tersimpan di server · ' + new Date().toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}));
+    if (localMergePending && !dirty) finishLocalMerge();
   } catch (e) {
     if (e?.code === 'conflict') return resolveConflict();
     dirty = true;
@@ -294,7 +298,139 @@ async function resolveConflict() {
   try { localStorage.setItem(`${storeKey}-konflik-${Date.now()}`, localStorage.getItem(storeKey) || ''); } catch {}
   dirty = false;
   await applyRemote(null, true);
+  // Penggabungan data tanpa akun yang tertolak diulang di atas versi server terbaru
+  if (localMergePending) {
+    localMergePending = false; mergeAgain = true;
+    if (!mergeBusy) mergeLocalData();
+    return;
+  }
   toast('Data diubah di perangkat lain. Versi server dipakai; perubahan Anda disimpan sebagai salinan (Atur → Akun).');
+}
+
+/* ---------- Penggabungan data mode tanpa akun ke akun ----------
+   Data tanpa akun otomatis masuk ke akun saat pengguna masuk. Data di perangkat baru dihapus setelah server
+   mengonfirmasi tersimpan, dan penggabungan aman diulang: yang sudah masuk tidak akan tergandakan. */
+const hasData = s => !!(s.tx.length || s.debts.length || s.audit.length || s.accounts.some(a => a.opening) || s.company.name || s.company.logo);
+const hasBooks = s => !!(s.tx.length || s.debts.length || s.accounts.some(a => a.opening));
+
+function mergeStates(A, L) {
+  const stats = {tx: 0, debts: 0, accounts: 0, categories: 0, renumbered: 0, closed: 0};
+  // Akun server belum berisi pembukuan: seluruh data perangkat dipakai apa adanya
+  if (!hasBooks(A)) {
+    const S = structuredClone(L);
+    S.security = A.security;
+    for (const k of Object.keys(PROFILE)) if (A.company[k] && !S.company[k]) S.company[k] = A.company[k];
+    const seen = new Set(S.audit.map(auditKey));
+    A.audit.forEach(a => { if (!seen.has(auditKey(a))) S.audit.push(a); });
+    S.audit.sort((a, b) => a.ts.localeCompare(b.ts));
+    stats.tx = L.tx.length; stats.debts = L.debts.length;
+    return {merged: S, stats};
+  }
+  const S = structuredClone(A), norm = s => String(s).trim().toLowerCase();
+  const closed = date => !!S.lockedUntil && date <= S.lockedUntil;
+  const usedCats = new Set([...L.tx.map(t => t.categoryId), ...L.debts.map(d => d.categoryId)]);
+  const catMap = new Map(), accMap = new Map();
+
+  for (const c of L.categories) {
+    const same = S.categories.find(x => x.id === c.id)
+      || S.categories.find(x => x.type === c.type && x.code === c.code && norm(x.name) === norm(c.name));
+    if (same) catMap.set(c.id, same.id);
+    else if (usedCats.has(c.id)) { S.categories.push({...c}); catMap.set(c.id, c.id); stats.categories++; }
+  }
+  for (const a of L.accounts) {
+    const used = a.opening || L.tx.some(t => t.accountId === a.id || t.toAccountId === a.id);
+    if (!used) continue;
+    const copyId = ('lokal-' + a.id).slice(0, 40);
+    const copy = S.accounts.find(x => x.id === copyId);
+    if (copy) { accMap.set(a.id, copy.id); continue; }
+    const same = S.accounts.find(x => x.code === a.code && norm(x.name) === norm(a.name));
+    if (same && (same.opening === a.opening || !a.opening || !same.opening)) {
+      if (!same.opening && a.opening) { same.opening = a.opening; if (S.lockedUntil) stats.closed++; }
+      accMap.set(a.id, same.id);
+    } else {
+      // Saldo awal berbeda: dibuat akun terpisah agar tidak ada saldo yang hilang atau tertimpa
+      S.accounts.push({...a, id: copyId, name: `${a.name} (dari perangkat)`.slice(0, 120)});
+      accMap.set(a.id, copyId); stats.accounts++;
+    }
+  }
+  const ids = new Set(S.tx.map(t => t.id)), refs = new Set(S.tx.map(t => t.ref).filter(Boolean));
+  for (const t of L.tx) {
+    if (ids.has(t.id)) continue;
+    const x = {...t, accountId: accMap.get(t.accountId) ?? t.accountId,
+      toAccountId: t.toAccountId ? accMap.get(t.toAccountId) ?? t.toAccountId : null,
+      categoryId: t.categoryId ? catMap.get(t.categoryId) ?? t.categoryId : null};
+    if (x.ref && refs.has(x.ref)) {
+      let n = 1; const base = x.ref.slice(0, 35);
+      while (refs.has(`${base}-P${n}`)) n++;
+      x.ref = `${base}-P${n}`; stats.renumbered++;
+    }
+    if (x.ref) refs.add(x.ref);
+    if (closed(x.date)) stats.closed++;
+    S.tx.push(x); stats.tx++;
+  }
+  const debtIds = new Set(S.debts.map(d => d.id));
+  for (const d of L.debts) {
+    if (debtIds.has(d.id)) continue;
+    if (closed(d.date)) stats.closed++;
+    S.debts.push({...d, categoryId: catMap.get(d.categoryId) ?? d.categoryId}); stats.debts++;
+  }
+  for (const k of ['name', 'tagline', 'logo', 'address', 'npwp', 'nib', 'phone', 'email', 'preparedName', 'checkedName', 'taxYear'])
+    if (!S.company[k] && L.company[k]) S.company[k] = L.company[k];
+  const seen = new Set(S.audit.map(auditKey));
+  L.audit.forEach(a => { if (!seen.has(auditKey(a))) S.audit.push(a); });
+  S.audit.sort((a, b) => a.ts.localeCompare(b.ts));
+  return {merged: S, stats};
+}
+const auditKey = a => [a.ts, a.id, a.act, a.info].join('|');
+
+function clearLocalStore() { localStorage.removeItem(KEY); localStorage.removeItem(KEY + '-meta'); }
+function finishLocalMerge() {
+  localMergePending = false;
+  clearLocalStore();
+  toast('Data dari perangkat ini sudah tersimpan di akun Anda. ' + mergeNote);
+  mergeNote = '';
+  renderAll();
+}
+async function mergeLocalData() {
+  if (mergeBusy || !cloudUser || !cloudReachable || !state) return;
+  const raw = localStorage.getItem(KEY);
+  if (!raw) return;
+  mergeBusy = true; mergeAgain = false;
+  try {
+    let d = JSON.parse(raw), localVault = null;
+    if (isEnvelope(d)) {
+      const env = d, salt = fromB64(env.salt), iter = envIter(env);
+      for (;;) {
+        const pw = await askPassword({title: 'Kata sandi data di perangkat ini',
+          hint: 'Data tanpa akun di perangkat ini terenkripsi. Masukkan kata sandinya agar bisa digabung ke akun Anda. Bila dibatalkan, data tetap aman dan bisa digabung nanti.'});
+        if (pw === null) return;
+        try { const key = await deriveKey(pw, salt, iter); d = await unseal(key, env); localVault = {key, salt, iter}; break; }
+        catch { toast('Kata sandi salah'); }
+      }
+    }
+    const L = sanitizeState(d);
+    fillLr(L);
+    if (!hasData(L)) return clearLocalStore();
+    const {merged, stats} = mergeStates(state, L);
+    state = merged; state.version = 3;
+    // Data yang tadinya terenkripsi tidak boleh terkirim ke server tanpa enkripsi
+    if (localVault && !vault) { vault = localVault; resetIdle(); }
+    const added = stats.tx + stats.debts + stats.accounts + stats.categories;
+    if (added) log('gabung', 'data', '', `Data tanpa akun digabung ke akun: ${stats.tx} transaksi, ${stats.debts} piutang/utang, ${stats.accounts} akun kas/bank baru, ${stats.categories} kategori baru, ${stats.renumbered} no. bukti diberi akhiran -P, ${stats.closed} data masuk periode yang sudah ditutup`);
+    localMergePending = true;
+    renderAll();
+    mergeNote = stats.renumbered || stats.closed || stats.accounts
+      ? `Periksa: ${stats.renumbered} no. bukti diberi akhiran -P, ${stats.accounts} akun kas/bank terpisah, ${stats.closed} data masuk periode tertutup (lihat Jejak Audit).` : '';
+    await persist();
+    await pushNow();
+  } catch {
+    localMergePending = false;
+    toast('Data perangkat belum bisa digabung, tetapi tetap aman di perangkat ini.');
+  } finally {
+    mergeBusy = false;
+    if (currentView === 'dashboard') renderDashboard();
+  }
+  if (mergeAgain) await mergeLocalData();
 }
 
 // Perubahan dari perangkat lain (data yang lebih baru di server)
@@ -640,6 +776,8 @@ function renderDashboard() {
   if (hasCrypto && !vault) notices.push('<div class="notice">Data belum dilindungi kata sandi. <button class="btn sm" data-act="goSecurity">Pasang sekarang</button></div>');
   if (state.tx.length && (!state.lastBackup || daysBetween(state.lastBackup, today()) > 7))
     notices.push(`<div class="notice">${state.lastBackup ? 'Backup terakhir ' + fmtDate(state.lastBackup) + '.' : 'Data belum pernah di-backup.'} <button class="btn sm" data-act="backup">Backup sekarang</button></div>`);
+  if (cloudUser && !localMergePending && !mergeBusy && localStorage.getItem(KEY))
+    notices.push(`<div class="notice">Ada data dari mode tanpa akun yang belum masuk ke akun ini. Data tetap aman di perangkat. <button class="btn sm" data-act="mergeLocal">Gabungkan sekarang</button></div>`);
   if (cloudUser && conflictKeys().length) notices.push(`<div class="notice">Ada ${conflictKeys().length} salinan data dari konflik sinkron. Periksa di Atur → Akun.</div>`);
   $('dashNotices').innerHTML = notices.join('');
 
@@ -1323,7 +1461,7 @@ function renderAccount() {
     return;
   }
   if (!cloudUser) {
-    box.innerHTML = `<div class="notice">Anda memakai aplikasi <b>tanpa akun</b>; data hanya ada di perangkat ini.</div>
+    box.innerHTML = `<div class="notice">Anda memakai aplikasi <b>tanpa akun</b>; data hanya ada di perangkat ini. Saat masuk ke akun, semua data ini otomatis tersimpan dan tersinkron ke akun tersebut.</div>
       <button class="btn primary" data-act="goLogin">Masuk / Daftar akun</button>`;
     return;
   }
@@ -1448,6 +1586,7 @@ const ACTIONS = {
   reportCsv,
   backup: () => $('btnBackup').click(),
   goLogin: () => { localStorage.removeItem(MODE_KEY); location.reload(); },
+  mergeLocal: () => mergeLocalData(),
   goLock: () => { goView('pengaturan'); $('lockDate').focus(); $('lockDate').scrollIntoView({block: 'center'}); },
   syncNow: async () => { if (!cloudUser) return; dirty = true; await pushNow(); },
   dlConflict: ts => { const raw = localStorage.getItem(`${storeKey}-konflik-${ts}`); if (raw) download(raw, `salinan-konflik-${ts}.json`, 'application/json'); },
@@ -1580,7 +1719,10 @@ function start(data) {
   migrate();
   document.body.className = '';
   initReportDates(); renderAll(); renderInstall(); armAutoLock();
-  if (cloudUser) { if (dirty) schedulePush(); else setSync('Tersinkron dengan server'); }
+  if (cloudUser) {
+    if (dirty) schedulePush(); else setSync('Tersinkron dengan server');
+    mergeLocalData();
+  }
 }
 
 // Buka data dari penyimpanan perangkat (key = mode tanpa akun atau salinan akun)
@@ -1645,7 +1787,7 @@ function showAuth(msg = '') {
     run(() => Cloud.signInUsername(u, pw));
   };
   $('btnLocalMode').onclick = () => {
-    if (!confirm('Pakai tanpa akun? Data hanya tersimpan di perangkat ini dan tidak bisa dibuka dari perangkat lain. Anda bisa masuk ke akun kapan saja dari menu Atur.')) return;
+    if (!confirm('Pakai tanpa akun? Data hanya tersimpan di perangkat ini dan tidak bisa dibuka dari perangkat lain. Anda bisa masuk ke akun kapan saja dari menu Atur, dan data ini otomatis ikut tersimpan ke akun.')) return;
     localStorage.setItem(MODE_KEY, 'lokal'); openStore(KEY);
   };
 }
@@ -1687,11 +1829,8 @@ async function openAccount(user) {
   const localRaw = localStorage.getItem(storeKey), lm = readMeta();
   if (remote && (!localRaw || remote.updatedAt > lm.updatedAt)) {
     localStorage.setItem(storeKey, remote.payload); writeMeta(remote.updatedAt);
-  } else if (reachable && !remote && !localRaw && localStorage.getItem(KEY)
-             && confirm('Ada data keuangan di perangkat ini yang belum terhubung ke akun. Pindahkan ke akun ini agar tersimpan di server?')) {
-    localStorage.setItem(storeKey, localStorage.getItem(KEY)); writeMeta(Date.now());
-    localStorage.removeItem(KEY); localStorage.removeItem(KEY + '-meta');
   }
+  cloudReachable = reachable; // data tanpa akun digabung di start(), setelah data akun terbuka
   dirty = !!localStorage.getItem(storeKey) && (!remote || readMeta().updatedAt > remote.updatedAt);
   setSync(reachable ? 'Tersinkron dengan server' : 'Tidak terhubung ke server — perubahan disinkron saat online.');
   Cloud.watch(applyRemote);
