@@ -3403,6 +3403,18 @@ async function openAccount(user) {
   openStore(storeKey);
 }
 
+// Versi baru aktif: halaman dimuat ulang sekali agar semua file sama versinya
+function registerUpdates() {
+  const hadWorker = !!navigator.serviceWorker.controller;
+  let done = false;
+  const reloadWhenIdle = () => {
+    if (document.querySelector('dialog[open]')) return setTimeout(reloadWhenIdle, 2000);
+    if (!done) { done = true; location.reload(); }
+  };
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadWorker) reloadWhenIdle(); });
+  navigator.serviceWorker.register('sw.js', {updateViaCache: 'none'}).then(r => r.update()).catch(() => {});
+}
+
 async function boot() {
   // Anti-clickjacking: aplikasi menolak dibuka di dalam bingkai (iframe) situs lain
   if (window.top !== window.self) {
@@ -3411,7 +3423,7 @@ async function boot() {
     return;
   }
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost'))
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    registerUpdates();
   // Minta browser tidak menghapus data saat ruang penyimpanan HP menipis
   navigator.storage?.persist?.().catch(() => {});
 

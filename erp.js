@@ -2,6 +2,7 @@
 /* Modul ERP: perusahaan bersama (banyak pengguna), penjualan & CRM, pembelian & gudang, akuntansi lanjutan, dan SDM lanjutan.
    Berkas ini dimuat setelah app.js dan memakai fungsi serta data yang sama. */
 
+const APP_VERSION = '16'; // samakan dengan versi CACHE di sw.js
 const ROLES = {owner: 'Pimpinan', finance: 'Keuangan', sales: 'Penjualan', warehouse: 'Gudang & pembelian', hr: 'SDM', viewer: 'Hanya lihat'};
 const ROLE_VIEWS = {sales: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'laporan', 'pengaturan'], warehouse: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'laporan', 'pengaturan'],
   hr: ['dashboard', 'karyawan', 'laporan', 'pengaturan'], viewer: ['dashboard', 'laporan', 'pengaturan']};
@@ -759,13 +760,15 @@ function ownerDash() {
 // Akun pimpinan melihat semua dasbor dalam satu halaman, dipisah per bagian dan bisa dilompati lewat menu di atas
 const DASH_PARTS = [['Pimpinan', ownerDash], ['Keuangan', financeDash], ['Penjualan', salesDash], ['Gudang', warehouseDash], ['SDM', hrDash]];
 function allDash() {
-  return `<nav class="dash-jump" aria-label="Bagian dasbor">${DASH_PARTS.map(([name], i) => `<button type="button" class="btn sm" data-act="dJump" data-id="${i}">${name}</button>`).join('')}</nav>`
-    + DASH_PARTS.map(([, fn], i) => `<section class="dash-sec" id="dash-${i}">${fn()}</section>`).join('');
+  return `<p class="muted" style="margin:0">Halaman ini memuat ${DASH_PARTS.length} dasbor. Pilih bagian atau gulir ke bawah.</p>
+    <nav class="dash-jump" aria-label="Bagian dasbor">${DASH_PARTS.map(([name], i) => `<button type="button" class="btn sm" data-act="dJump" data-id="${i}">${name}</button>`).join('')}</nav>`
+    + DASH_PARTS.map(([name, fn], i) => { try { return `<section class="dash-sec" id="dash-${i}">${fn()}</section>`; } catch (e) { return `<section class="dash-sec" id="dash-${i}"><div class="notice">Dasbor ${name} gagal dimuat: ${esc(e?.message)}</div></section>`; } }).join('');
 }
 function renderRoleDash() {
   const role = company?.role || 'owner';
   $('financeDash').hidden = true;
   $('roleDash').innerHTML = role === 'owner' ? allDash() : ({sales: salesDash, warehouse: warehouseDash, hr: hrDash, finance: financeDash}[role] || ownerDash)();
+  $('roleDash').insertAdjacentHTML('beforeend', `<p class="muted" style="font-size:11px;text-align:center;margin-top:20px">Versi ${APP_VERSION} · peran ${esc(ROLES[role])}</p>`);
   const jump = $('roleDash').querySelector('.dash-jump');
   if (jump) jump.style.top = document.querySelector('header').offsetHeight + 'px'; // tetap terlihat di bawah kepala halaman
   return true;

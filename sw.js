@@ -1,6 +1,6 @@
 // Service worker: aplikasi tetap terbuka tanpa internet.
 // Naikkan versi CACHE setiap kali file aplikasi diperbarui.
-const CACHE = 'keuangan-umkm-v15';
+const CACHE = 'keuangan-umkm-v16';
 const ASSETS = [
   './', './index.html', './app.js', './erp.js', './cloud.js', './firebase-config.js', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png',
@@ -20,7 +20,8 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request)
+    // no-cache: selalu ditanyakan ke server, jadi versi lama tidak tertahan di cache browser
+    fetch(e.request, {cache: 'no-cache'})
       .then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, copy));
