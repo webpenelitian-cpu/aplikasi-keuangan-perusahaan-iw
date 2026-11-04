@@ -1024,7 +1024,7 @@ function showView(view) {
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + view));
   // Tombol tambah transaksi hanya di halaman yang memakainya
   const tx = !['hr', 'viewer'].includes(company?.role);
-  $('btnAdd').style.display = tx && (view === 'dashboard' || view === 'transaksi') ? '' : 'none';
+  $('btnAdd').style.display = tx && view === 'transaksi' ? '' : 'none';
 }
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   showView(b.dataset.view);
