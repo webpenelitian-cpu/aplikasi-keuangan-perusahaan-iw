@@ -8,6 +8,7 @@ const LOCK_KEY = 'keuangan-perusahaan-lock';
 const MODE_KEY = 'keuangan-mode';                 // 'lokal' bila pengguna memilih tanpa akun
 const LAST_UID_KEY = 'keuangan-last-uid';
 const DEVICE_KEY = 'keuangan-device-id';
+const VIEW_KEY = 'keuangan-halaman';
 const PBKDF2_ITER = 600000;
 const MIN_PW = 8;
 const TX_PAGE = 300;
@@ -1010,13 +1011,31 @@ function neracaData(to) {
 }
 
 /* ---------- Navigasi (hanya halaman yang tampil yang dirender) ---------- */
+function showView(view) {
+  currentView = view;
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x.dataset.view === view));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + view));
+  // Tombol tambah transaksi hanya di halaman yang memakainya
+  $('btnAdd').style.display = view === 'dashboard' || view === 'transaksi' ? '' : 'none';
+}
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
-  currentView = b.dataset.view;
-  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x === b));
-  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + currentView));
+  showView(b.dataset.view);
   renderView(currentView);
+  rememberView();
   window.scrollTo(0, 0);
 });
+// Halaman dan tab yang terbuka diingat selama sesi, sehingga refresh kembali ke tempat yang sama
+function rememberView() {
+  try { sessionStorage.setItem(VIEW_KEY, JSON.stringify({view: currentView, trade: tradeTab, hr: hrTab, report: $('rType').value})); } catch {}
+}
+function restoreView() {
+  let s = null;
+  try { s = JSON.parse(sessionStorage.getItem(VIEW_KEY)); } catch {}
+  if (['trades', 'items', 'vendors', 'tax'].includes(s?.trade)) tradeTab = s.trade;
+  if (['emp', 'pay', 'rules'].includes(s?.hr)) hrTab = s.hr;
+  if ([...$('rType').options].some(o => o.value === s?.report)) $('rType').value = s.report;
+  showView(Object.hasOwn(VIEWS, s?.view) ? s.view : currentView);
+}
 const goView = v => document.querySelector(`nav button[data-view="${v}"]`).click();
 
 /* ---------- Pengingat kewajiban (pajak & hukum) ---------- */
@@ -1700,6 +1719,7 @@ function renderReport() {
   $('reportOut').innerHTML = html + (type !== 'audit' ? footerNote() : '');
 }
 ['rType', 'rFrom', 'rTo', 'rAcc'].forEach(id => $(id).oninput = renderReport);
+$('rType').addEventListener('input', () => rememberView());
 $('rType').addEventListener('change', () => { if (['umur', 'neraca', 'ns', 'stok', 'sdm'].includes($('rType').value) && $('rTo').value > today()) { $('rTo').value = today(); renderReport(); } });
 // Ekspor tabel laporan yang sedang tampil ke CSV (Excel)
 function reportCsv() {
@@ -2147,7 +2167,7 @@ function renderTrade() {
 }
 ['tFrom', 'tTo', 'tKind'].forEach(id => $(id).oninput = () => { tradeLimit = TX_PAGE; renderTrade(); });
 $('tSearch').oninput = debounce(() => { tradeLimit = TX_PAGE; renderTrade(); });
-document.querySelectorAll('#tradeTabs button').forEach(b => b.onclick = () => { tradeTab = b.dataset.tab; renderTrade(); });
+document.querySelectorAll('#tradeTabs button').forEach(b => b.onclick = () => { tradeTab = b.dataset.tab; renderTrade(); rememberView(); });
 
 function renderItems() {
   const st = M().stock.stock;
@@ -2821,7 +2841,7 @@ function renderHr() {
       <td data-label="" class="no-print num"><button class="btn sm" data-act="openEmp" data-id="${esc(e.id)}">Ubah</button></td></tr>`;
   }).join('') : '<tr><td colspan="7" class="empty" data-label="">Belum ada data karyawan.</td></tr>';
 }
-document.querySelectorAll('#hrTabs button').forEach(b => b.onclick = () => { hrTab = b.dataset.tab; renderHr(); });
+document.querySelectorAll('#hrTabs button').forEach(b => b.onclick = () => { hrTab = b.dataset.tab; renderHr(); rememberView(); });
 $('eSearch').oninput = debounce(() => renderHr());
 
 /* Aturan upah minimum & tarif */
@@ -3235,7 +3255,7 @@ function start(data) {
   }
   migrate();
   document.body.className = '';
-  initReportDates(); renderAll(); renderInstall(); armAutoLock();
+  initReportDates(); restoreView(); renderAll(); renderInstall(); armAutoLock();
   if (cloudUser) {
     if (dirty) schedulePush(); else setSync('Tersinkron dengan server');
     mergeLocalData();
