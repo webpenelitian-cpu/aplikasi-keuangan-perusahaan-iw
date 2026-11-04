@@ -119,7 +119,7 @@ const inRange = (date, from, to) => (!from || date >= from) && (!to || date <= t
 const debounce = (fn, ms = 200) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 const lastDayOf = ym => { const [y, m] = ym.split('-').map(Number); return `${ym}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`; };
 const addMonths = (ym, n) => { let [y, m] = ym.split('-').map(Number); m += n; while (m > 12) { m -= 12; y++; } while (m < 1) { m += 12; y--; } return `${y}-${String(m).padStart(2, '0')}`; };
-const displayName = () => state.company.name || APP_NAME;
+const displayName = () => state.company.name || company?.name || APP_NAME;
 
 // Angka ke kata (untuk bukti kas)
 function terbilang(n) {
@@ -300,7 +300,7 @@ function sanitizeState(d) {
       dpp: Math.abs(cleanNum(r?.dpp)), ppn: Math.abs(cleanNum(r?.ppn)), pph: Math.abs(cleanNum(r?.pph)), wapu: r?.wapu === true, ppnCredit: r?.ppnCredit === true}))
       .filter(r => r.id && r.origId && r.date && r.lines.length),
     adjusts: list(d.adjusts).map(a => ({id: cleanId(a?.id), created: cleanNum(a?.created), date: cleanDate(a?.date), ref: cleanStr(a?.ref, 40), desc: cleanStr(a?.desc),
-      lines: list(a?.lines).map(l => ({itemId: cleanId(l?.itemId), counted: cleanQty(l?.counted), diff: Number.isFinite(+l?.diff) ? Math.round(+l.diff * 1000) / 1000 : 0})).filter(l => l.itemId && l.diff)}))
+      lines: list(a?.lines).map(l => ({itemId: cleanId(l?.itemId), counted: cleanQty(l?.counted), diff: Number.isFinite(+l?.diff) ? Math.round(+l.diff * 1000) / 1000 : 0})).filter(l => l.itemId)}))
       .filter(a => a.id && a.date && a.lines.length),
     employees: list(d.employees).map(e => ({id: cleanId(e?.id), created: cleanNum(e?.created), name: cleanStr(e?.name, 120), nik: cleanStr(e?.nik, 20),
       npwp: cleanStr(e?.npwp, 30), title: cleanStr(e?.title, 120), gender: e?.gender === 'P' ? 'P' : 'L',
@@ -1023,7 +1023,8 @@ function showView(view) {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x.dataset.view === view));
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + view));
   // Tombol tambah transaksi hanya di halaman yang memakainya
-  $('btnAdd').style.display = view === 'dashboard' || view === 'transaksi' ? '' : 'none';
+  const tx = !['hr', 'viewer'].includes(company?.role);
+  $('btnAdd').style.display = tx && (view === 'dashboard' || view === 'transaksi') ? '' : 'none';
 }
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   showView(b.dataset.view);
@@ -1082,9 +1083,10 @@ function obligations() {
 /* ---------- Dasbor ---------- */
 function renderDashboard() {
   const notices = [];
-  if (!state.company.name) notices.push('<div class="notice">Lengkapi nama, slogan, dan logo perusahaan untuk kop laporan. <button class="btn sm" data-act="goProfile">Isi profil</button></div>');
-  if (hasCrypto && !vault) notices.push('<div class="notice">Data belum dilindungi kata sandi. <button class="btn sm" data-act="goSecurity">Pasang sekarang</button></div>');
-  if (state.tx.length && (!state.lastBackup || daysBetween(state.lastBackup, today()) > 7))
+  const manager = !company || canApprove(); // pengingat pengaturan hanya untuk pimpinan dan keuangan
+  if (manager && !state.company.name) notices.push('<div class="notice">Lengkapi nama, slogan, dan logo perusahaan untuk kop laporan. <button class="btn sm" data-act="goProfile">Isi profil</button></div>');
+  if (!company && hasCrypto && !vault) notices.push('<div class="notice">Data belum dilindungi kata sandi. <button class="btn sm" data-act="goSecurity">Pasang sekarang</button></div>');
+  if (manager && state.tx.length && (!state.lastBackup || daysBetween(state.lastBackup, today()) > 7))
     notices.push(`<div class="notice">${state.lastBackup ? 'Backup terakhir ' + fmtDate(state.lastBackup) + '.' : 'Data belum pernah di-backup.'} <button class="btn sm" data-act="backup">Backup sekarang</button></div>`);
   if (cloudUser && !localMergePending && !mergeBusy && localStorage.getItem(KEY))
     notices.push(`<div class="notice">Ada data dari mode tanpa akun yang belum masuk ke akun ini. Data tetap aman di perangkat. <button class="btn sm" data-act="mergeLocal">Gabungkan sekarang</button></div>`);
@@ -1092,6 +1094,7 @@ function renderDashboard() {
   if (used > STORE_WARN) notices.push(`<div class="notice">Penyimpanan perangkat hampir penuh (${Math.round(used / 50000)}%). Unduh backup, lalu arsipkan data tahun lama agar penyimpanan tidak gagal. <button class="btn sm" data-act="backup">Backup sekarang</button></div>`);
   if (cloudUser && conflictKeys().length) notices.push(`<div class="notice">Ada ${conflictKeys().length} salinan data dari konflik sinkron. Periksa di Atur → Akun.</div>`);
   $('dashNotices').innerHTML = notices.join('');
+  if (renderRoleDash()) return;
 
   const years = new Set([new Date().getFullYear(), ...state.tx.map(t => +t.date.slice(0, 4)), ...state.debts.map(d => +d.date.slice(0, 4))]);
   const ySel = $('dashYear'), cur = ySel.value || new Date().getFullYear();
@@ -2193,7 +2196,7 @@ function renderItems() {
   }).join('') : '<tr><td colspan="7" class="empty" data-label="">Belum ada barang atau jasa.</td></tr>';
   const adj = M().stock.adj;
   $('opBody').innerHTML = state.adjusts.slice().sort((a, b) => b.date.localeCompare(a.date)).map(a => `<tr><td data-label="Tanggal">${fmtDate(a.date)}</td><td data-label="No. bukti">${esc(a.ref)}</td>
-    <td data-label="Selisih">${a.lines.map(l => `${esc(itemOf(l.itemId)?.name)} ${l.diff > 0 ? '+' : ''}${fmtQty(l.diff)}`).join(', ')}</td><td data-label="Nilai" class="num">${rp(adj.get(a.id) || 0)}</td>
+    <td data-label="Selisih">${a.lines.filter(l => l.diff).map(l => `${esc(itemOf(l.itemId)?.name)} ${l.diff > 0 ? '+' : ''}${fmtQty(l.diff)}`).join(', ') || 'Semua cocok'}</td><td data-label="Nilai" class="num">${rp(adj.get(a.id) || 0)}</td>
     <td data-label="" class="no-print num"><button class="btn sm danger" data-act="delAdjust" data-id="${esc(a.id)}">Hapus</button></td></tr>`).join('') || '<tr><td colspan="5" class="empty" data-label="">Belum ada stok opname.</td></tr>';
 }
 function renderVendors() {
@@ -2577,11 +2580,11 @@ function opRows() {
   opRefresh();
 }
 function opDraft() {
-  return [...$('opLines').querySelectorAll('input')].filter(x => x.value.trim() !== '').map(x => { const counted = parseQty(x.value); return {itemId: x.dataset.id, counted, diff: Math.round((counted - +x.dataset.book) * 1000) / 1000}; }).filter(l => l.diff);
+  return [...$('opLines').querySelectorAll('input')].filter(x => x.value.trim() !== '').map(x => { const counted = parseQty(x.value); return {itemId: x.dataset.id, counted, diff: Math.round((counted - +x.dataset.book) * 1000) / 1000}; });
 }
 function opRefresh() {
   const lines = opDraft(), a = {id: 'draft', created: Date.now(), date: $('opDate').value || today(), lines}, v = stockCalc(state.trades, state.items, state.returns, [...state.adjusts, a]).adj.get('draft') || 0;
-  $('opSummary').innerHTML = lines.length ? `${lines.length} barang berbeda. ${v < 0 ? 'Kekurangan' : 'Kelebihan'} senilai <b class="${v < 0 ? 'out' : 'in'}">${rp(Math.abs(v))}</b>` : 'Isi hitungan fisik; barang yang dikosongkan dianggap cocok.';
+  $('opSummary').innerHTML = lines.length ? `${lines.length} barang dihitung, ${lines.filter(l => l.diff).length} selisih. ${v < 0 ? 'Kekurangan' : 'Kelebihan'} senilai <b class="${v < 0 ? 'out' : 'in'}">${rp(Math.abs(v))}</b>` : 'Isi hitungan fisik barang yang dihitung; barang yang dikosongkan tidak dianggap dihitung.';
 }
 $('opLines').addEventListener('input', opRefresh);
 $('opDate').onchange = () => { opRows(); $('opRef').value = nextCode('OP', $('opDate').value || today(), state.adjusts.map(a => a.ref)); };
@@ -2598,7 +2601,7 @@ $('opForm').onsubmit = e => {
   if (!DATE_RE.test(date)) return fail('Isi tanggal opname');
   if (isLocked(date)) return fail(lockMsg());
   if (!ref) return fail('No. bukti wajib diisi');
-  if (!lines.length) return fail('Tidak ada selisih yang dicatat');
+  if (!lines.length) return fail('Isi hitungan fisik minimal satu barang');
   const a = {id: uid(), created: Date.now(), date, ref, desc: $('opDesc').value.trim().slice(0, 500), lines};
   if (stockCalc(state.trades, state.items, state.returns, [...state.adjusts, a]).neg.size) return fail('Stok jadi minus karena ada penjualan setelah tanggal ini; periksa tanggal opname');
   state.adjusts.push(a);
@@ -3190,7 +3193,7 @@ function bizReport(type, from, to, period) {
     return kop('Laporan Persediaan', 'Per ' + fmtDate(asOf)) + `<table><thead><tr><th>Kode</th><th>Barang</th><th class="num">Stok</th><th class="num">HPP rata-rata</th><th class="num">Nilai</th></tr></thead>
       ${rows.map(i => { const s = st.get(i.id); tv += s.value; return `<tr><td>${esc(i.code)}</td><td>${esc(i.name)}</td><td class="num">${fmtQty(s.qty)} ${esc(i.unit)}</td><td class="num">${s.qty ? rp(s.value / s.qty) : '—'}</td><td class="num">${rp(s.value)}</td></tr>`; }).join('')}
       <tr class="total"><td colspan="4">Total nilai persediaan</td><td class="num">${rp(tv)}</td></tr></table>
-      ${state.adjusts.some(a => a.date <= asOf) ? `<h3>Stok opname</h3><table><thead><tr><th>Tanggal</th><th>No. bukti</th><th>Selisih</th><th class="num">Nilai</th></tr></thead>${state.adjusts.filter(a => a.date <= asOf).map(a => `<tr><td>${fmtDate(a.date)}</td><td>${esc(a.ref)}</td><td>${a.lines.map(l => `${esc(itemOf(l.itemId)?.name)} ${l.diff > 0 ? '+' : ''}${fmtQty(l.diff)}`).join(', ')}</td><td class="num">${rp(M().stock.adj.get(a.id) || 0)}</td></tr>`).join('')}</table>` : ''}
+      ${state.adjusts.some(a => a.date <= asOf) ? `<h3>Stok opname</h3><table><thead><tr><th>Tanggal</th><th>No. bukti</th><th>Selisih</th><th class="num">Nilai</th></tr></thead>${state.adjusts.filter(a => a.date <= asOf).map(a => `<tr><td>${fmtDate(a.date)}</td><td>${esc(a.ref)}</td><td>${a.lines.filter(l => l.diff).map(l => `${esc(itemOf(l.itemId)?.name)} ${l.diff > 0 ? '+' : ''}${fmtQty(l.diff)}`).join(', ') || 'Semua cocok'}</td><td class="num">${rp(M().stock.adj.get(a.id) || 0)}</td></tr>`).join('')}</table>` : ''}
       <p class="muted" style="font-size:12px">Total harus sama dengan akun 1-301 Persediaan di neraca pada tanggal yang sama. Cocokkan stok fisik secara berkala.</p>` + signBlock();
   }
   if (type === 'beli') {

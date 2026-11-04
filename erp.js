@@ -3,8 +3,8 @@
    Berkas ini dimuat setelah app.js dan memakai fungsi serta data yang sama. */
 
 const ROLES = {owner: 'Pimpinan', finance: 'Keuangan', sales: 'Penjualan', warehouse: 'Gudang & pembelian', hr: 'SDM', viewer: 'Hanya lihat'};
-const ROLE_VIEWS = {sales: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'pengaturan'], warehouse: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'pengaturan'],
-  hr: ['dashboard', 'karyawan', 'pengaturan'], viewer: ['dashboard', 'laporan', 'pengaturan']};
+const ROLE_VIEWS = {sales: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'laporan', 'pengaturan'], warehouse: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'laporan', 'pengaturan'],
+  hr: ['dashboard', 'karyawan', 'laporan', 'pengaturan'], viewer: ['dashboard', 'laporan', 'pengaturan']};
 const ACC_ASET = {code: '1-401', name: 'Pembelian aset tetap'};
 const ACC_AKUM = {code: '1-491', name: 'Akumulasi penyusutan'};
 const ACC_DEP = {code: '5-401', name: 'Beban penyusutan'};
@@ -170,6 +170,13 @@ function applyRole() {
   document.querySelectorAll('nav button').forEach(b => { b.hidden = !!views && !views.includes(b.dataset.view); });
   document.querySelectorAll('#view-pengaturan .card').forEach((c, i) => { c.hidden = i > 0 && !['owner', 'finance'].includes(role); });
   $('btnWipe').hidden = role !== 'owner';
+  // Laporan yang tampil mengikuti peran
+  const reports = REPORT_ROLES[role];
+  if (reports) {
+    [...$('rType').options].forEach(o => { if (!reports.includes(o.value)) o.remove(); });
+    [...$('rType').querySelectorAll('optgroup')].forEach(g => { if (!g.children.length) g.remove(); });
+  }
+  showView(currentView);
   if (views && !views.includes(currentView)) showView('dashboard');
 }
 const canApprove = () => ['owner', 'finance'].includes(company?.role || 'owner');
@@ -572,4 +579,213 @@ Object.assign(ACTIONS, {
     }
     log('setuju', 'cuti', l.id, `${empOf(l.empId)?.name} ${l.date} s.d. ${l.to}`); save();
   },
+});
+
+/* Dasbor standar. Semua peran memakai susunan yang sama: judul, tombol kerja, perlu tindakan, KPI, tren, lalu rincian.
+   Isinya mengikuti bidang masing-masing, dengan rumus KPI yang lazim dipakai tiap fungsi. */
+const REPORT_ROLES = {sales: ['jual', 'umur'], warehouse: ['stok', 'beli'], hr: ['upah', 'bpjs', 'sdm', 'absensi']};
+const longDate = () => new Date().toLocaleDateString('id-ID', {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'});
+const num1 = n => String(Math.round(n * 10) / 10).replace('.', ',');
+const shortRp = n => { const a = Math.abs(n); return (n < 0 ? '−' : '') + (a >= 1e9 ? num1(a / 1e9) + ' M' : a >= 1e6 ? num1(a / 1e6) + ' jt' : a >= 1e3 ? Math.round(a / 1e3) + ' rb' : String(Math.round(a))); };
+const panel = (title, rows, empty, link = '') => `<div class="card"><h3>${title}</h3>${rows.length ? `<table class="dt"><tbody>${rows.join('')}</tbody></table>` : `<div class="muted">${empty}</div>`}${link}</div>`;
+const tr = (...c) => `<tr>${c.map((x, i) => `<td${i && i === c.length - 1 ? ' class="num"' : ''}>${x}</td>`).join('')}</tr>`;
+const pill = (t, cls) => `<span class="badge ${cls}">${t}</span>`;
+const days = (date, n) => { const d = new Date(date + 'T00:00:00'); d.setDate(d.getDate() + n); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
+const last6 = () => Array.from({length: 6}, (_, i) => addMonths(today().slice(0, 7), i - 5));
+const sameDayPrev = () => { const now = today(), ym = addMonths(now.slice(0, 7), -1), end = lastDayOf(ym), d = ym + now.slice(7); return d > end ? end : d; };
+function salesIn(from, to) {
+  const st = M().stock, list_ = state.trades.filter(t => t.kind === 'sale' && inRange(t.date, from, to)), rets = state.returns.filter(r => r.kind === 'sale' && inRange(r.date, from, to));
+  return {n: list_.length, rev: list_.reduce((s, t) => s + tradeTotal(t), 0) - rets.reduce((s, r) => s + r.dpp, 0),
+    hpp: list_.reduce((s, t) => s + (st.cogs.get(t.id) || 0), 0) - rets.reduce((s, r) => s + (st.rcost.get(r.id) || 0), 0)};
+}
+function delta(now, prev) {
+  if (!prev) return now ? 'Belum ada pembanding bulan lalu' : '';
+  const p = (now - prev) / Math.abs(prev) * 100;
+  return `${p >= 0 ? '▲' : '▼'} ${num1(Math.abs(p))}% dari periode sama bulan lalu`;
+}
+const openOrders = kind => state.orders.filter(o => o.kind === kind && o.status === 'approved' && orderRemain(o).length);
+const dueSoon = (kind, n) => state.debts.filter(d => d.kind === kind && remainOf(d) > 0 && d.due && daysBetween(today(), d.due) <= n).sort((a, b) => a.due.localeCompare(b.due));
+const debtRow = d => tr(esc(d.party), d.due < today() ? pill(`Telat ${daysBetween(d.due, today())} hari`, 'out') : fmtDate(d.due), rp(remainOf(d)));
+function aging(kind) {
+  const b = [['Belum jatuh tempo', 0], ['1–30 hari', 0], ['31–60 hari', 0], ['61–90 hari', 0], ['Lebih 90 hari', 0]], now = today();
+  for (const d of state.debts) {
+    if (d.kind !== kind || remainOf(d) <= 0) continue;
+    const n = d.due && d.due < now ? daysBetween(d.due, now) : 0;
+    b[n === 0 ? 0 : n <= 30 ? 1 : n <= 60 ? 2 : n <= 90 ? 3 : 4][1] += remainOf(d);
+  }
+  return b;
+}
+const meterRows = (rows, fmt = rp) => { const max = Math.max(1, ...rows.map(r => r[1])); return rows.map(([l, v]) => `<tr><td colspan="2"><div class="cat-row"><span>${l}</span><span>${fmt(v)}</span></div><div class="meter"><span class="m1" style="width:${Math.max(0, v / max * 100)}%"></span></div></td></tr>`); };
+function trend(title, series, fmt = shortRp) {
+  const months = last6(), max = Math.max(1, ...series.flatMap(s => s.vals));
+  const legend = series.length > 1 ? `<div class="legend">${series.map((s, i) => `<span><i class="k${i + 1}"></i>${s.name}</span>`).join('')}</div>` : '';
+  const now = series.map(s => `${s.name}: <b>${fmt(s.vals[5])}</b>`).join(' · ');
+  return `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><h3>${title}</h3>${legend}</div>
+    <div class="bars" style="height:150px">${months.map((ym, i) => `<div class="bar-group" title="${ymLabel(ym)}: ${series.map(s => `${s.name} ${rp(s.vals[i])}`).join(', ')}"><div class="bar-pair">${series.map((s, k) => `<div class="bar k${k + 1}" style="height:${Math.max(0, s.vals[i]) / max * 100}%"></div>`).join('')}</div><div class="bar-label">${MONTHS[+ym.slice(5) - 1]}</div></div>`).join('')}</div>
+    <div class="muted" style="font-size:12px;margin-top:6px">Bulan ini · ${now}</div></div>`;
+}
+function dashPage({title, sub, actions = [], alerts = [], kpis, chart, side, panels = []}) {
+  const who = `${cloudInfo?.username ? '@' + esc(cloudInfo.username) + ' · ' : ''}${esc(ROLES[company?.role || 'owner'])}`;
+  return `<div class="dash-head"><div><h2>${title}</h2><p class="muted">${sub}</p></div><div class="muted dash-who">${who}<br>${esc(longDate())}</div></div>
+    ${actions.length ? `<div class="toolbar">${actions.map(([act, label], i) => `<button class="btn${i ? '' : ' primary'}" data-act="${act}">${label}</button>`).join('')}</div>` : ''}
+    <div class="grid cards kpi">${kpis.map(statCard).join('')}</div>
+    <div class="card" style="margin-top:16px"><h3>Perlu tindakan</h3>${alerts.length ? alerts.map(([lvl, html]) => `<div class="ob ${lvl}"><span class="dot"></span><div>${html}</div></div>`).join('') : '<div class="muted">Tidak ada yang perlu ditindaklanjuti saat ini.</div>'}</div>
+    <div class="grid two" style="margin-top:16px">${chart}${side}</div>
+    ${panels.length ? `<div class="grid dash-panels">${panels.join('')}</div>` : ''}`;
+}
+
+function salesDash() {
+  const now = today(), ym = now.slice(0, 7), m = salesIn(ym + '-01', now), p = salesIn(addMonths(ym, -1) + '-01', sameDayPrev());
+  const target = state.budgets.filter(b => b.year === now.slice(0, 4) && ['4-101', '4-102'].includes(catOf(b.categoryId)?.code)).reduce((s, b) => s + b.amount, 0) / 12;
+  const q90 = state.orders.filter(o => o.kind === 'quote' && o.status !== 'draft' && o.date >= days(now, -90)), won = q90.filter(orderNext).length;
+  const so = openOrders('so'), backlog = so.reduce((s, o) => s + orderRemain(o).reduce((x, l) => x + l.qty * l.price, 0), 0);
+  const ar = debtTotals('piutang'), rev90 = salesIn(days(now, -90), now).rev, dso = rev90 > 0 ? ar.open / (rev90 / 90) : 0;
+  const expiring = state.orders.filter(o => o.kind === 'quote' && o.status !== 'cancelled' && o.due && o.due <= days(now, 7) && !orderNext(o));
+  const prod = new Map(), cust = new Map();
+  state.trades.forEach(t => {
+    if (t.kind !== 'sale' || !t.date.startsWith(ym)) return;
+    cust.set(partyOf(t), (cust.get(partyOf(t)) || 0) + tradeTotal(t));
+    t.lines.forEach(l => { const r = prod.get(l.itemId) || 0; prod.set(l.itemId, r + l.qty * l.price); });
+  });
+  const top = map => [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const alerts = [
+    ...(ar.no ? [['bad', `${ar.no} tagihan lewat jatuh tempo senilai <b>${rp(ar.overdue)}</b>. Lakukan penagihan.`]] : []),
+    ...(so.length ? [['warn', `${so.length} pesanan belum selesai dikirim atau ditagih, senilai ${rp(backlog)}.`]] : []),
+    ...(expiring.length ? [['warn', `${expiring.length} penawaran berakhir dalam 7 hari: ${expiring.slice(0, 3).map(o => esc(o.ref)).join(', ')}. Tindak lanjuti ke pelanggan.`]] : []),
+  ];
+  return dashPage({title: 'Dasbor Penjualan', sub: 'Pencapaian penjualan, peluang, dan penagihan.', actions: [['dSale', '+ Penjualan'], ['dQuote', '+ Penawaran'], ['dCustomer', '+ Pelanggan']], alerts,
+    kpis: [[`Penjualan ${MONTHS[+ym.slice(5) - 1]}`, rp(m.rev), '', delta(m.rev, p.rev)], ['Pencapaian target', target ? pct(m.rev / target * 100) : '—', '', target ? `Target ${rp(target)} sebulan` : 'Isi anggaran pendapatan di ERP'],
+      ['Nilai rata-rata invoice', rp(m.n ? m.rev / m.n : 0), '', `${m.n} invoice`], ['Konversi penawaran', q90.length ? pct(won / q90.length * 100) : '—', '', `${won} dari ${q90.length} penawaran, 90 hari`],
+      ['Pesanan belum selesai', rp(backlog), '', `${so.length} pesanan`], ['Umur piutang rata-rata', rev90 > 0 ? Math.round(dso) + ' hari' : '—', '', `Piutang ${rp(ar.open)}`]],
+    chart: trend('Tren penjualan 6 bulan', [{name: 'Penjualan', vals: last6().map(x => salesIn(x + '-01', lastDayOf(x)).rev)}]),
+    side: panel('Umur piutang', meterRows(aging('piutang')), ''),
+    panels: [panel('Produk terlaris bulan ini', top(prod).map(([id, v]) => tr(esc(itemOf(id)?.name), rp(v))), 'Belum ada penjualan.'), panel('Pelanggan terbesar bulan ini', top(cust).map(([c, v]) => tr(esc(c), rp(v))), 'Belum ada penjualan.'),
+      panel('Pesanan perlu diproses', so.slice(0, 6).map(o => tr(esc(o.ref), esc(partyName(o)), `<button class="btn sm" data-act="dOpenOrder" data-id="${esc(o.id)}">Buka</button>`)), 'Semua pesanan selesai.'), panel('Tagihan perlu diikuti', dueSoon('piutang', 7).slice(0, 6).map(debtRow), 'Tidak ada tagihan mendesak.')]});
+}
+
+function warehouseDash() {
+  const now = today(), st = M().stock.stock, goods = state.items.filter(i => i.kind === 'barang');
+  const status = i => { const q = st.get(i.id)?.qty || 0; return q <= 0 ? 0 : i.minQty && q <= i.minQty ? 1 : 2; };
+  const out = goods.filter(i => status(i) === 0), low = goods.filter(i => status(i) === 1);
+  // Opname: akurasi = barang yang cocok dibanding barang yang dihitung; cakupan = barang yang dihitung 30 hari terakhir
+  const lastCount = new Map(); let counted = 0, match = 0, shrink = 0;
+  for (const a of state.adjusts) for (const l of a.lines) {
+    if ((lastCount.get(l.itemId) || '') < a.date) lastCount.set(l.itemId, a.date);
+    if (a.date >= days(now, -90)) { counted++; if (!l.diff) match++; }
+  }
+  for (const a of state.adjusts) if (a.date.startsWith(now.slice(0, 4))) shrink += Math.min(0, M().stock.adj.get(a.id) || 0);
+  const covered = goods.filter(i => (lastCount.get(i.id) || '') >= days(now, -30)).length, uncounted = goods.filter(i => (lastCount.get(i.id) || '') < days(now, -30));
+  const yearAgo = days(now, -365), cost = salesIn(yearAgo, now).hpp, value = stockValue(), turn = value > 0 ? cost / value : 0;
+  const lastSale = new Map(); state.trades.forEach(t => { if (t.kind === 'sale') t.lines.forEach(l => { if ((lastSale.get(l.itemId) || '') < t.date) lastSale.set(l.itemId, t.date); }); });
+  const dead = goods.filter(i => (st.get(i.id)?.qty || 0) > 0 && (lastSale.get(i.id) || '') < days(now, -90));
+  const po = openOrders('po'), draft = state.orders.filter(o => ['pr', 'po'].includes(o.kind) && o.status === 'draft');
+  const label = [pill('Habis', 'out'), pill('Menipis', 'warn'), pill('Aman', 'in')];
+  const stockRows = goods.slice().sort((a, b) => status(a) - status(b) || a.name.localeCompare(b.name)).slice(0, 8).map(i => tr(esc(i.name), `${fmtQty(st.get(i.id)?.qty || 0)} ${esc(i.unit)}`, label[status(i)]));
+  const alerts = [
+    ...(out.length ? [['bad', `${out.length} barang habis: ${out.slice(0, 4).map(i => esc(i.name)).join(', ')}.`]] : []),
+    ...(low.length ? [['warn', `${low.length} barang di bawah batas minimum: ${low.slice(0, 4).map(i => esc(i.name)).join(', ')}. Ajukan pembelian.`]] : []),
+    ...(uncounted.length ? [['warn', `${uncounted.length} barang belum diopname 30 hari terakhir.`]] : []),
+    ...(draft.length ? [['warn', `${draft.length} permintaan/PO menunggu persetujuan.`]] : []),
+  ];
+  const moved = dir => last6().map(ym => { let q = 0; for (const t of state.trades) if (t.date.startsWith(ym) && t.kind === dir) for (const l of t.lines) if (itemOf(l.itemId)?.kind === 'barang') q += l.qty; return q; });
+  return dashPage({title: 'Dasbor Gudang', sub: 'Ketersediaan stok, ketepatan stok opname, dan barang masuk.', actions: [['dOpname', 'Stok opname'], ['dStock', 'Daftar stok'], ['dTransfer', 'Pindah stok'], ['dPO', '+ PO']], alerts,
+    kpis: [['Nilai persediaan', rp(value), '', `${goods.length} jenis barang`], ['Stok habis / menipis', `${out.length} / ${low.length}`, out.length ? 'out' : ''], ['Akurasi opname', counted ? pct(match / counted * 100) : '—', '', counted ? `${match} dari ${counted} hitungan cocok, 90 hari` : 'Belum ada opname'],
+      ['Cakupan opname', goods.length ? pct(covered / goods.length * 100) : '—', '', `${covered} dari ${goods.length} barang, 30 hari`], ['Selisih opname tahun ini', rp(-shrink), shrink ? 'out' : '', 'Nilai kekurangan barang'], ['Perputaran stok', turn ? num1(turn) + '×' : '—', '', turn ? `Sekitar ${Math.round(365 / turn)} hari tersimpan` : 'HPP 12 bulan ÷ nilai stok']],
+    chart: trend('Barang masuk dan keluar 6 bulan', [{name: 'Masuk', vals: moved('purchase')}, {name: 'Keluar', vals: moved('sale')}], fmtQty),
+    side: panel('Stok barang', stockRows, 'Belum ada barang.', '<button class="btn sm" style="margin-top:10px" data-act="dStock">Lihat semua stok</button>'),
+    panels: [panel('Riwayat stok opname', sorted(state.adjusts).slice(0, 6).map(a => tr(fmtDate(a.date), `${a.lines.length} barang, ${a.lines.filter(l => l.diff).length} selisih`, rp(M().stock.adj.get(a.id) || 0))), 'Belum ada stok opname.'),
+      panel('Jadwal opname berikutnya', uncounted.sort((a, b) => (lastCount.get(a.id) || '').localeCompare(lastCount.get(b.id) || '')).slice(0, 6).map(i => tr(esc(i.name), lastCount.has(i.id) ? 'Terakhir ' + fmtDate(lastCount.get(i.id)) : 'Belum pernah')), 'Semua barang sudah dihitung 30 hari terakhir.'),
+      panel('Stok lambat bergerak', dead.slice(0, 6).map(i => tr(esc(i.name), `${fmtQty(st.get(i.id).qty)} ${esc(i.unit)}`, lastSale.has(i.id) ? fmtDate(lastSale.get(i.id)) : 'Belum terjual')), 'Tidak ada barang tanpa penjualan 90 hari.'),
+      panel('Barang akan datang', po.slice(0, 6).map(o => tr(esc(o.ref), esc(partyName(o)), `<button class="btn sm" data-act="dOpenOrder" data-id="${esc(o.id)}">Terima</button>`)), 'Tidak ada PO terbuka.')]});
+}
+
+function hrDash() {
+  const now = today(), ym = now.slice(0, 7), prev = addMonths(ym, -1), act = state.employees.filter(e => empActive(e, ym)), hr = state.hr;
+  const monthAtt = state.attendance.filter(a => a.date.startsWith(ym)), hadir = monthAtt.filter(a => a.status === 'hadir').length, absent = monthAtt.filter(a => ['alpa', 'sakit', 'izin'].includes(a.status)).length;
+  const todayAtt = state.attendance.filter(a => a.date === now), wait = state.leaves.filter(l => l.status === 'draft');
+  const ending = act.filter(e => e.status === 'pkwt' && e.endDate && daysBetween(now, e.endDate) <= 30).sort((a, b) => a.endDate.localeCompare(b.endDate));
+  const exits = state.employees.filter(e => e.exitDate && e.exitDate >= days(now, -365) && e.exitDate <= now).length, turnover = act.length + exits ? exits / (act.length + exits / 2) * 100 : 0;
+  const cost = x => state.payrolls.filter(p => p.period === x).reduce((s, p) => { const t = paySum(p); return s + t.net + t.pph + t.ee + t.deduct + t.co; }, 0);
+  const paid = state.payrolls.some(p => p.period === prev), under = act.filter(e => belowMin(e) || belowFloor(e));
+  const alerts = [
+    ...(!paid && act.length ? [['bad', `Gaji ${ymLabel(prev)} belum diproses.`]] : []),
+    ...(under.length ? [['bad', `${under.length} karyawan bergaji di bawah batas yang diatur.`]] : []),
+    ...(ending.length ? [['warn', `${ending.length} kontrak berakhir dalam 30 hari.`]] : []),
+    ...(wait.length ? [['warn', `${wait.length} pengajuan cuti menunggu persetujuan.`]] : []),
+    ...(act.length > todayAtt.length ? [['warn', `Absensi hari ini belum diisi untuk ${act.length - todayAtt.length} karyawan.`]] : []),
+    ...(hr.umpMode === 'wajib' && !hr.ump && act.length ? [['warn', 'Isi nilai UMP/UMK di Karyawan → Aturan.']] : []),
+  ];
+  const n = f => act.filter(f).length;
+  return dashPage({title: 'Dasbor SDM', sub: 'Tenaga kerja, kehadiran, kontrak, dan biaya gaji.', actions: [['dAtt', 'Isi absensi'], ['dRun', 'Proses gaji'], ['dEmp', '+ Karyawan']], alerts,
+    kpis: [['Karyawan aktif', String(act.length), '', `${n(e => e.status === 'pkwtt')} tetap · ${n(e => e.status === 'pkwt')} kontrak · ${n(e => e.status === 'harian')} harian`], ['Tingkat kehadiran', monthAtt.length ? pct(hadir / monthAtt.length * 100) : '—', '', 'Bulan ini, dari absensi terisi'],
+      ['Tingkat absen', monthAtt.length ? pct(absent / monthAtt.length * 100) : '—', absent ? 'out' : '', 'Sakit, izin, tanpa keterangan'], ['Turnover 12 bulan', pct(turnover), '', `${exits} karyawan keluar`], [`Biaya gaji ${MONTHS[+prev.slice(5) - 1]}`, rp(cost(prev)), '', 'Termasuk BPJS perusahaan'], ['Kontrak berakhir', String(ending.length), ending.length ? 'out' : '', 'Dalam 30 hari']],
+    chart: trend('Biaya gaji 6 bulan', [{name: 'Biaya gaji', vals: last6().map(cost)}]),
+    side: panel('Komposisi karyawan', meterRows([['Tetap (PKWTT)', n(e => e.status === 'pkwtt')], ['Kontrak (PKWT)', n(e => e.status === 'pkwt')], ['Harian lepas', n(e => e.status === 'harian')], ['Laki-laki', n(e => e.gender === 'L')], ['Perempuan', n(e => e.gender === 'P')]], String), 'Belum ada karyawan.'),
+    panels: [panel('Pengajuan cuti', wait.slice(0, 6).map(l => tr(esc(empOf(l.empId)?.name), `${fmtDate(l.date)} · ${l.days} hari`, `<button class="btn sm primary" data-act="approveLeave" data-id="${esc(l.id)}">Setujui</button>`)), 'Tidak ada pengajuan.'),
+      panel('Kontrak akan berakhir', ending.slice(0, 6).map(e => tr(esc(e.name), fmtDate(e.endDate), `${daysBetween(now, e.endDate)} hari`)), 'Tidak ada kontrak yang segera berakhir.'),
+      panel('Tidak masuk hari ini', todayAtt.filter(a => a.status !== 'hadir').slice(0, 6).map(a => tr(esc(empOf(a.empId)?.name), ATT_STATUS[a.status])), 'Belum ada catatan.')]});
+}
+
+// Kas masuk dan keluar per bulan, serta daya tahan kas dari rata-rata pengeluaran 3 bulan terakhir
+const cashOf = (ym, type) => state.tx.reduce((s, t) => t.type === type && t.date.startsWith(ym) ? s + t.amount : s, 0);
+const runway = () => { const ym = today().slice(0, 7), out = [1, 2, 3].reduce((s, i) => s + cashOf(addMonths(ym, -i), 'out'), 0) / 3; return out > 0 ? totalBalance() / out : 0; };
+const expenses = () => lrData(today().slice(0, 4) + '-01-01', today().slice(0, 4) + '-12-31').opex.slice().sort((a, b) => b.v - a.v).slice(0, 5).map(r => tr(r.label, rp(r.v)));
+const balances = () => [...state.accounts.map(a => tr(accLabel(a), rp(balance(a.id)))), tr('<b>Total</b>', `<b>${rp(totalBalance())}</b>`)];
+function financeDash() {
+  const now = today(), ym = now.slice(0, 7), ar = debtTotals('piutang'), ap = debtTotals('utang');
+  const tax = [ACC_PPH21, ACC_BPJS, ACC_PPN, ACC_PPN_WAPU, ACC_PPH_POT].reduce((s, a) => s + Math.max(0, journalBal(a)), 0);
+  const curA = totalBalance() + ar.open + stockValue(), curL = ap.open + tax, rv = runway(), rev90 = salesIn(days(now, -90), now).rev;
+  const buy90 = state.trades.filter(t => t.kind === 'purchase' && t.date >= days(now, -90)).reduce((s, t) => s + tradeTotal(t), 0), inM = cashOf(ym, 'in'), outM = cashOf(ym, 'out');
+  return dashPage({title: 'Dasbor Keuangan', sub: 'Likuiditas, tagihan, dan kewajiban pajak.', actions: [['dTx', '+ Transaksi'], ['dDebts', 'Piutang & utang'], ['dTaxRep', 'Rekap pajak']], alerts: obligations().filter(o => o[0] !== 'ok'),
+    kpis: [['Kas & bank', rp(totalBalance()), '', `Daya tahan ${rv ? num1(rv) + ' bulan' : '—'}`], ['Arus kas bulan ini', rp(inM - outM), inM - outM >= 0 ? 'in' : 'out', `Masuk ${shortRp(inM)} · keluar ${shortRp(outM)}`], ['Rasio lancar', curL ? num1(curA / curL) + '×' : '—', '', 'Aset lancar ÷ utang lancar'],
+      ['Umur piutang', rev90 > 0 ? Math.round(ar.open / (rev90 / 90)) + ' hari' : '—', '', `Piutang ${rp(ar.open)}`], ['Umur utang', buy90 > 0 ? Math.round(ap.open / (buy90 / 90)) + ' hari' : '—', '', `Utang ${rp(ap.open)}`], ['Pajak & BPJS belum disetor', rp(tax), tax ? 'out' : '']],
+    chart: trend('Kas masuk dan keluar 6 bulan', [{name: 'Masuk', vals: last6().map(x => cashOf(x, 'in'))}, {name: 'Keluar', vals: last6().map(x => cashOf(x, 'out'))}]),
+    side: panel('Saldo per akun', balances(), 'Belum ada akun.'),
+    panels: [panel('Umur piutang', meterRows(aging('piutang')), ''), panel('Umur utang', meterRows(aging('utang')), ''), panel('Beban terbesar tahun ini', expenses(), 'Belum ada beban.'), panel('Utang jatuh tempo 7 hari', dueSoon('utang', 7).slice(0, 6).map(debtRow), 'Tidak ada utang mendesak.')]});
+}
+function ownerDash() {
+  const now = today(), ym = now.slice(0, 7), y = now.slice(0, 4), m = salesIn(ym + '-01', now), p = salesIn(addMonths(ym, -1) + '-01', sameDayPrev()), L = lrData(y + '-01-01', y + '-12-31'), ar = debtTotals('piutang'), rv = runway();
+  const waitPO = state.orders.filter(o => o.status === 'draft' && ORDER_KINDS[o.kind].approval), waitLv = state.leaves.filter(l => l.status === 'draft');
+  const decide = [...waitPO.slice(0, 5).map(o => tr(esc(o.ref), esc(ORDER_KINDS[o.kind].label), `<button class="btn sm primary" data-act="dOpenOrder" data-id="${esc(o.id)}">Tinjau</button>`)), ...waitLv.slice(0, 5).map(l => tr(esc(empOf(l.empId)?.name), `Cuti ${l.days} hari`, `<button class="btn sm primary" data-act="approveLeave" data-id="${esc(l.id)}">Setujui</button>`))];
+  const lrMonth = last6().map(x => lrData(x + '-01', lastDayOf(x)));
+  const act = state.employees.filter(e => empActive(e, ym)).length;
+  return dashPage({title: company?.role === 'viewer' ? 'Ringkasan Perusahaan' : 'Dasbor Pimpinan', sub: 'Kinerja, likuiditas, dan hal yang menunggu keputusan.', actions: company?.role === 'viewer' ? [] : [['dReports', 'Laporan keuangan'], ['dTx', '+ Transaksi']], alerts: obligations().filter(o => o[0] !== 'ok'),
+    kpis: [[`Penjualan ${MONTHS[+ym.slice(5) - 1]}`, rp(m.rev), '', delta(m.rev, p.rev)], ['Margin kotor', m.rev ? pct((m.rev - m.hpp) / m.rev * 100) : '—', '', `Laba kotor ${rp(m.rev - m.hpp)}`], [`Laba bersih ${y}`, rp(L.net), L.net >= 0 ? 'in' : 'out', L.ti ? 'Margin ' + pct(L.net / L.ti * 100) : ''],
+      ['Kas & bank', rp(totalBalance()), '', `Daya tahan ${rv ? num1(rv) + ' bulan' : '—'}`], ['Piutang lewat tempo', rp(ar.overdue), ar.overdue ? 'out' : '', `${ar.no} tagihan`], ['Menunggu keputusan', String(waitPO.length + waitLv.length), waitPO.length + waitLv.length ? 'out' : '', `${act} karyawan aktif`]],
+    chart: trend('Pendapatan dan beban 6 bulan', [{name: 'Pendapatan', vals: lrMonth.map(l => l.ti)}, {name: 'Beban', vals: lrMonth.map(l => l.to)}]),
+    side: panel('Menunggu keputusan', decide, 'Tidak ada yang menunggu persetujuan.'),
+    panels: [panel('Saldo per akun', balances(), 'Belum ada akun.'), panel('Beban terbesar tahun ini', expenses(), 'Belum ada beban.'), panel('Umur piutang', meterRows(aging('piutang')), '')]});
+}
+// Akun pimpinan melihat semua dasbor dalam satu halaman, dipisah per bagian dan bisa dilompati lewat menu di atas
+const DASH_PARTS = [['Pimpinan', ownerDash], ['Keuangan', financeDash], ['Penjualan', salesDash], ['Gudang', warehouseDash], ['SDM', hrDash]];
+function allDash() {
+  return `<nav class="dash-jump" aria-label="Bagian dasbor">${DASH_PARTS.map(([name], i) => `<button type="button" class="btn sm" data-act="dJump" data-id="${i}">${name}</button>`).join('')}</nav>`
+    + DASH_PARTS.map(([, fn], i) => `<section class="dash-sec" id="dash-${i}">${fn()}</section>`).join('');
+}
+function renderRoleDash() {
+  const role = company?.role || 'owner';
+  $('financeDash').hidden = true;
+  $('roleDash').innerHTML = role === 'owner' ? allDash() : ({sales: salesDash, warehouse: warehouseDash, hr: hrDash, finance: financeDash}[role] || ownerDash)();
+  const jump = $('roleDash').querySelector('.dash-jump');
+  if (jump) jump.style.top = document.querySelector('header').offsetHeight + 'px'; // tetap terlihat di bawah kepala halaman
+  return true;
+}
+const openIn = (view, fn) => { goView(view); fn?.(); };
+Object.assign(ACTIONS, {
+  dSale: () => openIn('jualbeli', () => openTrade(null, 'sale')),
+  dQuote: () => { erpTab = 'quote'; openIn('erp', ACTIONS.newOrder); },
+  dCustomer: () => { erpTab = 'customers'; openIn('erp', () => openForm('customers')); },
+  dPO: () => { erpTab = 'po'; openIn('erp', ACTIONS.newOrder); },
+  dOpenOrder: id => { const o = state.orders.find(x => x.id === id); if (!o) return; erpTab = o.kind; openIn('erp', () => openOrder(id)); },
+  dOpname: () => { tradeTab = 'items'; openIn('jualbeli', () => $('btnOpname').click()); },
+  dStock: () => { tradeTab = 'items'; openIn('jualbeli'); },
+  dTransfer: () => { erpTab = 'wh'; openIn('erp', ACTIONS.newTransfer); },
+  dAtt: () => { hrTab = 'att'; openIn('karyawan'); },
+  dEmp: () => { hrTab = 'emp'; openIn('karyawan', () => openEmp()); },
+  dRun: () => { hrTab = 'pay'; openIn('karyawan', openRun); },
+  dTx: () => $('btnAdd').click(),
+  dDebts: () => openIn('hutang'),
+  dJump: i => $('dash-' + i)?.scrollIntoView({block: 'start'}),
+  dReports: () => { openIn('laporan'); },
+  dTaxRep: () => { goView('laporan'); $('rType').value = 'faktur'; renderReport(); },
 });

@@ -168,6 +168,13 @@ dialog.big{width:min(900px,96vw)}
 .inv-foot{margin-top:18px;padding-top:8px;border-top:1px solid #d3dce1;font-size:10.5px;color:#566878;text-align:center}
 nav .ns{display:none}
 [hidden]{display:none!important}
+.kpi{grid-template-columns:repeat(3,minmax(0,1fr))}@media(min-width:1150px){.kpi{grid-template-columns:repeat(6,minmax(0,1fr))}}.kpi .stat .value{font-size:19px}
+.dash-panels{grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));margin-top:16px}
+.dash-jump{display:flex;gap:6px;overflow-x:auto;position:sticky;top:64px;z-index:4;background:var(--bg);padding:8px 0;margin-bottom:8px}.dash-jump .btn{flex:0 0 auto}
+.dash-sec{scroll-margin-top:120px}.dash-sec+.dash-sec{margin-top:36px;padding-top:28px;border-top:3px solid var(--line)}
+.dt td{padding:6px 4px}.dt tr:last-child td{border-bottom:0}.dt td.num{white-space:normal}
+.bar.k1,.legend i.k1,.meter .m1{background:var(--primary)}.bar.k2,.legend i.k2{background:var(--accent)}
+.dash-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.dash-head h2{font-size:18px;margin:0 0 2px}.dash-head p{margin:0}.dash-who{text-align:right;font-size:12px;white-space:nowrap}
 .seg.scroll{display:flex;overflow-x:auto;max-width:100%}.seg.scroll button{flex:0 0 auto;white-space:nowrap}
 .onlymobile{display:none}
 body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{display:none!important}
@@ -300,6 +307,8 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
   <!-- DASBOR -->
   <section class="view active" id="view-dashboard">
     <div id="dashNotices"></div>
+    <div id="roleDash"></div>
+    <div id="financeDash">
     <div class="toolbar">
       <label class="f">Tahun<select id="dashYear"></select></label>
     </div>
@@ -330,6 +339,7 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
         <h3>Saldo per Akun</h3>
         <div id="accBalances"></div>
       </div>
+    </div>
     </div>
   </section>
 
