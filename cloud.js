@@ -176,6 +176,9 @@ export async function listMembers(cid) {
   const s = await F.getDocs(F.collection(db, 'companies', cid, 'members'));
   return s.docs.map(d => ({uid: d.id, ...d.data()}));
 }
+export function watchMember(cid, cb) {
+  return F.onSnapshot(coDoc(cid, 'members', user.uid), s => cb(s.exists() ? s.data() : null), () => cb(null));
+}
 export const setMember = (cid, uid, data) => F.updateDoc(coDoc(cid, 'members', uid), data);
 export const removeMember = (cid, uid) => F.deleteDoc(coDoc(cid, 'members', uid));
 export async function leaveCompany(cid) {

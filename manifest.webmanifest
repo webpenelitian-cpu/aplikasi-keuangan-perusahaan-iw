@@ -1,7 +1,7 @@
 {
   "name": "Aplikasi Keuangan Perusahaan (UMKM)",
   "short_name": "Keuangan UMKM",
-  "description": "Aplikasi keuangan perusahaan (UMKM): kas & bank, piutang & utang, laba rugi, dan PPh final.",
+  "description": "ERP perusahaan (UMKM): keuangan, jual beli, stok, karyawan, pajak, dan laporan.",
   "id": "./index.html",
   "lang": "id",
   "categories": ["finance", "business", "productivity"],

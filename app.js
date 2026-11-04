@@ -271,6 +271,7 @@ function sanitizeState(d) {
       if (cleanId(t?.payrollId)) x.payrollId = t.payrollId;
       if (cleanId(t?.returnId)) x.returnId = t.returnId;
       if (cleanId(t?.kasbonId)) x.kasbonId = t.kasbonId;
+      if (t?.cleared === true) x.cleared = true;
       if (cleanId(t?.centerId)) x.centerId = t.centerId;
       return x;
     }).filter(t => t.id && t.type && t.date && t.accountId),
@@ -284,7 +285,7 @@ function sanitizeState(d) {
     }).filter(x => x.id && x.date),
     items: list(d.items).map(i => ({id: cleanId(i?.id), code: cleanStr(i?.code, 30), name: cleanStr(i?.name, 120), unit: cleanStr(i?.unit, 20),
       kind: i?.kind === 'jasa' ? 'jasa' : 'barang', taxType: Object.hasOwn(TAX_TYPES, i?.taxType) ? i.taxType : i?.kind === 'jasa' ? 'jasa' : 'bkp', price: Math.abs(cleanNum(i?.price)), openQty: cleanQty(i?.openQty),
-      openCost: Math.abs(cleanNum(i?.openCost)), minQty: cleanQty(i?.minQty)})).filter(i => i.id && i.name),
+      openCost: Math.abs(cleanNum(i?.openCost)), minQty: cleanQty(i?.minQty), leadDays: Math.abs(cleanNum(i?.leadDays))})).filter(i => i.id && i.name),
     vendors: list(d.vendors).map(v => ({id: cleanId(v?.id), name: cleanStr(v?.name, 120), pic: cleanStr(v?.pic, 120), phone: cleanStr(v?.phone, 40),
       email: cleanStr(v?.email, 120), address: cleanStr(v?.address, 300), npwp: cleanStr(v?.npwp, 30), bank: cleanStr(v?.bank, 120),
       terms: Math.abs(cleanNum(v?.terms)), note: cleanStr(v?.note, 300), pkp: v?.pkp === true, wapu: v?.wapu === true, noPph: v?.noPph === true})).filter(v => v.id && v.name),
@@ -294,7 +295,7 @@ function sanitizeState(d) {
       pay: t?.pay === 'credit' ? 'credit' : 'cash', accountId: t?.accountId ? cleanId(t.accountId) : null, due: cleanDate(t?.due), desc: cleanStr(t?.desc),
       ppn: Math.abs(cleanNum(t?.ppn)), pph: Math.abs(cleanNum(t?.pph)), wapu: t?.wapu === true, wapuKind: t?.wapuKind === 'gov' ? 'gov' : 'other', cut: t?.cut === true, ppnCredit: t?.ppnCredit === true,
       pphParts: list(t?.pphParts).map(x => ({code: Object.hasOwn(PPH_LABEL, x?.code) ? x.code : '23', base: Math.abs(cleanNum(x?.base)), rate: cleanPct(x?.rate, 0), amt: Math.abs(cleanNum(x?.amt))})),
-      srcId: t?.srcId ? cleanId(t.srcId) : null, whId: t?.whId ? cleanId(t.whId) : null,
+      srcId: t?.srcId ? cleanId(t.srcId) : null, whId: t?.whId ? cleanId(t.whId) : null, salesId: t?.salesId ? cleanId(t.salesId) : null,
       fpNo: cleanStr(t?.fpNo, 40), fpDate: cleanDate(t?.fpDate), poNo: cleanStr(t?.poNo, 60), custAddr: cleanStr(t?.custAddr, 300), custNpwp: cleanStr(t?.custNpwp, 30)}))
       .filter(t => t.id && t.date && t.lines.length),
     returns: list(d.returns).map(r => ({id: cleanId(r?.id), created: cleanNum(r?.created), kind: r?.kind === 'purchase' ? 'purchase' : 'sale', origId: cleanId(r?.origId),
@@ -302,7 +303,7 @@ function sanitizeState(d) {
       settle: r?.settle === 'debt' ? 'debt' : 'cash', accountId: r?.accountId ? cleanId(r.accountId) : null, debtId: r?.debtId ? cleanId(r.debtId) : null, desc: cleanStr(r?.desc),
       dpp: Math.abs(cleanNum(r?.dpp)), ppn: Math.abs(cleanNum(r?.ppn)), pph: Math.abs(cleanNum(r?.pph)), wapu: r?.wapu === true, ppnCredit: r?.ppnCredit === true}))
       .filter(r => r.id && r.origId && r.date && r.lines.length),
-    adjusts: list(d.adjusts).map(a => ({id: cleanId(a?.id), created: cleanNum(a?.created), date: cleanDate(a?.date), ref: cleanStr(a?.ref, 40), desc: cleanStr(a?.desc),
+    adjusts: list(d.adjusts).map(a => ({id: cleanId(a?.id), created: cleanNum(a?.created), date: cleanDate(a?.date), ref: cleanStr(a?.ref, 40), desc: cleanStr(a?.desc), whId: a?.whId ? cleanId(a.whId) : null,
       lines: list(a?.lines).map(l => ({itemId: cleanId(l?.itemId), counted: cleanQty(l?.counted), diff: Number.isFinite(+l?.diff) ? Math.round(+l.diff * 1000) / 1000 : 0})).filter(l => l.itemId)}))
       .filter(a => a.id && a.date && a.lines.length),
     employees: list(d.employees).map(e => ({id: cleanId(e?.id), created: cleanNum(e?.created), name: cleanStr(e?.name, 120), nik: cleanStr(e?.nik, 20),
@@ -1102,7 +1103,7 @@ function restoreView() {
   let s = null;
   try { s = JSON.parse(sessionStorage.getItem(VIEW_KEY)); } catch {}
   if (['trades', 'items', 'vendors', 'tax'].includes(s?.trade)) tradeTab = s.trade;
-  if (['emp', 'pay', 'rules', 'att', 'leave', 'kas'].includes(s?.hr)) hrTab = s.hr;
+  if (['emp', 'pay', 'rules', 'att', 'leave', 'kas', 'doc', 'rev', 'shift'].includes(s?.hr)) hrTab = s.hr;
   if ([...$('rType').options].some(o => o.value === s?.report)) $('rType').value = s.report;
   showView(Object.hasOwn(VIEWS, s?.view) ? s.view : currentView);
 }
@@ -1791,7 +1792,7 @@ function renderReport() {
         || '<tr><td colspan="5" class="muted">Belum ada catatan pada periode ini.</td></tr>'}
     </table><p class="muted" style="font-size:12px">Jejak audit mencatat setiap penambahan, perubahan, dan penghapusan data beserta alasannya. Catatan ini tidak dapat diubah dari aplikasi.</p>`;
   }
-  html ||= bizReport(type, from, to, period) || erpReport(type, from, to, period);
+  html ||= bizReport(type, from, to, period) || erpReport(type, from, to, period) || moreReport(type, from, to, period);
   $('reportOut').innerHTML = html + (type !== 'audit' ? footerNote() : '');
 }
 ['rType', 'rFrom', 'rTo', 'rAcc'].forEach(id => $(id).oninput = renderReport);
@@ -1989,13 +1990,15 @@ const ACTIONS = {
   logout: async () => {
     if (!confirm('Keluar dari akun? Salinan data di perangkat ini dihapus; data tetap aman di server dan muncul lagi saat Anda masuk.')) return;
     if (dirty) await pushNow();
-    if (dirty && !confirm('Ada perubahan yang BELUM tersimpan ke server (offline?). Tetap keluar dan buang perubahan itu?')) return;
+    const unsent = dirty || (company && !await Cloud.flush());
+    if (unsent && !confirm('Ada perubahan yang BELUM tersimpan ke server (offline?). Tetap keluar dan buang perubahan itu?')) return;
     await Cloud.signOut().catch(() => {});
     [storeKey, metaKey(), LAST_UID_KEY, ACTIVE_KEY, ...conflictKeys()].forEach(k => localStorage.removeItem(k));
     location.reload();
   },
   // Hak penghapusan data pribadi (UU 27/2022 tentang Pelindungan Data Pribadi)
   deleteAccount: async () => {
+    if (company) return toast(company.role === 'owner' ? 'Akun pimpinan tidak bisa dihapus selama perusahaan masih aktif.' : 'Keluar dari perusahaan dulu sebelum menghapus akun.');
     if (!confirm('Hapus akun beserta SELURUH data keuangan di server? Tindakan ini tidak bisa dibatalkan. Unduh backup lebih dulu bila masih diperlukan (dokumen pembukuan wajib disimpan 10 tahun).')) return;
     if (prompt(`Ketik username Anda (${cloudInfo.username}) untuk konfirmasi`) !== cloudInfo.username) return toast('Konfirmasi tidak cocok');
     try {
@@ -2041,11 +2044,18 @@ async function download(content, name, type) {
   return true;
 }
 $('btnBackup').onclick = async () => {
-  if (!vault && !confirm('Kata sandi belum dipasang, sehingga file backup TIDAK terenkripsi dan bisa dibaca siapa pun yang memegang filenya. Lanjutkan?')) return;
+  // Backup perusahaan memuat data karyawan, jadi wajib dikunci dengan kata sandi
+  let lock = vault;
+  if (company) {
+    const pw = await askPassword({title: 'Kata sandi file backup', confirm: true, hint: `Minimal ${MIN_PW} karakter. Simpan baik-baik: file ini tidak bisa dibuka tanpa kata sandi ini.`});
+    if (pw === null) return;
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    lock = {key: await deriveKey(pw, salt, PBKDF2_ITER), salt, iter: PBKDF2_ITER};
+  } else if (!vault && !confirm('Kata sandi belum dipasang, sehingga file backup TIDAK terenkripsi dan bisa dibaca siapa pun yang memegang filenya. Lanjutkan?')) return;
   state.lastBackup = today();
   const json = JSON.stringify(state);
-  const content = vault ? JSON.stringify(await seal(vault, json)) : JSON.stringify(state, null, 2);
-  if (await download(content, `backup-keuangan-${today()}${vault ? '-terenkripsi' : ''}.json`, 'application/json')) save();
+  const content = lock ? JSON.stringify(await seal(lock, json)) : JSON.stringify(state, null, 2);
+  if (await download(content, `backup-keuangan-${today()}${lock ? '-terenkripsi' : ''}.json`, 'application/json')) save();
 };
 $('fileRestore').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
@@ -2255,7 +2265,7 @@ function renderItems() {
       <td data-label="Stok" class="num ${low ? 'out' : ''}">${s ? fmtQty(s.qty) + ' ' + esc(i.unit) : '—'}</td>
       <td data-label="HPP rata-rata" class="num">${s && s.qty ? rp(s.value / s.qty) : '—'}</td>
       <td data-label="Harga jual" class="num">${rp(i.price)}</td><td data-label="Nilai stok" class="num">${s ? rp(s.value) : '—'}</td>
-      <td data-label="" class="no-print num"><button class="btn sm" data-act="openItem" data-id="${esc(i.id)}">Ubah</button></td></tr>`;
+      <td data-label="" class="no-print num" style="white-space:nowrap">${i.code ? `<button class="btn sm" data-act="printLabel" data-id="${esc(i.id)}">Label</button> ` : ''}<button class="btn sm" data-act="openItem" data-id="${esc(i.id)}">Ubah</button></td></tr>`;
   }).join('') : '<tr><td colspan="7" class="empty" data-label="">Belum ada barang atau jasa.</td></tr>';
   const adj = M().stock.adj;
   $('opBody').innerHTML = state.adjusts.slice().sort((a, b) => b.date.localeCompare(a.date)).map(a => `<tr><td data-label="Tanggal">${fmtDate(a.date)}</td><td data-label="No. bukti">${esc(a.ref)}</td>
@@ -2285,7 +2295,7 @@ function openItem(id) {
   $('itemTitle').textContent = editingItem ? 'Ubah Barang / Jasa' : 'Barang / Jasa Baru';
   $('iName').value = i.name || ''; $('iCode').value = i.code || ''; $('iKind').value = i.kind; $('iUnit').value = i.unit || '';
   $('iTax').value = i.taxType || 'bkp';
-  $('iPrice').value = i.price ? i.price.toLocaleString('id-ID') : ''; $('iMin').value = i.minQty || '';
+  $('iPrice').value = i.price ? i.price.toLocaleString('id-ID') : ''; $('iMin').value = i.minQty || ''; $('iLead').value = i.leadDays || '';
   $('iOpenQty').value = i.openQty || ''; $('iOpenCost').value = i.openCost ? i.openCost.toLocaleString('id-ID') : '';
   $('iKind').disabled = !!used;
   const lockOpen = !!state.lockedUntil && !!editingItem;
@@ -2309,7 +2319,7 @@ $('itemForm').onsubmit = e => {
   if (!name) return fail('Isi nama barang/jasa');
   if (state.items.some(x => x !== editingItem && x.name.toLowerCase() === name.toLowerCase())) return fail('Nama ini sudah ada');
   const data = {name, code: $('iCode').value.trim().slice(0, 30), kind: $('iKind').value === 'jasa' ? 'jasa' : 'barang', taxType: Object.hasOwn(TAX_TYPES, $('iTax').value) ? $('iTax').value : 'bkp', unit: $('iUnit').value.trim().slice(0, 20),
-    price: parseMoney($('iPrice').value), minQty: parseQty($('iMin').value),
+    price: parseMoney($('iPrice').value), minQty: parseQty($('iMin').value), leadDays: Math.abs(parseInt($('iLead').value) || 0),
     openQty: parseQty($('iOpenQty').value), openCost: parseMoney($('iOpenCost').value)};
   if (TAX_TYPES[data.taxType].kind !== data.kind) return fail('Jenis pajak tidak sesuai dengan jenis barang/jasa');
   if (data.kind === 'jasa') data.openQty = data.openCost = 0;
@@ -2418,7 +2428,7 @@ function tradeDraft() {
     extra: tradeKind === 'purchase' ? parseMoney($('tExtra').value) : 0, pay: $('tPay').value === 'credit' ? 'credit' : 'cash',
     vendorId: tradeKind === 'purchase' ? $('tVendor').value || null : null, party: tradeKind === 'sale' ? $('tCust').value.trim().slice(0, 120) : '',
     accountId: $('tPay').value === 'credit' ? null : $('tAcc').value, due: $('tPay').value === 'credit' ? $('tDue').value : '', desc: $('tDesc').value.trim().slice(0, 500),
-    srcId: editingTrade?.srcId || tradeSrc?.srcId || null, whId: $('tWh').value || null,
+    srcId: editingTrade?.srcId || tradeSrc?.srcId || null, whId: $('tWh').value || null, salesId: tradeKind === 'sale' ? $('tSales').value || null : null,
     wapu: tradeKind === 'sale' && $('tWapu').checked, wapuKind: $('tWapuKind').value === 'gov' ? 'gov' : 'other', cut: tradeKind === 'sale' && $('tCut').checked, fpNo: $('tFpNo').value.trim().slice(0, 40), fpDate: $('tFpDate').value,
     poNo: tradeKind === 'sale' ? $('tPo').value.trim().slice(0, 60) : '', custAddr: tradeKind === 'sale' ? $('tCustAddr').value.trim().slice(0, 300) : '', custNpwp: tradeKind === 'sale' ? $('tCustNpwp').value.trim().slice(0, 30) : ''};
   return Object.assign(d, taxCalc(d));
@@ -2439,7 +2449,7 @@ $('tLines').addEventListener('input', e => {
   if (e.target.classList.contains('tl-item')) {
     l.itemId = e.target.value;
     const it = itemOf(l.itemId), s = M().stock.stock.get(l.itemId);
-    const price = tradeKind === 'sale' ? it?.price : s && s.qty ? Math.round(s.value / s.qty) : it?.openCost;
+    const price = tradeKind === 'sale' ? custPrice(it?.price || 0, $('tCust').value) : s && s.qty ? Math.round(s.value / s.qty) : it?.openCost;
     if (price && !l.price) { l.price = price; row.querySelector('.tl-price').value = price.toLocaleString('id-ID'); }
   } else if (e.target.classList.contains('tl-qty')) l.qty = parseQty(e.target.value);
   else if (e.target.classList.contains('tl-price')) { l.price = parseMoney(e.target.value); e.target.value = l.price ? l.price.toLocaleString('id-ID') : ''; }
@@ -2457,6 +2467,18 @@ $('tVendor').onchange = () => {
   if (v?.terms) { $('tPay').value = 'credit'; setTradePay(); if ($('tDate').value) $('tDue').value = new Date(new Date($('tDate').value).getTime() + v.terms * 864e5).toISOString().slice(0, 10); }
 };
 document.querySelectorAll('#tradeKindSeg button').forEach(b => b.onclick = () => setTradeKind(b.dataset.k));
+// Pemindai barcode mengetik kode lalu Enter; kode yang sama menambah jumlah
+$('tScan').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const code = $('tScan').value.trim().toUpperCase(), it = state.items.find(i => i.code && i.code.toUpperCase() === code);
+  $('tScan').value = '';
+  if (!it) return toast('Kode barang tidak ditemukan');
+  const same = tradeLines.find(l => l.itemId === it.id), blank = tradeLines.find(l => !l.itemId);
+  if (same) same.qty = Math.round((same.qty + 1) * 1000) / 1000;
+  else { const price = tradeKind === 'sale' ? custPrice(it.price, $('tCust').value) : it.openCost; if (blank) Object.assign(blank, {itemId: it.id, qty: 1, price}); else tradeLines.push({itemId: it.id, qty: 1, price}); }
+  renderTradeLines();
+});
 $('btnAddLine').onclick = () => { tradeLines.push({itemId: '', qty: 1, price: 0}); renderTradeLines(); };
 $('btnNewItem').onclick = () => {
   afterItem = it => { const empty = tradeLines.find(l => !l.itemId); const price = tradeKind === 'sale' ? it.price : it.openCost;
@@ -2486,6 +2508,9 @@ function openTrade(id, kind) {
   tradeLines = t.lines.length ? t.lines.map(l => ({...l})) : [{itemId: '', qty: 1, price: 0}];
   if (editingTrade) tradeSrc = null;
   if (tradeSrc) { tradeLines = tradeSrc.lines.map(l => ({...l})); $('tCust').value = tradeSrc.party || ''; $('tCustAddr').value = tradeSrc.addr || ''; $('tCustNpwp').value = tradeSrc.npwp || ''; $('tVendor').value = tradeSrc.vendorId || ''; $('tPo').value = tradeSrc.ref || ''; }
+  fillSelect($('tSales'), state.salespeople, 'Tanpa tenaga penjual', x => x.name);
+  $('tSalesWrap').style.display = state.salespeople.length && t.kind === 'sale' ? '' : 'none';
+  $('tSales').value = t.salesId || '';
   fillSelect($('tWh'), state.warehouses, 'Gudang utama');
   $('tWhWrap').style.display = state.warehouses.length ? '' : 'none';
   $('tWh').value = t.whId || '';
@@ -2537,6 +2562,8 @@ $('tradeForm').onsubmit = e => {
   const id = editingTrade?.id || uid(), cand = {...d, id};
   const r = stockCalc([...state.trades.filter(t => t !== editingTrade), cand]);
   if (r.neg.size) return fail('Stok tidak cukup: ' + [...r.neg].map(x => itemOf(x)?.name).join(', '));
+  const credit = creditProblem(cand);
+  if (credit) { if (!canApprove()) return fail(credit + '. Perlu persetujuan pimpinan atau keuangan.'); if (!confirm(credit + '. Tetap simpan?')) return fail('Dibatalkan'); }
   if (editingTrade) {
     const before = tradeSummary(editingTrade);
     Object.assign(editingTrade, cand);
@@ -2638,8 +2665,10 @@ function delReturn(id) {
 
 /* Stok opname: mencocokkan stok buku dengan hitungan fisik; selisihnya menjadi beban atau pengurang beban */
 function opRows() {
-  const date = $('opDate').value || today(), st = stockAsOf(date);
-  $('opLines').innerHTML = state.items.filter(i => st.has(i.id)).sort((a, b) => a.name.localeCompare(b.name)).map(i => `<label class="f">${esc(i.name)}: buku ${fmtQty(st.get(i.id).qty)} ${esc(i.unit)}<input data-id="${esc(i.id)}" data-book="${st.get(i.id).qty}" inputmode="decimal" placeholder="Hitungan fisik"></label>`).join('') || '<div class="empty">Belum ada barang.</div>';
+  const date = $('opDate').value || today(), st = stockAsOf(date), multi = state.warehouses.length > 0, wh = whStock().get($('opWh').value) || new Map();
+  const book = i => multi ? wh.get(i.id) || 0 : st.get(i.id).qty;
+  $('opWhWrap').style.display = multi ? '' : 'none';
+  $('opLines').innerHTML = state.items.filter(i => st.has(i.id)).sort((a, b) => a.name.localeCompare(b.name)).map(i => `<label class="f">${esc(i.name)}: buku ${fmtQty(book(i))} ${esc(i.unit)}<input data-id="${esc(i.id)}" data-book="${book(i)}" inputmode="decimal" placeholder="Hitungan fisik"></label>`).join('') || '<div class="empty">Belum ada barang.</div>';
   opRefresh();
 }
 function opDraft() {
@@ -2650,11 +2679,13 @@ function opRefresh() {
   $('opSummary').innerHTML = lines.length ? `${lines.length} barang dihitung, ${lines.filter(l => l.diff).length} selisih. ${v < 0 ? 'Kekurangan' : 'Kelebihan'} senilai <b class="${v < 0 ? 'out' : 'in'}">${rp(Math.abs(v))}</b>` : 'Isi hitungan fisik barang yang dihitung; barang yang dikosongkan tidak dianggap dihitung.';
 }
 $('opLines').addEventListener('input', opRefresh);
+$('opWh').onchange = opRows;
 $('opDate').onchange = () => { opRows(); $('opRef').value = nextCode('OP', $('opDate').value || today(), state.adjusts.map(a => a.ref)); };
 $('btnCancelOp').onclick = () => $('opDialog').close();
 $('btnOpname').onclick = () => {
   if (!state.items.some(i => i.kind === 'barang')) return toast('Belum ada barang');
   $('opDate').value = today(); $('opDesc').value = '';
+  fillSelect($('opWh'), state.warehouses, 'Gudang utama'); $('opWh').value = '';
   $('opRef').value = nextCode('OP', today(), state.adjusts.map(a => a.ref));
   opRows(); $('opDialog').showModal();
 };
@@ -2665,7 +2696,7 @@ $('opForm').onsubmit = e => {
   if (isLocked(date)) return fail(lockMsg());
   if (!ref) return fail('No. bukti wajib diisi');
   if (!lines.length) return fail('Isi hitungan fisik minimal satu barang');
-  const a = {id: uid(), created: Date.now(), date, ref, desc: $('opDesc').value.trim().slice(0, 500), lines};
+  const a = {id: uid(), created: Date.now(), date, ref, desc: $('opDesc').value.trim().slice(0, 500), lines, whId: $('opWh').value || null};
   if (stockCalc(state.trades, state.items, state.returns, [...state.adjusts, a]).neg.size) return fail('Stok jadi minus karena ada penjualan setelah tanggal ini; periksa tanggal opname');
   state.adjusts.push(a);
   log('tambah', 'opname', a.id, `${ref} · ${date} · ${lines.map(l => `${itemOf(l.itemId)?.name} ${l.diff > 0 ? '+' : ''}${l.diff}`).join(', ')}`.slice(0, 500));
@@ -2893,7 +2924,7 @@ function journalBal(acc) {
 let hrTab = 'emp';
 function renderHr() {
   document.querySelectorAll('#hrTabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === hrTab); b.setAttribute('aria-pressed', b.dataset.tab === hrTab); });
-  ['emp', 'pay', 'rules', 'att', 'leave', 'kas'].forEach(k => $('hr-' + k).style.display = k === hrTab ? '' : 'none');
+  ['emp', 'pay', 'rules', 'att', 'leave', 'kas', 'doc', 'rev', 'shift'].forEach(k => $('hr-' + k).style.display = k === hrTab ? '' : 'none');
   const hr = state.hr, ym = today().slice(0, 7), act = state.employees.filter(e => empActive(e, ym));
   const lastRun = state.payrolls.slice().sort((a, b) => b.period.localeCompare(a.period))[0], s = lastRun && paySum(lastRun);
   $('hrCards').innerHTML = [
@@ -2905,6 +2936,7 @@ function renderHr() {
   ].map(statCard).join('');
   if (hrTab === 'rules') return renderRules();
   if (['att', 'leave', 'kas'].includes(hrTab)) return renderHrExtra();
+  if (['doc', 'rev', 'shift'].includes(hrTab)) return renderHrMore();
   if (hrTab === 'pay') {
     $('payBody').innerHTML = state.payrolls.length ? state.payrolls.slice().sort((a, b) => b.period.localeCompare(a.period)).map(p => {
       const t = paySum(p);
@@ -3020,14 +3052,14 @@ $('empForm').onsubmit = ev => {
     wage: parseMoney($('eWage').value), allow: parseMoney($('eAllow').value), bpjsTk: $('eTk').checked, bpjsKes: $('eKes').checked};
   Object.entries(EMP_TEXT).forEach(([el, k]) => data[k] = $(el).value.trim().slice(0, 120));
   if ((belowMin(data) || belowFloor(data)) && !confirm(`Upah ${data.name} ${rp(empWage(data))} di bawah batas yang diatur di tab Aturan. Tetap simpan?`)) return fail('Dibatalkan');
-  // Rincian pribadi (NIK, NPWP, rekening) tidak ditulis ke jejak audit
+  // Rincian pribadi dan upah tidak ditulis ke jejak audit, karena jejak audit terbaca semua anggota
   if (editingEmp) {
     Object.assign(editingEmp, data);
-    log('ubah', 'karyawan', editingEmp.id, `${data.name} · ${EMP_STATUS[status]} · upah ${rp(empWage(data))}`);
+    log('ubah', 'karyawan', editingEmp.id, `${data.name} · ${EMP_STATUS[status]}`);
   } else {
     const e = {id: uid(), created: Date.now(), ...data};
     state.employees.push(e);
-    log('tambah', 'karyawan', e.id, `${data.name} · ${EMP_STATUS[status]} · upah ${rp(empWage(data))}`);
+    log('tambah', 'karyawan', e.id, `${data.name} · ${EMP_STATUS[status]}`);
   }
   save(); toast('Data karyawan tersimpan');
 };

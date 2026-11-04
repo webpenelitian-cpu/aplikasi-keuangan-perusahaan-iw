@@ -18,6 +18,12 @@ service cloud.firestore {
     function hasRole(cid, roles) {
       return isMember(cid) && role(cid) in roles;
     }
+    // Bulan yang sudah tutup buku tidak bisa diubah kecuali oleh pimpinan
+    function openPeriod(cid, b) {
+      let ym = b.split('~')[1];
+      let settings = /databases/$(database)/documents/companies/$(cid)/buckets/$('settings~~0');
+      return role(cid) == 'owner' || ym == '' || !exists(settings) || ym > get(settings).data.r.lockedUntil.v;
+    }
     match /users/{uid} {
       allow read, delete: if isOwner(uid);
       // Username di profil wajib sama dengan username yang benar-benar dimiliki pengguna ini
@@ -55,37 +61,41 @@ service cloud.firestore {
       allow get: if isMember(cid);
       allow list: if false;
       allow create: if request.auth != null && request.resource.data.ownerUid == request.auth.uid;
-      allow update: if hasRole(cid, ['owner']);
+      allow update: if hasRole(cid, ['owner']) && request.resource.data.keys().hasOnly(['name', 'ownerUid', 'createdAt'])
+        && request.resource.data.ownerUid == resource.data.ownerUid;
       match /members/{uid} {
         allow read: if isMember(cid) || isOwner(uid);
         // Pendiri saat membuat perusahaan, atau anggota baru dengan undangan yang masih berlaku
-        allow create: if isOwner(uid) && request.resource.data.active == true && (
+        allow create: if isOwner(uid) && request.resource.data.active == true
+          && request.resource.data.keys().hasOnly(['role', 'name', 'active', 'invite']) && (
           (request.resource.data.role == 'owner' && getAfter(/databases/$(database)/documents/companies/$(cid)).data.ownerUid == uid)
           || (exists(/databases/$(database)/documents/invites/$(request.resource.data.invite))
             && get(/databases/$(database)/documents/invites/$(request.resource.data.invite)).data.cid == cid
             && get(/databases/$(database)/documents/invites/$(request.resource.data.invite)).data.role == request.resource.data.role
-            && get(/databases/$(database)/documents/invites/$(request.resource.data.invite)).data.expires > request.time.toMillis()));
-        allow update: if hasRole(cid, ['owner']) && uid != request.auth.uid;
+            && get(/databases/$(database)/documents/invites/$(request.resource.data.invite)).data.expires > request.time.toMillis()
+            && !existsAfter(/databases/$(database)/documents/invites/$(request.resource.data.invite))));
+        allow update: if hasRole(cid, ['owner']) && uid != request.auth.uid
+          && request.resource.data.role in ['finance', 'sales', 'warehouse', 'hr', 'viewer'];
         allow delete: if (hasRole(cid, ['owner']) && uid != request.auth.uid) || (isOwner(uid) && role(cid) != 'owner');
       }
       // Data usaha, dikelompokkan per jenis dan bulan. Jejak audit hanya bisa ditambah, tidak bisa diubah atau dihapus.
       match /buckets/{b} {
         allow read: if isMember(cid);
         allow delete: if false;
-        allow create, update: if isMember(cid) && (
+        allow create, update: if isMember(cid) && request.resource.data.keys().hasOnly(['r']) && (
           b.matches('^audit~.*')
             ? (role(cid) != 'viewer' && (resource == null
                 || (request.resource.data.r.diff(resource.data.r).changedKeys().size() == 0
                   && request.resource.data.r.diff(resource.data.r).removedKeys().size() == 0)))
-            : (role(cid) in ['owner', 'finance']
-              || (role(cid) == 'sales' && b.matches('^(tx|debts|trades|returns|orders|customers)~.*'))
-              || (role(cid) == 'warehouse' && b.matches('^(tx|debts|trades|returns|orders|items|vendors|adjusts|transfers|warehouses)~.*'))
-              || (role(cid) == 'hr' && b.matches('^(tx|settings)~.*'))));
+            : (openPeriod(cid, b) && (role(cid) in ['owner', 'finance']
+              || (role(cid) == 'sales' && b.matches('^(tx|debts|trades|returns|orders|customers|contacts)~.*'))
+              || (role(cid) == 'warehouse' && b.matches('^(tx|debts|trades|returns|orders|items|vendors|adjusts|transfers|warehouses|batches)~.*'))
+              || (role(cid) == 'hr' && b.matches('^(tx|settings)~.*')))));
       }
       // Data karyawan: hanya pimpinan, keuangan, dan SDM yang bisa membuka; peran yang sama bisa mengubah
       match /hrdata/{b} {
         allow read: if hasRole(cid, ['owner', 'finance', 'hr']);
-        allow create, update: if hasRole(cid, ['owner', 'finance', 'hr']);
+        allow create, update: if hasRole(cid, ['owner', 'finance', 'hr']) && request.resource.data.keys().hasOnly(['r']) && openPeriod(cid, b);
         allow delete: if false;
       }
     }

@@ -261,7 +261,7 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
     <details class="privacy">
       <summary>Pemberitahuan privasi (UU 27/2022 tentang Pelindungan Data Pribadi)</summary>
       Dengan masuk, data keuangan yang Anda catat, termasuk data karyawan dan vendor (nama, NIK, NPWP, rekening, upah), disimpan di Google Cloud Firestore (pusat data Jakarta) dan data login (username/email) dikelola Google Firebase Authentication, hanya untuk menjalankan aplikasi ini. Perusahaan Anda bertanggung jawab atas data karyawan yang dimasukkan.
-      Data hanya dapat diakses oleh akun Anda sendiri, tidak dijual, dan tidak dibagikan ke pihak lain. Bila kata sandi enkripsi dipasang, isi data terenkripsi sebelum dikirim.
+      Data hanya dapat diakses oleh akun Anda sendiri dan anggota perusahaan yang Anda undang sesuai perannya, tidak dijual, dan tidak dibagikan ke pihak lain. Bila kata sandi enkripsi dipasang, isi data terenkripsi sebelum dikirim.
       Anda dapat mengunduh (Backup) atau menghapus akun beserta seluruh datanya kapan saja di menu Atur → Akun.
     </details>
   </div>
@@ -457,6 +457,9 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
       <button type="button" data-tab="att">Absensi</button>
       <button type="button" data-tab="leave">Cuti</button>
       <button type="button" data-tab="kas">Kasbon</button>
+      <button type="button" data-tab="shift">Shift</button>
+      <button type="button" data-tab="doc">Dokumen</button>
+      <button type="button" data-tab="rev">Kinerja</button>
       <button type="button" data-tab="rules">Aturan</button>
     </div>
     <div class="grid cards" id="hrCards" style="margin-bottom:12px"></div>
@@ -494,6 +497,19 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
       <div class="toolbar"><button class="btn primary" id="btnNewKasbon">+ Kasbon</button></div>
       <div class="table-wrap"><table class="rtable"><thead><tr><th>Tanggal</th><th>No.</th><th>Nama</th><th class="num">Jumlah</th><th class="num">Sisa</th><th class="no-print"></th></tr></thead><tbody id="kasBody"></tbody></table></div>
       <p class="muted" style="font-size:12px">Kasbon dipotong lewat kolom Potongan kasbon saat proses gaji.</p>
+    </div>
+    <div id="hr-shift">
+      <div class="toolbar"><label class="f">Minggu dari tanggal<input type="date" id="shiftDate"></label></div>
+      <div class="table-wrap"><table><thead id="shiftHead"></thead><tbody id="shiftBody"></tbody></table></div>
+    </div>
+    <div id="hr-doc">
+      <div class="toolbar"><button class="btn primary" id="btnNewDoc">+ Dokumen</button></div>
+      <div class="table-wrap"><table class="rtable"><thead><tr><th>Nama</th><th>Dokumen</th><th>Berlaku s.d.</th><th class="no-print"></th></tr></thead><tbody id="docBody"></tbody></table></div>
+      <p class="muted" style="font-size:12px">Yang disimpan hanya data dan masa berlakunya, bukan file dokumennya.</p>
+    </div>
+    <div id="hr-rev">
+      <div class="toolbar"><button class="btn primary" id="btnNewRev">+ Penilaian</button></div>
+      <div class="table-wrap"><table class="rtable"><thead><tr><th>Tanggal</th><th>Nama</th><th class="num">Nilai</th><th>Catatan</th><th class="no-print"></th></tr></thead><tbody id="revBody"></tbody></table></div>
     </div>
     <div id="hr-rules">
       <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
@@ -576,9 +592,11 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
           <option value="jual">Laba Penjualan (HPP &amp; Profit)</option>
           <option value="stok">Laporan Persediaan</option>
           <option value="beli">Pembelian per Vendor</option>
+          <option value="komisi">Penjualan dan Komisi</option>
           <option value="faktur">Rekap Faktur &amp; Pajak (PPN, WAPU, PPh)</option>
         </optgroup>
         <optgroup label="Akuntansi lanjutan">
+          <option value="ringkasan">Ringkasan Bulanan</option>
           <option value="aruskas">Laporan Arus Kas</option>
           <option value="aset">Daftar Aset Tetap</option>
           <option value="anggaran">Anggaran dan Realisasi</option>
@@ -587,6 +605,7 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
         <optgroup label="Karyawan">
           <option value="upah">Daftar Upah</option>
           <option value="bpjs">Rekap PPh 21 &amp; BPJS</option>
+          <option value="pph21">Rekap Penghasilan &amp; PPh 21 Setahun</option>
           <option value="sdm">Data Ketenagakerjaan</option>
           <option value="absensi">Rekap Kehadiran</option>
         </optgroup>
@@ -808,12 +827,14 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
         <label class="f" id="tAccWrap"><span id="tAccLabel">Akun</span><select id="tAcc"></select></label>
         <label class="f" id="tDueWrap">Jatuh tempo<input type="date" id="tDue"></label>
         <label class="f" id="tWhWrap">Gudang<select id="tWh"></select></label>
+        <label class="f" id="tSalesWrap">Tenaga penjual<select id="tSales"></select></label>
         <label class="f" id="tPoWrap">No. PO / kontrak<input id="tPo" maxlength="60"></label>
         <label class="f" id="tCustNpwpWrap">NPWP pelanggan<input id="tCustNpwp" inputmode="numeric" maxlength="30"></label>
         <label class="f wide" id="tAddrWrap">Alamat penagihan<input id="tCustAddr" maxlength="300"></label>
       </div>
       <datalist id="custList"></datalist>
       <h3 style="font-size:13px;margin:14px 0 6px">Barang / jasa</h3>
+      <label class="f" style="margin-bottom:8px">Pindai barcode / ketik kode lalu Enter<input id="tScan" autocomplete="off"></label>
       <div id="tLines"></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button type="button" class="btn sm" id="btnAddLine">+ Baris</button>
@@ -873,6 +894,7 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
     <div class="bd">
       <div class="form-grid" style="margin-bottom:10px">
         <label class="f">Tanggal hitung<input type="date" id="opDate"></label>
+        <label class="f" id="opWhWrap">Gudang<select id="opWh"></select></label>
         <label class="f">No. bukti<input id="opRef" maxlength="40"></label>
       </div>
       <div class="form-grid" id="opLines"></div>
@@ -944,6 +966,7 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
         <label class="f">Stok awal<input id="iOpenQty" inputmode="decimal"></label>
         <label class="f">HPP per satuan stok awal (Rp)<input id="iOpenCost" inputmode="numeric"></label>
         <label class="f">Batas stok minimum<input id="iMin" inputmode="decimal"></label>
+        <label class="f">Waktu tunggu pembelian (hari)<input id="iLead" inputmode="numeric" placeholder="7"></label>
       </div>
       <p class="muted" id="iHint" style="font-size:12px;margin-bottom:0"></p>
     </div>
