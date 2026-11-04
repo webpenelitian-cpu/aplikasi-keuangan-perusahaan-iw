@@ -1,6 +1,6 @@
 // Service worker: aplikasi tetap terbuka tanpa internet.
 // Naikkan versi CACHE setiap kali file aplikasi diperbarui.
-const CACHE = 'keuangan-umkm-v9';
+const CACHE = 'keuangan-umkm-v10';
 const ASSETS = [
   './', './index.html', './app.js', './cloud.js', './firebase-config.js', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png',

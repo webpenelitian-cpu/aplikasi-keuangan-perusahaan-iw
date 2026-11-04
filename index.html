@@ -7,7 +7,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com; frame-src https://*.firebaseapp.com https://*.web.app https://accounts.google.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="referrer" content="no-referrer">
 <title>Aplikasi Keuangan Perusahaan (UMKM)</title>
-<meta name="description" content="Aplikasi keuangan perusahaan (UMKM): kas & bank, piutang & utang, laba rugi, dan PPh final.">
+<meta name="description" content="Aplikasi keuangan perusahaan (UMKM): kas & bank, jual beli dengan HPP, stok, piutang & utang, penggajian, pajak, dan invoice.">
 <meta name="theme-color" content="#14304a">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -246,7 +246,7 @@ nav .ns{display:none}
     <button class="linkbtn" type="button" id="btnLocalMode" style="font-size:13px">Pakai tanpa akun (data hanya di perangkat ini)</button>
     <details class="privacy">
       <summary>Pemberitahuan privasi (UU 27/2022 tentang Pelindungan Data Pribadi)</summary>
-      Dengan masuk, data keuangan yang Anda catat disimpan di Google Cloud Firestore (pusat data Jakarta) dan data login (username/email) dikelola Google Firebase Authentication, hanya untuk menjalankan aplikasi ini.
+      Dengan masuk, data keuangan yang Anda catat, termasuk data karyawan dan vendor (nama, NIK, NPWP, rekening, upah), disimpan di Google Cloud Firestore (pusat data Jakarta) dan data login (username/email) dikelola Google Firebase Authentication, hanya untuk menjalankan aplikasi ini. Perusahaan Anda bertanggung jawab atas data karyawan yang dimasukkan.
       Data hanya dapat diakses oleh akun Anda sendiri, tidak dijual, dan tidak dibagikan ke pihak lain. Bila kata sandi enkripsi dipasang, isi data terenkripsi sebelum dikirim.
       Anda dapat mengunduh (Backup) atau menghapus akun beserta seluruh datanya kapan saja di menu Atur → Akun.
     </details>
@@ -370,10 +370,15 @@ nav .ns{display:none}
       </table></div>
     </div>
     <div id="trade-items">
-      <div class="toolbar"><button class="btn primary" id="btnAddItem">+ Barang / Jasa</button></div>
+      <div class="toolbar"><button class="btn primary" id="btnAddItem">+ Barang / Jasa</button> <button class="btn" id="btnOpname">Stok Opname</button></div>
       <div class="table-wrap"><table class="rtable">
         <thead><tr><th>Kode</th><th>Nama</th><th class="num">Stok</th><th class="num">HPP rata-rata</th><th class="num">Harga jual</th><th class="num">Nilai stok</th><th class="no-print"></th></tr></thead>
         <tbody id="itemBody"></tbody>
+      </table></div>
+      <h3 style="font-size:14px;margin:16px 0 8px">Riwayat Stok Opname</h3>
+      <div class="table-wrap"><table class="rtable">
+        <thead><tr><th>Tanggal</th><th>No. Bukti</th><th>Selisih</th><th class="num">Nilai</th><th class="no-print"></th></tr></thead>
+        <tbody id="opBody"></tbody>
       </table></div>
     </div>
     <div id="trade-vendors">
@@ -407,7 +412,15 @@ nav .ns{display:none}
         </div>
       </div>
       <div style="margin-top:12px"><button class="btn primary" id="btnSaveTax">Simpan pajak</button>
-        <button class="btn" id="btnSetorPpn">Setor PPN</button> <button class="btn" id="btnSetorPot">Setor PPh potput</button></div>
+        <button class="btn" id="btnSetorPpn">Setor PPN</button> <button class="btn" id="btnSetorWapu">Setor PPN WAPU</button> <button class="btn" id="btnSetorPot">Setor PPh potput</button></div>
+      <div class="card" style="margin-top:12px">
+        <h3>Ekspor Faktur ke Coretax</h3>
+        <div class="toolbar" style="margin-bottom:6px">
+          <label class="f">Masa pajak<input type="month" id="xMasa"></label>
+          <button class="btn" id="btnCoretax">Unduh XML faktur keluaran</button>
+        </div>
+        <p class="muted" style="font-size:12px;margin:0">File dibuat dari penjualan ber-PPN yang NPWP pelanggannya terisi. Impor manual di Coretax: e-Faktur → Pajak Keluaran → Impor Data, lalu periksa dan tanda tangani di sana.</p>
+      </div>
     </div>
   </section>
 
@@ -597,6 +610,7 @@ nav .ns{display:none}
           <label class="f wide">Alamat<textarea id="pAddress" rows="2"></textarea></label>
           <label class="f">NPWP<input id="pNpwp" inputmode="numeric"></label>
           <label class="f">NIB<input id="pNib" inputmode="numeric"></label>
+          <label class="f">NITKU (22 digit, opsional)<input id="pNitku" inputmode="numeric" maxlength="22"></label>
           <label class="f">Telepon<input id="pPhone" inputmode="tel"></label>
           <label class="f">Email<input id="pEmail" type="email"></label>
           <label class="f wide">Rekening pembayaran di invoice<textarea id="pBank" rows="2" placeholder="Nama bank, no. rekening, atas nama"></textarea></label>
@@ -764,15 +778,60 @@ nav .ns{display:none}
       </div>
       <div id="tSaleTax" style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px">
         <label class="check"><input type="checkbox" id="tWapu">Pembeli WAPU (instansi pemerintah, BUMN, atau badan yang ditunjuk)</label>
+        <select id="tWapuKind" aria-label="Jenis pemungut"><option value="other">Pemungut selain instansi pemerintah</option><option value="gov">Instansi pemerintah</option></select>
         <label class="check"><input type="checkbox" id="tCut">Pembeli memotong PPh</label>
       </div>
       <div class="tsum" id="tSummary"></div>
+      <div id="tReturns"></div>
     </div>
     <div class="ft">
       <button type="button" class="btn danger" id="btnDeleteTrade" style="margin-right:auto">Hapus</button>
+      <button type="button" class="btn" id="btnReturnTrade">Retur</button>
       <button type="button" class="btn" id="btnPrintTrade">Cetak invoice</button>
       <button type="button" class="btn" id="btnCancelTrade">Tutup</button>
       <button type="submit" class="btn primary" id="btnSaveTrade">Simpan</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- DIALOG RETUR -->
+<dialog id="retDialog">
+  <form method="dialog" id="retForm">
+    <div class="hd" id="retTitle">Retur</div>
+    <div class="bd">
+      <div class="form-grid" style="margin-bottom:10px">
+        <label class="f">Tanggal retur<input type="date" id="retDate"></label>
+        <label class="f">No. bukti<input id="retRef" maxlength="40"></label>
+        <label class="f">Penyelesaian<select id="retSettle"></select></label>
+        <label class="f" id="retAccWrap">Akun kas/bank<select id="retAcc"></select></label>
+      </div>
+      <div class="form-grid" id="retLines"></div>
+      <label class="f" style="margin-top:10px">Alasan retur<input id="retDesc" maxlength="500"></label>
+      <div class="tsum" id="retSummary"></div>
+    </div>
+    <div class="ft">
+      <button type="button" class="btn" id="btnCancelRet">Tutup</button>
+      <button type="submit" class="btn primary">Simpan Retur</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- DIALOG STOK OPNAME -->
+<dialog id="opDialog">
+  <form method="dialog" id="opForm">
+    <div class="hd">Stok Opname</div>
+    <div class="bd">
+      <div class="form-grid" style="margin-bottom:10px">
+        <label class="f">Tanggal hitung<input type="date" id="opDate"></label>
+        <label class="f">No. bukti<input id="opRef" maxlength="40"></label>
+      </div>
+      <div class="form-grid" id="opLines"></div>
+      <label class="f" style="margin-top:10px">Keterangan<input id="opDesc" maxlength="500" placeholder="Mis. barang rusak atau hilang"></label>
+      <div class="tsum" id="opSummary"></div>
+    </div>
+    <div class="ft">
+      <button type="button" class="btn" id="btnCancelOp">Tutup</button>
+      <button type="submit" class="btn primary">Simpan Opname</button>
     </div>
   </form>
 </dialog>
