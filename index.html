@@ -136,6 +136,37 @@ dialog{background:var(--panel)}
 .notes{padding-left:20px;font-size:13px;line-height:1.55}.notes li{margin-bottom:8px}.notes table{margin-top:4px}
 .voucher td{border-bottom:1px solid var(--line);padding:9px 10px}.voucher td:first-child{width:160px;color:var(--muted)}
 .sign.three{grid-template-columns:1fr 1fr 1fr}
+.tline{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,.8fr) minmax(0,1.1fr) auto;gap:6px;margin-bottom:6px}
+.tsum{background:var(--soft);border-radius:8px;padding:10px 12px;margin-top:10px;font-size:13px}
+.prow{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
+.pin{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+.pcalc{font-size:12px;margin-top:10px}
+.split td,.split th{padding:4px 8px;position:static}
+.split tr.total td{font-weight:700;border-top:2px solid var(--text)}
+.check{display:flex;gap:6px;align-items:center;font-size:13px}
+.ttabs{margin-bottom:12px}
+dialog.big{width:min(900px,96vw)}
+.inv{color:#1a2733;font-size:13px;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.inv-top{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;padding-bottom:14px;border-bottom:3px solid #14304a}
+.inv-co{display:flex;gap:12px;align-items:flex-start}.inv-co b{font-size:16px;display:block}
+.inv-title{text-align:right}.inv-title h1{font-size:30px;letter-spacing:.14em;color:#14304a;margin:0;font-weight:700}
+.inv-status{display:inline-block;margin-top:6px;padding:3px 12px;border-radius:4px;font-size:12px;font-weight:700;letter-spacing:.06em}
+.inv-status.paid{background:#e3f2ea;color:#1d7447}.inv-status.due{background:#fff3d6;color:#7a5200}
+.inv-meta{display:grid;grid-template-columns:1.3fr 1fr;gap:24px;margin:16px 0}
+.inv-lbl{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:#566878;font-weight:700;margin-bottom:3px}
+.inv-kv{width:100%}.inv-kv td{padding:2px 0;border:0}.inv-kv td:last-child{text-align:right;font-weight:600}
+.inv table.lines{width:100%;border-collapse:collapse}
+.inv table.lines th{background:#14304a;color:#fff;padding:8px 10px;font-size:11px;position:static;text-align:left}
+.inv table.lines th.num,.inv table.lines td.num{text-align:right}
+.inv table.lines td{padding:8px 10px;border-bottom:1px solid #d3dce1}
+.inv-bottom{display:grid;grid-template-columns:1.2fr 1fr;gap:24px;margin-top:14px;align-items:start}
+.inv-sum{width:100%;border-collapse:collapse}.inv-sum td{padding:4px 10px;border:0}.inv-sum td:last-child{text-align:right;white-space:nowrap}
+.inv-sum tr.grand td{background:#14304a;color:#fff;font-weight:700;font-size:15px;padding:8px 10px}
+.inv-pay{background:#f6f8f9;border-left:3px solid #e5a100;padding:10px 12px;white-space:pre-line}
+.inv-sign{display:flex;justify-content:flex-end;margin-top:22px;text-align:center}
+.inv-stamp{width:74px;height:50px;border:1px dashed #9fb0bf;color:#7a8896;font-size:10px;display:flex;align-items:center;justify-content:center;margin:8px auto}
+.inv-foot{margin-top:18px;padding-top:8px;border-top:1px solid #d3dce1;font-size:10.5px;color:#566878;text-align:center}
+nav .ns{display:none}
 .privacy{font-size:11px;color:var(--muted);text-align:left;margin-top:12px;line-height:1.5}
 #printArea{display:none}
 .toast{position:fixed;bottom:20px;right:20px;left:auto;background:#14304a;color:#fff;padding:10px 16px;border-radius:8px;opacity:0;transition:.25s;pointer-events:none;z-index:50}
@@ -146,8 +177,11 @@ dialog{background:var(--panel)}
   header{padding:calc(10px + var(--safe-top)) 16px 10px}
   nav{position:fixed;left:0;right:0;bottom:0;z-index:20;margin:0;background:var(--panel);border-top:1px solid var(--line);
       padding:4px 4px calc(4px + var(--safe-bottom));flex-wrap:nowrap;justify-content:space-around;gap:0}
-  nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;padding:6px 2px;border-radius:8px}
+  nav button{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;padding:6px 0;border-radius:8px}
   nav button svg{display:block}
+  nav .nl{display:none}nav .ns{display:inline}
+  .tline{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto}.tline .tl-item{grid-column:1/-1}
+  dialog.big{width:100vw}
   #btnAdd{position:fixed;right:16px;bottom:calc(70px + var(--safe-bottom));z-index:21;border-radius:28px;padding:14px 20px;
       font-weight:600;box-shadow:0 6px 18px rgba(20,48,74,.35)}
   main{padding:14px 16px calc(150px + var(--safe-bottom))}
@@ -245,7 +279,9 @@ dialog{background:var(--panel)}
   <nav>
     <button data-view="dashboard" class="active"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-8 9 8M5 10v10h14V10"/></svg>Dasbor</button>
     <button data-view="transaksi"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Transaksi</button>
-    <button data-view="hutang"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h13l-3-3M17 17H4l3 3"/></svg>Piutang/Utang</button>
+    <button data-view="jualbeli"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 4h2l3 12h11l2-8H6"/><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/></svg>Jual/Beli</button>
+    <button data-view="hutang"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h13l-3-3M17 17H4l3 3"/></svg><span class="nl">Piutang/Utang</span><span class="ns">Utang</span></button>
+    <button data-view="karyawan"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-5 4-7 8-7s7 2 8 7"/></svg>Karyawan</button>
     <button data-view="laporan"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l4 4v14H6zM9 13h6M9 17h6"/></svg>Laporan</button>
     <button data-view="pengaturan"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>Atur</button>
   </nav>
@@ -310,6 +346,144 @@ dialog{background:var(--panel)}
     </div>
   </section>
 
+  <!-- JUAL BELI -->
+  <section class="view" id="view-jualbeli">
+    <div class="seg ttabs" id="tradeTabs">
+      <button type="button" data-tab="trades" class="on">Jual &amp; Beli</button>
+      <button type="button" data-tab="items">Barang &amp; Stok</button>
+      <button type="button" data-tab="vendors">Vendor</button>
+      <button type="button" data-tab="tax">Pajak</button>
+    </div>
+    <div class="grid cards" id="tradeCards" style="margin-bottom:12px"></div>
+    <div id="trade-trades">
+      <div class="toolbar">
+        <label class="f">Dari<input type="date" id="tFrom"></label>
+        <label class="f">Sampai<input type="date" id="tTo"></label>
+        <label class="f">Jenis<select id="tKind"><option value="">Semua</option><option value="sale">Penjualan</option><option value="purchase">Pembelian</option></select></label>
+        <label class="f" style="flex:1;min-width:160px">Cari<input type="search" id="tSearch" placeholder="No. bukti / pihak"></label>
+        <button class="btn primary" id="btnNewSale">+ Penjualan</button>
+        <button class="btn" id="btnNewBuy">+ Pembelian</button>
+      </div>
+      <div class="table-wrap"><table class="rtable">
+        <thead><tr><th>Tanggal</th><th>No. Bukti</th><th>Jenis</th><th>Pihak</th><th>Bayar</th><th class="num">Total</th><th class="num">HPP</th><th class="num">Laba</th><th class="no-print"></th></tr></thead>
+        <tbody id="tradeBody"></tbody>
+      </table></div>
+    </div>
+    <div id="trade-items">
+      <div class="toolbar"><button class="btn primary" id="btnAddItem">+ Barang / Jasa</button></div>
+      <div class="table-wrap"><table class="rtable">
+        <thead><tr><th>Kode</th><th>Nama</th><th class="num">Stok</th><th class="num">HPP rata-rata</th><th class="num">Harga jual</th><th class="num">Nilai stok</th><th class="no-print"></th></tr></thead>
+        <tbody id="itemBody"></tbody>
+      </table></div>
+    </div>
+    <div id="trade-vendors">
+      <div class="toolbar"><button class="btn primary" id="btnAddVendor">+ Vendor / Supplier</button></div>
+      <div class="table-wrap"><table class="rtable">
+        <thead><tr><th>Vendor</th><th>Kontak</th><th>Pajak</th><th>Tempo</th><th class="num">Total beli</th><th class="num">Utang</th><th class="no-print"></th></tr></thead>
+        <tbody id="vendorBody"></tbody>
+      </table></div>
+    </div>
+    <div id="trade-tax">
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+        <div class="card">
+          <h3>Status Pajak Perusahaan</h3>
+          <label class="check" style="margin-bottom:8px"><input type="checkbox" id="xPkp">Perusahaan sudah PKP (memungut PPN atas penjualan)</label>
+          <label class="check"><input type="checkbox" id="xSkb">Punya surat keterangan PP 55: PPh tidak dipotong pembeli</label>
+          <p class="muted" style="font-size:12px;margin-bottom:0">Bila belum PKP, penjualan tanpa PPN dan PPN dari vendor menjadi bagian harga pokok. Bila sudah PKP, PPN dari vendor dicatat sebagai PPN masukan.</p>
+        </div>
+        <div class="card">
+          <h3>Tarif</h3>
+          <div class="form-grid pin">
+            <label class="f">PPN %<input id="xPpn" inputmode="decimal"></label>
+            <label class="f">DPP nilai lain (pembilang)<input id="xNum" inputmode="numeric"></label>
+            <label class="f">DPP nilai lain (penyebut)<input id="xDen" inputmode="numeric"></label>
+            <label class="f">PPh 22 %<input id="x22" inputmode="decimal"></label>
+            <label class="f">PPh 23 %<input id="x23" inputmode="decimal"></label>
+            <label class="f">PPh 23 royalti %<input id="x23r" inputmode="decimal"></label>
+            <label class="f">PPh final konstruksi %<input id="x42k" inputmode="decimal"></label>
+            <label class="f">PPh final sewa %<input id="x42s" inputmode="decimal"></label>
+          </div>
+          <p class="muted" style="font-size:12px;margin-bottom:0">PPN bawaan 12% × 11/12 = 11% efektif untuk barang/jasa bukan mewah. Untuk barang mewah isi 12/12. Tarif final konstruksi tergantung kualifikasi usaha.</p>
+        </div>
+      </div>
+      <div style="margin-top:12px"><button class="btn primary" id="btnSaveTax">Simpan pajak</button>
+        <button class="btn" id="btnSetorPpn">Setor PPN</button> <button class="btn" id="btnSetorPot">Setor PPh potput</button></div>
+    </div>
+  </section>
+
+  <!-- KARYAWAN -->
+  <section class="view" id="view-karyawan">
+    <div class="seg ttabs" id="hrTabs">
+      <button type="button" data-tab="emp" class="on">Data Karyawan</button>
+      <button type="button" data-tab="pay">Penggajian</button>
+      <button type="button" data-tab="rules">Aturan</button>
+    </div>
+    <div class="grid cards" id="hrCards" style="margin-bottom:12px"></div>
+    <div id="hr-emp">
+      <div class="toolbar">
+        <label class="f" style="flex:1;min-width:160px">Cari<input type="search" id="eSearch" placeholder="Nama / jabatan"></label>
+        <button class="btn primary" id="btnAddEmp">+ Karyawan</button>
+      </div>
+      <div class="table-wrap"><table class="rtable">
+        <thead><tr><th>Nama</th><th>Status</th><th>Mulai</th><th>Kontrak s.d.</th><th>PTKP</th><th class="num">Upah</th><th class="no-print"></th></tr></thead>
+        <tbody id="empBody"></tbody>
+      </table></div>
+      <p class="muted" style="font-size:12px">Data karyawan adalah data pribadi (UU 27/2022). Pasang kata sandi di menu Atur agar NIK, NPWP, dan rekening terenkripsi sebelum tersimpan dan terkirim ke server.</p>
+    </div>
+    <div id="hr-pay">
+      <div class="toolbar">
+        <button class="btn primary" id="btnRun">+ Proses Gaji</button>
+        <button class="btn" id="btnSetorPph">Setor PPh 21</button>
+        <button class="btn" id="btnSetorBpjs">Setor BPJS</button>
+      </div>
+      <div class="table-wrap"><table class="rtable">
+        <thead><tr><th>Periode</th><th>No. Bukti</th><th>Karyawan</th><th class="num">Gaji bersih</th><th class="num">PPh 21</th><th class="num">BPJS perusahaan</th><th class="num">BPJS karyawan</th><th class="no-print"></th></tr></thead>
+        <tbody id="payBody"></tbody>
+      </table></div>
+    </div>
+    <div id="hr-rules">
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+        <div class="card">
+          <h3>Upah Minimum</h3>
+          <div class="form-grid">
+            <label class="f wide">Apakah perusahaan wajib memakai UMP/UMK?<select id="hMode">
+              <option value="wajib">Ya, wajib memakai UMP/UMK</option>
+              <option value="kesepakatan">Tidak, usaha mikro/kecil (upah berdasarkan kesepakatan)</option>
+            </select></label>
+            <label class="f" id="hUmpWrap">UMP/UMK berlaku (Rp)<input id="hUmp" inputmode="numeric" placeholder="Dari keputusan gubernur"></label>
+            <label class="f" id="hFloorWrap">Batas bawah kesepakatan (Rp, opsional)<input id="hFloor" inputmode="numeric"></label>
+            <label class="f">Pola kerja<select id="hDays"><option value="5">5 hari, 40 jam seminggu</option><option value="6">6 hari, 40 jam seminggu</option></select></label>
+          </div>
+          <p class="muted" id="hModeInfo" style="font-size:12px;margin-bottom:0"></p>
+        </div>
+        <div class="card">
+          <h3>Iuran BPJS</h3>
+          <div class="form-grid pin">
+            <label class="f">JKK perusahaan %<input id="hJkk" inputmode="decimal"></label>
+            <label class="f">JKM perusahaan %<input id="hJkm" inputmode="decimal"></label>
+            <label class="f">JHT perusahaan %<input id="hJhtCo" inputmode="decimal"></label>
+            <label class="f">JHT karyawan %<input id="hJhtEe" inputmode="decimal"></label>
+            <label class="f">JP perusahaan %<input id="hJpCo" inputmode="decimal"></label>
+            <label class="f">JP karyawan %<input id="hJpEe" inputmode="decimal"></label>
+            <label class="f">Kesehatan perusahaan %<input id="hKesCo" inputmode="decimal"></label>
+            <label class="f">Kesehatan karyawan %<input id="hKesEe" inputmode="decimal"></label>
+            <label class="f">Batas upah JP (Rp)<input id="hJpCap" inputmode="numeric"></label>
+            <label class="f">Batas upah Kesehatan (Rp)<input id="hKesCap" inputmode="numeric"></label>
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:10px">
+            <label class="check"><input type="checkbox" id="hOnJkk">JKK</label>
+            <label class="check"><input type="checkbox" id="hOnJkm">JKM</label>
+            <label class="check"><input type="checkbox" id="hOnJht">JHT</label>
+            <label class="check"><input type="checkbox" id="hOnJp">JP</label>
+            <label class="check"><input type="checkbox" id="hOnKes">Kesehatan</label>
+          </div>
+          <p class="muted" style="font-size:12px;margin-bottom:0">Centang program yang diikuti perusahaan. JKK mengikuti kelompok risiko usaha (0,24% sampai 1,74%). Batas upah berubah berkala; cocokkan dengan pemberitahuan BPJS terbaru.</p>
+        </div>
+      </div>
+      <div style="margin-top:12px"><button class="btn primary" id="btnSaveRules">Simpan aturan</button></div>
+    </div>
+  </section>
+
   <!-- PIUTANG & UTANG -->
   <section class="view" id="view-hutang">
     <div class="grid cards" id="debtCards" style="margin-bottom:12px"></div>
@@ -343,6 +517,17 @@ dialog{background:var(--panel)}
           <option value="ak">Arus Kas per Akun</option>
           <option value="umur">Umur Piutang &amp; Utang</option>
           <option value="audit">Jejak Audit</option>
+        </optgroup>
+        <optgroup label="Jual beli">
+          <option value="jual">Laba Penjualan (HPP &amp; Profit)</option>
+          <option value="stok">Laporan Persediaan</option>
+          <option value="beli">Pembelian per Vendor</option>
+          <option value="faktur">Rekap Faktur &amp; Pajak (PPN, WAPU, PPh)</option>
+        </optgroup>
+        <optgroup label="Karyawan">
+          <option value="upah">Daftar Upah</option>
+          <option value="bpjs">Rekap PPh 21 &amp; BPJS</option>
+          <option value="sdm">Data Ketenagakerjaan</option>
         </optgroup>
         <optgroup label="Pajak">
           <option value="pph">Rekap PPh Final (PP 55/2022)</option>
@@ -414,6 +599,8 @@ dialog{background:var(--panel)}
           <label class="f">NIB<input id="pNib" inputmode="numeric"></label>
           <label class="f">Telepon<input id="pPhone" inputmode="tel"></label>
           <label class="f">Email<input id="pEmail" type="email"></label>
+          <label class="f wide">Rekening pembayaran di invoice<textarea id="pBank" rows="2" placeholder="Nama bank, no. rekening, atas nama"></textarea></label>
+          <label class="f wide">Catatan bawaan invoice<textarea id="pInvNote" rows="2" placeholder="Mis. syarat pembayaran atau ucapan terima kasih"></textarea></label>
           <label class="f">Dibuat oleh (nama)<input id="pPrepName"></label>
           <label class="f">Jabatan<input id="pPrepTitle"></label>
           <label class="f">Diperiksa oleh (nama)<input id="pCheckName"></label>
@@ -535,6 +722,187 @@ dialog{background:var(--panel)}
     <div class="ft">
       <button type="button" class="btn" id="btnCancelPay">Batal</button>
       <button type="submit" class="btn primary">Simpan Pembayaran</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- DIALOG JUAL BELI -->
+<dialog id="tradeDialog" class="big">
+  <form method="dialog" id="tradeForm">
+    <div class="hd" id="tradeTitle">Jual / Beli Baru</div>
+    <div class="bd">
+      <div class="notice" id="tradeNote" style="display:none;margin-bottom:12px"></div>
+      <div class="seg" id="tradeKindSeg" style="margin-bottom:14px">
+        <button type="button" data-k="sale">Penjualan</button>
+        <button type="button" data-k="purchase">Pembelian</button>
+      </div>
+      <div class="form-grid">
+        <label class="f">Tanggal<input type="date" id="tDate" required></label>
+        <label class="f">No. bukti<input id="tRef" maxlength="40"></label>
+        <label class="f" id="tCustWrap">Pelanggan<input id="tCust" list="custList" autocomplete="off" maxlength="120" placeholder="Boleh kosong bila tunai"></label>
+        <label class="f" id="tVendorWrap">Vendor / supplier<span style="display:flex;gap:6px"><select id="tVendor" style="flex:1;min-width:0"></select><button type="button" class="btn sm" id="btnNewVendor" aria-label="Vendor baru">+</button></span></label>
+        <label class="f">Pembayaran<select id="tPay"><option value="cash">Tunai / transfer</option><option value="credit">Kredit (tempo)</option></select></label>
+        <label class="f" id="tAccWrap"><span id="tAccLabel">Akun</span><select id="tAcc"></select></label>
+        <label class="f" id="tDueWrap">Jatuh tempo<input type="date" id="tDue"></label>
+        <label class="f" id="tPoWrap">No. PO / kontrak<input id="tPo" maxlength="60"></label>
+        <label class="f" id="tCustNpwpWrap">NPWP pelanggan<input id="tCustNpwp" inputmode="numeric" maxlength="30"></label>
+        <label class="f wide" id="tAddrWrap">Alamat penagihan<input id="tCustAddr" maxlength="300"></label>
+      </div>
+      <datalist id="custList"></datalist>
+      <h3 style="font-size:13px;margin:14px 0 6px">Barang / jasa</h3>
+      <div id="tLines"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="btn sm" id="btnAddLine">+ Baris</button>
+        <button type="button" class="btn sm" id="btnNewItem">+ Barang baru</button>
+      </div>
+      <div class="form-grid" style="margin-top:10px">
+        <label class="f">Diskon (Rp)<input id="tDiscount" inputmode="numeric"></label>
+        <label class="f" id="tExtraWrap">Ongkos kirim/biaya lain (Rp)<input id="tExtra" inputmode="numeric"></label>
+        <label class="f">No. faktur pajak<input id="tFpNo" maxlength="40"></label>
+        <label class="f">Tanggal faktur<input type="date" id="tFpDate"></label>
+        <label class="f wide">Keterangan<textarea id="tDesc" rows="2" maxlength="500"></textarea></label>
+      </div>
+      <div id="tSaleTax" style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px">
+        <label class="check"><input type="checkbox" id="tWapu">Pembeli WAPU (instansi pemerintah, BUMN, atau badan yang ditunjuk)</label>
+        <label class="check"><input type="checkbox" id="tCut">Pembeli memotong PPh</label>
+      </div>
+      <div class="tsum" id="tSummary"></div>
+    </div>
+    <div class="ft">
+      <button type="button" class="btn danger" id="btnDeleteTrade" style="margin-right:auto">Hapus</button>
+      <button type="button" class="btn" id="btnPrintTrade">Cetak invoice</button>
+      <button type="button" class="btn" id="btnCancelTrade">Tutup</button>
+      <button type="submit" class="btn primary" id="btnSaveTrade">Simpan</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- DIALOG BARANG -->
+<dialog id="itemDialog">
+  <form method="dialog" id="itemForm">
+    <div class="hd" id="itemTitle">Barang / Jasa Baru</div>
+    <div class="bd">
+      <div class="form-grid">
+        <label class="f wide">Nama<input id="iName" maxlength="120"></label>
+        <label class="f">Kode (opsional)<input id="iCode" maxlength="30"></label>
+        <label class="f">Jenis<select id="iKind"><option value="barang">Barang (punya stok)</option><option value="jasa">Jasa (tanpa stok)</option></select></label>
+        <label class="f wide">Jenis pajak<select id="iTax"></select></label>
+        <label class="f">Satuan<input id="iUnit" maxlength="20" placeholder="pcs, kg, dus"></label>
+        <label class="f">Harga jual (Rp)<input id="iPrice" inputmode="numeric"></label>
+        <label class="f">Stok awal<input id="iOpenQty" inputmode="decimal"></label>
+        <label class="f">HPP per satuan stok awal (Rp)<input id="iOpenCost" inputmode="numeric"></label>
+        <label class="f">Batas stok minimum<input id="iMin" inputmode="decimal"></label>
+      </div>
+      <p class="muted" id="iHint" style="font-size:12px;margin-bottom:0"></p>
+    </div>
+    <div class="ft">
+      <button type="button" class="btn danger" id="btnDeleteItem" style="margin-right:auto">Hapus</button>
+      <button type="button" class="btn" id="btnCancelItem">Tutup</button>
+      <button type="submit" class="btn primary">Simpan</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- DIALOG VENDOR -->
+<dialog id="vendorDialog">
+  <form method="dialog" id="vendorForm">
+    <div class="hd" id="vendorTitle">Vendor / Supplier Baru</div>
+    <div class="bd">
+      <div class="form-grid">
+        <label class="f wide">Nama vendor<input id="vName" maxlength="120"></label>
+        <label class="f">Kontak (PIC)<input id="vPic" maxlength="120"></label>
+        <label class="f">Telepon<input id="vPhone" inputmode="tel" maxlength="40"></label>
+        <label class="f">Email<input id="vEmail" type="email" maxlength="120"></label>
+        <label class="f">NPWP<input id="vNpwp" inputmode="numeric" maxlength="30"></label>
+        <label class="f">Bank &amp; no. rekening<input id="vBank" maxlength="120"></label>
+        <label class="f">Tempo bayar (hari)<input id="vTerms" inputmode="numeric" placeholder="0 = tunai"></label>
+        <label class="f wide">Alamat<textarea id="vAddress" rows="2" maxlength="300"></textarea></label>
+        <label class="f wide">Catatan<textarea id="vNote" rows="2" maxlength="300"></textarea></label>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">
+        <label class="check"><input type="checkbox" id="vPkp">Vendor PKP (menagih PPN)</label>
+        <label class="check"><input type="checkbox" id="vWapu">WAPU: PPN dan PPh 22 vendor ini kami pungut dan setor sendiri</label>
+        <label class="check"><input type="checkbox" id="vNoPph">Vendor bebas potong PPh (punya SKB / surat keterangan PP 55)</label>
+      </div>
+    </div>
+    <div class="ft">
+      <button type="button" class="btn danger" id="btnDeleteVendor" style="margin-right:auto">Hapus</button>
+      <button type="button" class="btn" id="btnCancelVendor">Tutup</button>
+      <button type="submit" class="btn primary">Simpan</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- DIALOG KARYAWAN -->
+<dialog id="empDialog" class="big">
+  <form method="dialog" id="empForm">
+    <div class="hd" id="empTitle">Karyawan Baru</div>
+    <div class="bd">
+      <div class="form-grid">
+        <label class="f wide">Nama lengkap<input id="eName" maxlength="120"></label>
+        <label class="f">NIK<input id="eNik" inputmode="numeric" maxlength="16"></label>
+        <label class="f">NPWP (bila berbeda dari NIK)<input id="eNpwp" inputmode="numeric" maxlength="30"></label>
+        <label class="f">Jabatan<input id="eTitle" maxlength="120"></label>
+        <label class="f">Jenis kelamin<select id="eGender"><option value="L">Laki-laki</option><option value="P">Perempuan</option></select></label>
+        <label class="f">Status kerja<select id="eStatus"><option value="pkwtt">PKWTT (tetap)</option><option value="pkwt">PKWT (kontrak)</option><option value="harian">Harian lepas</option></select></label>
+        <label class="f">Mulai kerja<input type="date" id="eJoin"></label>
+        <label class="f" id="eEndWrap">Kontrak berakhir<input type="date" id="eEnd"></label>
+        <label class="f">Tanggal keluar<input type="date" id="eExit"></label>
+        <label class="f"><span id="eWageLabel">Gaji pokok (Rp)</span><input id="eWage" inputmode="numeric"></label>
+        <label class="f">Tunjangan tetap per bulan (Rp)<input id="eAllow" inputmode="numeric"></label>
+        <label class="f">Status PTKP<select id="ePtkp">
+          <option>TK/0</option><option>TK/1</option><option>TK/2</option><option>TK/3</option>
+          <option>K/0</option><option>K/1</option><option>K/2</option><option>K/3</option>
+        </select></label>
+        <label class="f">PPh 21 ditanggung oleh<select id="eTaxBy"><option value="karyawan">Karyawan (dipotong dari gaji)</option><option value="perusahaan">Perusahaan (tunjangan pajak)</option></select></label>
+        <label class="f">No. BPJS Ketenagakerjaan<input id="eTkNo" maxlength="30"></label>
+        <label class="f">No. BPJS Kesehatan<input id="eKesNo" maxlength="30"></label>
+        <label class="f">Bank &amp; no. rekening<input id="eBank" maxlength="120"></label>
+      </div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px">
+        <label class="check"><input type="checkbox" id="eTk">Ikut BPJS Ketenagakerjaan</label>
+        <label class="check"><input type="checkbox" id="eKes">Ikut BPJS Kesehatan</label>
+      </div>
+      <p class="muted" id="eHint" style="font-size:12px;margin-bottom:0"></p>
+    </div>
+    <div class="ft">
+      <button type="button" class="btn danger" id="btnDeleteEmp" style="margin-right:auto">Hapus</button>
+      <button type="button" class="btn" id="btnCancelEmp">Tutup</button>
+      <button type="submit" class="btn primary">Simpan</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- DIALOG PROSES GAJI -->
+<dialog id="runDialog" class="big">
+  <form method="dialog" id="runForm">
+    <div class="hd">Proses Gaji</div>
+    <div class="bd">
+      <div class="form-grid" style="margin-bottom:12px">
+        <label class="f">Periode<input type="month" id="runPeriod"></label>
+        <label class="f">Tanggal bayar<input type="date" id="runDate"></label>
+        <label class="f">Dibayar dari akun<select id="runAcc"></select></label>
+        <label class="f">No. bukti<input id="runRef" maxlength="40"></label>
+      </div>
+      <p class="muted" id="runInfo" style="font-size:12px;margin-top:0"></p>
+      <div id="runRows"></div>
+      <div class="tsum" id="runTotal"></div>
+    </div>
+    <div class="ft">
+      <button type="button" class="btn" id="btnCancelRun">Tutup</button>
+      <button type="submit" class="btn primary">Simpan Penggajian</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- DIALOG DETAIL GAJI -->
+<dialog id="prDialog" class="big">
+  <form method="dialog">
+    <div class="hd" id="prTitle">Detail Gaji</div>
+    <div class="bd" id="prBody"></div>
+    <div class="ft">
+      <button type="button" class="btn danger" id="btnDeleteRun" style="margin-right:auto">Hapus</button>
+      <button type="button" class="btn" id="btnClosePr">Tutup</button>
     </div>
   </form>
 </dialog>

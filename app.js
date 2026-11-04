@@ -24,6 +24,61 @@ const APP_NAME = 'Aplikasi Keuangan Perusahaan (UMKM)';
 const ACC_PIUTANG = {code: '1-201', name: 'Piutang usaha'};
 const ACC_UTANG = {code: '2-101', name: 'Utang usaha'};
 const ACC_OPENING = {code: '3-001', name: 'Ekuitas saldo awal'};
+const ACC_PERSEDIAAN = {code: '1-301', name: 'Persediaan barang dagang'};
+const ACC_HPP = {code: '5-100', name: 'Harga pokok penjualan'};
+const ACC_KASBON = {code: '1-203', name: 'Piutang karyawan (kasbon)'};
+const ACC_PPH21 = {code: '2-103', name: 'Utang PPh 21'};
+const ACC_BPJS = {code: '2-104', name: 'Utang BPJS'};
+const ACC_BEBAN_BPJS = {code: '5-202', name: 'Beban BPJS perusahaan'};
+const ACC_PPN_IN = {code: '1-402', name: 'PPN masukan'};
+const ACC_KREDIT_PPH = {code: '1-403', name: 'PPh dipotong/dipungut pihak lain'};
+const ACC_PPH_POT = {code: '2-105', name: 'Utang PPh potput'};
+const ACC_PPN = {code: '2-106', name: 'Utang PPN'};
+const ACC_BEBAN_JASA = {code: '5-306', name: 'Beban jasa vendor'};
+// Kategori yang dipakai modul jual beli & penggajian; dibuat otomatis bila belum ada
+const SYS_CATS = [
+  ['4-101', 'Penjualan', 'in', true], ['4-102', 'Pendapatan jasa', 'in', true], ['5-201', 'Gaji dan BPJS', 'out', true],
+  [ACC_PERSEDIAAN.code, ACC_PERSEDIAAN.name, 'out', false], [ACC_KASBON.code, ACC_KASBON.name, 'out', false],
+  [ACC_PPH21.code, ACC_PPH21.name, 'out', false], [ACC_BPJS.code, ACC_BPJS.name, 'out', false],
+  [ACC_PPN.code, ACC_PPN.name, 'out', false], [ACC_PPH_POT.code, ACC_PPH_POT.name, 'out', false],
+];
+// Perlakuan pajak per jenis barang/jasa, berlaku untuk semua bidang usaha.
+// pph: 22 dipungut WAPU, 23 dipotong, 23r royalti, 42k/42s PPh final konstruksi/sewa; lux: PPN tanpa DPP nilai lain
+const TAX_TYPES = {
+  bkp: {label: 'Barang umum kena PPN', ppn: true, pph: '22', kind: 'barang'},
+  lux: {label: 'Barang mewah (PPN penuh)', ppn: true, lux: true, pph: '22', kind: 'barang'},
+  nonbkp: {label: 'Barang bebas / tidak kena PPN', ppn: false, pph: '22', kind: 'barang'},
+  jasa: {label: 'Jasa umum kena PPN', ppn: true, pph: '23', kind: 'jasa'},
+  konsultan: {label: 'Jasa konsultan, teknik, manajemen', ppn: true, pph: '23', kind: 'jasa'},
+  angkut: {label: 'Jasa angkutan & pengiriman', ppn: true, pph: '23', kind: 'jasa'},
+  katering: {label: 'Jasa katering', ppn: true, pph: '23', kind: 'jasa'},
+  tenaga: {label: 'Jasa kebersihan, keamanan, tenaga kerja', ppn: true, pph: '23', kind: 'jasa'},
+  rawat: {label: 'Jasa perawatan, perbaikan, instalasi', ppn: true, pph: '23', kind: 'jasa'},
+  iklan: {label: 'Jasa iklan, desain, IT', ppn: true, pph: '23', kind: 'jasa'},
+  nonjkp: {label: 'Jasa tidak kena PPN', ppn: false, pph: '23', kind: 'jasa'},
+  sewalain: {label: 'Sewa kendaraan, alat, harta lain', ppn: true, pph: '23', kind: 'jasa'},
+  sewa: {label: 'Sewa tanah/bangunan (PPh final)', ppn: true, pph: '42s', kind: 'jasa'},
+  kons: {label: 'Jasa konstruksi (PPh final)', ppn: true, pph: '42k', kind: 'jasa'},
+  royalti: {label: 'Royalti & lisensi', ppn: true, pph: '23r', kind: 'jasa'},
+};
+const PPH_LABEL = {22: 'PPh Pasal 22', 23: 'PPh Pasal 23', '23r': 'PPh Pasal 23 royalti', '42k': 'PPh final konstruksi', '42s': 'PPh final sewa'};
+// PPN 12% dengan DPP nilai lain 11/12 untuk barang/jasa bukan mewah (PMK 131/2024). Semua tarif bisa diubah di Jual/Beli → Pajak.
+const TAX = {pkp: false, skb: false, ppnRate: 12, dppNum: 11, dppDen: 12, pph22: 1.5, pph23: 2, pph23r: 15, pph42k: 1.75, pph42s: 10};
+
+/* Tarif ketenagakerjaan & PPh 21. Angka BPJS, batas upah, dan UMP berubah berkala, sehingga bisa diubah di menu Karyawan → Aturan.
+   TER: Lampiran PP 58/2023, [batas atas bruto bulanan dalam juta rupiah, tarif %]. */
+const TER = {
+  A: [[5.4,0],[5.65,.25],[5.95,.5],[6.3,.75],[6.75,1],[7.5,1.25],[8.55,1.5],[9.65,1.75],[10.05,2],[10.35,2.25],[10.7,2.5],[11.05,3],[11.6,3.5],[12.5,4],[13.75,5],[15.1,6],[16.95,7],[19.75,8],[24.15,9],[26.45,10],[28,11],[30.05,12],[32.4,13],[35.4,14],[39.1,15],[43.85,16],[47.8,17],[51.4,18],[56.3,19],[62.2,20],[68.6,21],[77.5,22],[89,23],[103,24],[125,25],[157,26],[206,27],[337,28],[454,29],[550,30],[695,31],[910,32],[1400,33],[Infinity,34]],
+  B: [[6.2,0],[6.5,.25],[6.85,.5],[7.3,.75],[9.2,1],[10.75,1.5],[11.25,2],[11.6,2.5],[12.6,3],[13.6,4],[14.95,5],[16.4,6],[18.45,7],[21.85,8],[26,9],[27.7,10],[29.35,11],[31.45,12],[33.95,13],[37.1,14],[41.1,15],[45.8,16],[49.5,17],[53.8,18],[58.5,19],[64,20],[71,21],[80,22],[93,23],[109,24],[129,25],[163,26],[211,27],[374,28],[459,29],[555,30],[704,31],[957,32],[1405,33],[Infinity,34]],
+  C: [[6.6,0],[6.95,.25],[7.35,.5],[7.8,.75],[8.85,1],[9.8,1.25],[10.95,1.5],[11.2,1.75],[12.05,2],[12.95,3],[14.15,4],[15.55,5],[17.05,6],[19.5,7],[22.7,8],[26.6,9],[28.1,10],[30.1,11],[32.6,12],[35.4,13],[38.9,14],[43,15],[47.4,16],[51.2,17],[55.8,18],[60.4,19],[66.7,20],[74.5,21],[83.2,22],[95.6,23],[110,24],[134,25],[169,26],[221,27],[390,28],[463,29],[561,30],[709,31],[965,32],[1419,33],[Infinity,34]],
+};
+const PTKP = {'TK/0': 54e6, 'TK/1': 58.5e6, 'TK/2': 63e6, 'TK/3': 67.5e6, 'K/0': 58.5e6, 'K/1': 63e6, 'K/2': 67.5e6, 'K/3': 72e6};
+const TER_CAT = {'TK/0': 'A', 'TK/1': 'A', 'K/0': 'A', 'TK/2': 'B', 'TK/3': 'B', 'K/1': 'B', 'K/2': 'B', 'K/3': 'C'};
+const PASAL17 = [[6e7, 5], [2.5e8, 15], [5e8, 25], [5e9, 30], [Infinity, 35]];
+const EMP_STATUS = {pkwtt: 'PKWTT (tetap)', pkwt: 'PKWT (kontrak)', harian: 'Harian lepas'};
+// umpMode: 'wajib' = memakai upah minimum; 'kesepakatan' = usaha mikro/kecil, upah menurut kesepakatan (PP 36/2021 Pasal 36)
+const HR = {umpMode: 'wajib', ump: 0, floor: 0, workDays: 5, jkk: 0.24, jkm: 0.3, jhtCo: 3.7, jhtEe: 2, jpCo: 2, jpEe: 1, kesCo: 4, kesEe: 1,
+  jpCap: 11086300, kesCap: 12000000, onJkk: true, onJkm: true, onJht: true, onJp: true, onKes: true};
 
 // PP 55/2022 Pasal 59: jangka waktu PPh final 0,5% per bentuk usaha (tahun pajak sejak terdaftar)
 const ENTITY = {
@@ -40,7 +95,7 @@ const PROFILE = {
   address: '', npwp: '', nib: '', phone: '', email: '',
   preparedName: '', preparedTitle: 'Bagian Keuangan',
   checkedName: '', checkedTitle: 'Pimpinan',
-  pphRate: 0.5, entity: 'ptp', taxYear: '', basis: 'akrual',
+  pphRate: 0.5, entity: 'ptp', taxYear: '', basis: 'akrual', bankInfo: '', invoiceNote: '',
 };
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -81,8 +136,8 @@ function logoHTML(size) {
 
 function defaultState() {
   const cat = (code, name, type, lr = true) => ({id: uid(), code, name, type, lr});
-  return {
-    version: 3,
+  return ensureCats({
+    version: 4,
     company: {...PROFILE},
     security: {autoLockMin: 5},
     lastBackup: '',
@@ -114,7 +169,14 @@ function defaultState() {
     ],
     tx: [],
     debts: [],
-  };
+    items: [], vendors: [], trades: [], employees: [], payrolls: [],
+    hr: {...HR}, tax: {...TAX},
+  });
+}
+function ensureCats(s) {
+  for (const [code, name, type, lr] of SYS_CATS)
+    if (!s.categories.some(c => c.code === code)) s.categories.push({id: uid(), code, name, type, lr});
+  return s;
 }
 
 /* ---------- Validasi data ----------
@@ -125,6 +187,34 @@ const cleanStr = (v, max = 500) => String(v ?? '').slice(0, max);
 const cleanNum = v => { const n = Number(v); return Number.isFinite(n) ? Math.max(-1e15, Math.min(1e15, Math.round(n))) : 0; };
 const cleanId = v => ID_RE.test(String(v ?? '')) ? String(v) : null;
 const cleanDate = v => DATE_RE.test(String(v ?? '')) ? String(v) : '';
+const cleanQty = v => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(1e9, Math.round(n * 1000) / 1000)) : 0; };
+const cleanPct = (v, def) => { const n = Number(v); return Number.isFinite(n) && n >= 0 && n <= 100 ? n : def; };
+const list = v => Array.isArray(v) ? v : [];
+
+function sanitizeHr(h) {
+  h = h && typeof h === 'object' ? h : {};
+  const r = {umpMode: h.umpMode === 'kesepakatan' ? 'kesepakatan' : 'wajib', workDays: +h.workDays === 6 ? 6 : 5};
+  for (const k of ['ump', 'floor', 'jpCap', 'kesCap']) r[k] = h[k] === undefined ? HR[k] : Math.abs(cleanNum(h[k]));
+  for (const k of ['jkk', 'jkm', 'jhtCo', 'jhtEe', 'jpCo', 'jpEe', 'kesCo', 'kesEe']) r[k] = cleanPct(h[k], HR[k]);
+  for (const k of ['onJkk', 'onJkm', 'onJht', 'onJp', 'onKes']) r[k] = h[k] !== false;
+  return r;
+}
+function sanitizeTax(h) {
+  h = h && typeof h === 'object' ? h : {};
+  const r = {pkp: h.pkp === true, skb: h.skb === true};
+  for (const k of ['ppnRate', 'pph22', 'pph23', 'pph23r', 'pph42k', 'pph42s']) r[k] = cleanPct(h[k], TAX[k]);
+  for (const k of ['dppNum', 'dppDen']) r[k] = +h[k] > 0 && +h[k] <= 1000 ? +h[k] : TAX[k];
+  return r;
+}
+const cleanLine = l => ({itemId: cleanId(l?.itemId), qty: cleanQty(l?.qty), price: Math.abs(cleanNum(l?.price))});
+function cleanPayLine(l) {
+  const n = k => cleanNum(l?.[k]), part = (o, keys) => Object.fromEntries(keys.map(k => [k, Math.abs(cleanNum(o?.[k]))]));
+  return {empId: cleanId(l?.empId), name: cleanStr(l?.name, 120), title: cleanStr(l?.title, 120), ptkp: Object.hasOwn(PTKP, l?.ptkp) ? l.ptkp : 'TK/0',
+    status: Object.hasOwn(EMP_STATUS, l?.status) ? l.status : 'pkwtt', taxBy: l?.taxBy === 'perusahaan' ? 'perusahaan' : 'karyawan',
+    days: cleanQty(l?.days), otHours: cleanQty(l?.otHours), hdHours: cleanQty(l?.hdHours), rate: cleanPct(l?.rate, 0),
+    base: n('base'), fixed: n('fixed'), varAllow: n('varAllow'), ot: n('ot'), bonus: n('bonus'), deduct: n('deduct'), taxAllow: n('taxAllow'),
+    bruto: n('bruto'), pph: n('pph'), net: n('net'), co: part(l?.co, ['jkk', 'jkm', 'jht', 'jp', 'kes']), ee: part(l?.ee, ['jht', 'jp', 'kes'])};
+}
 
 function sanitizeState(d) {
   if (!d || typeof d !== 'object' || !Array.isArray(d.tx) || !Array.isArray(d.accounts) || !Array.isArray(d.categories))
@@ -159,12 +249,42 @@ function sanitizeState(d) {
         accountId: cleanId(t?.accountId), toAccountId: t?.toAccountId ? cleanId(t.toAccountId) : null,
         categoryId: t?.categoryId ? cleanId(t.categoryId) : null, desc: cleanStr(t?.desc)};
       if (cleanId(t?.debtId)) x.debtId = t.debtId;
+      if (cleanId(t?.tradeId)) x.tradeId = t.tradeId;
+      if (cleanId(t?.payrollId)) x.payrollId = t.payrollId;
       return x;
     }).filter(t => t.id && t.type && t.date && t.accountId),
-    debts: (Array.isArray(d.debts) ? d.debts : []).map(x => ({id: cleanId(x?.id), created: cleanNum(x?.created),
-      kind: x?.kind === 'utang' ? 'utang' : 'piutang', party: cleanStr(x?.party, 120), ref: cleanStr(x?.ref, 40),
-      date: cleanDate(x?.date), due: cleanDate(x?.due), amount: Math.abs(cleanNum(x?.amount)),
-      categoryId: cleanId(x?.categoryId), desc: cleanStr(x?.desc)})).filter(x => x.id && x.date),
+    debts: (Array.isArray(d.debts) ? d.debts : []).map(x => {
+      const r = {id: cleanId(x?.id), created: cleanNum(x?.created),
+        kind: x?.kind === 'utang' ? 'utang' : 'piutang', party: cleanStr(x?.party, 120), ref: cleanStr(x?.ref, 40),
+        date: cleanDate(x?.date), due: cleanDate(x?.due), amount: Math.abs(cleanNum(x?.amount)),
+        categoryId: cleanId(x?.categoryId), desc: cleanStr(x?.desc)};
+      if (cleanId(x?.tradeId)) r.tradeId = x.tradeId;
+      return r;
+    }).filter(x => x.id && x.date),
+    items: list(d.items).map(i => ({id: cleanId(i?.id), code: cleanStr(i?.code, 30), name: cleanStr(i?.name, 120), unit: cleanStr(i?.unit, 20),
+      kind: i?.kind === 'jasa' ? 'jasa' : 'barang', taxType: Object.hasOwn(TAX_TYPES, i?.taxType) ? i.taxType : i?.kind === 'jasa' ? 'jasa' : 'bkp', price: Math.abs(cleanNum(i?.price)), openQty: cleanQty(i?.openQty),
+      openCost: Math.abs(cleanNum(i?.openCost)), minQty: cleanQty(i?.minQty)})).filter(i => i.id && i.name),
+    vendors: list(d.vendors).map(v => ({id: cleanId(v?.id), name: cleanStr(v?.name, 120), pic: cleanStr(v?.pic, 120), phone: cleanStr(v?.phone, 40),
+      email: cleanStr(v?.email, 120), address: cleanStr(v?.address, 300), npwp: cleanStr(v?.npwp, 30), bank: cleanStr(v?.bank, 120),
+      terms: Math.abs(cleanNum(v?.terms)), note: cleanStr(v?.note, 300), pkp: v?.pkp === true, wapu: v?.wapu === true, noPph: v?.noPph === true})).filter(v => v.id && v.name),
+    trades: list(d.trades).map(t => ({id: cleanId(t?.id), created: cleanNum(t?.created), kind: t?.kind === 'purchase' ? 'purchase' : 'sale',
+      date: cleanDate(t?.date), ref: cleanStr(t?.ref, 40), vendorId: t?.vendorId ? cleanId(t.vendorId) : null, party: cleanStr(t?.party, 120),
+      lines: list(t?.lines).map(cleanLine).filter(l => l.itemId && l.qty > 0), discount: Math.abs(cleanNum(t?.discount)), extra: Math.abs(cleanNum(t?.extra)),
+      pay: t?.pay === 'credit' ? 'credit' : 'cash', accountId: t?.accountId ? cleanId(t.accountId) : null, due: cleanDate(t?.due), desc: cleanStr(t?.desc),
+      ppn: Math.abs(cleanNum(t?.ppn)), pph: Math.abs(cleanNum(t?.pph)), wapu: t?.wapu === true, cut: t?.cut === true, ppnCredit: t?.ppnCredit === true,
+      pphParts: list(t?.pphParts).map(x => ({code: Object.hasOwn(PPH_LABEL, x?.code) ? x.code : '23', base: Math.abs(cleanNum(x?.base)), rate: cleanPct(x?.rate, 0), amt: Math.abs(cleanNum(x?.amt))})),
+      fpNo: cleanStr(t?.fpNo, 40), fpDate: cleanDate(t?.fpDate), poNo: cleanStr(t?.poNo, 60), custAddr: cleanStr(t?.custAddr, 300), custNpwp: cleanStr(t?.custNpwp, 30)}))
+      .filter(t => t.id && t.date && t.lines.length),
+    employees: list(d.employees).map(e => ({id: cleanId(e?.id), created: cleanNum(e?.created), name: cleanStr(e?.name, 120), nik: cleanStr(e?.nik, 20),
+      npwp: cleanStr(e?.npwp, 30), title: cleanStr(e?.title, 120), gender: e?.gender === 'P' ? 'P' : 'L',
+      status: Object.hasOwn(EMP_STATUS, e?.status) ? e.status : 'pkwtt', joinDate: cleanDate(e?.joinDate), endDate: cleanDate(e?.endDate), exitDate: cleanDate(e?.exitDate),
+      ptkp: Object.hasOwn(PTKP, e?.ptkp) ? e.ptkp : 'TK/0', wage: Math.abs(cleanNum(e?.wage)), allow: Math.abs(cleanNum(e?.allow)),
+      taxBy: e?.taxBy === 'perusahaan' ? 'perusahaan' : 'karyawan', bpjsTk: e?.bpjsTk !== false, bpjsKes: e?.bpjsKes !== false,
+      bpjsTkNo: cleanStr(e?.bpjsTkNo, 30), bpjsKesNo: cleanStr(e?.bpjsKesNo, 30), bank: cleanStr(e?.bank, 120)})).filter(e => e.id && e.name),
+    payrolls: list(d.payrolls).map(p => ({id: cleanId(p?.id), created: cleanNum(p?.created), period: /^\d{4}-\d{2}$/.test(String(p?.period ?? '')) ? p.period : '',
+      date: cleanDate(p?.date), ref: cleanStr(p?.ref, 40), accountId: cleanId(p?.accountId), lines: list(p?.lines).map(cleanPayLine).filter(l => l.empId)}))
+      .filter(p => p.id && p.period && p.date && p.lines.length),
+    hr: sanitizeHr(d.hr), tax: sanitizeTax(d.tax),
   };
 }
 
@@ -179,8 +299,9 @@ function migrate() {
     const d = defaultState();
     state.accounts = d.accounts; state.categories = d.categories;
   }
-  state.version = 3;
+  state.version = 4;
   fillLr(state);
+  ensureCats(state);
 }
 
 /* ---------- Enkripsi (AES-GCM 256, kunci dari kata sandi lewat PBKDF2-SHA256) ---------- */
@@ -227,7 +348,8 @@ function M() {
     else if (t.type === 'out') bal.set(t.accountId, (bal.get(t.accountId) || 0) - t.amount);
     else { bal.set(t.accountId, (bal.get(t.accountId) || 0) - t.amount); bal.set(t.toAccountId, (bal.get(t.toAccountId) || 0) + t.amount); }
   }
-  memo = {paid, bal, _journal: null, get journal() { return this._journal ||= buildJournal(); }};
+  memo = {paid, bal, _journal: null, get journal() { return this._journal ||= buildJournal(); },
+    _stock: null, get stock() { return this._stock ||= stockCalc(); }};
   return memo;
 }
 
@@ -310,11 +432,11 @@ async function resolveConflict() {
 /* ---------- Penggabungan data mode tanpa akun ke akun ----------
    Data tanpa akun otomatis masuk ke akun saat pengguna masuk. Data di perangkat baru dihapus setelah server
    mengonfirmasi tersimpan, dan penggabungan aman diulang: yang sudah masuk tidak akan tergandakan. */
-const hasData = s => !!(s.tx.length || s.debts.length || s.audit.length || s.accounts.some(a => a.opening) || s.company.name || s.company.logo);
-const hasBooks = s => !!(s.tx.length || s.debts.length || s.accounts.some(a => a.opening));
+const hasBooks = s => !!(s.tx.length || s.debts.length || s.accounts.some(a => a.opening) || s.items.length || s.vendors.length || s.employees.length);
+const hasData = s => !!(hasBooks(s) || s.audit.length || s.company.name || s.company.logo);
 
 function mergeStates(A, L) {
-  const stats = {tx: 0, debts: 0, accounts: 0, categories: 0, renumbered: 0, closed: 0};
+  const stats = {tx: 0, debts: 0, accounts: 0, categories: 0, renumbered: 0, closed: 0, items: 0, vendors: 0, employees: 0, trades: 0, payrolls: 0};
   // Akun server belum berisi pembukuan: seluruh data perangkat dipakai apa adanya
   if (!hasBooks(A)) {
     const S = structuredClone(L);
@@ -374,7 +496,51 @@ function mergeStates(A, L) {
     if (closed(d.date)) stats.closed++;
     S.debts.push({...d, categoryId: catMap.get(d.categoryId) ?? d.categoryId}); stats.debts++;
   }
-  for (const k of ['name', 'tagline', 'logo', 'address', 'npwp', 'nib', 'phone', 'email', 'preparedName', 'checkedName', 'taxYear'])
+  // Barang, vendor, dan karyawan yang sama dipersatukan; stok awal yang berbeda dibuat terpisah agar tidak tertimpa
+  const itemMap = new Map(), venMap = new Map(), empMap = new Map();
+  const noEmployees = !S.employees.length, noTrades = !S.trades.length;
+  for (const i of L.items) {
+    const copyId = ('lokal-' + i.id).slice(0, 40), copy = S.items.find(x => x.id === copyId);
+    if (copy) { itemMap.set(i.id, copy.id); continue; }
+    const same = S.items.find(x => x.id === i.id) || S.items.find(x => x.kind === i.kind && norm(x.name) === norm(i.name));
+    if (same && (!i.openQty || !same.openQty || (same.openQty === i.openQty && same.openCost === i.openCost))) {
+      if (!same.openQty && i.openQty) { same.openQty = i.openQty; same.openCost = i.openCost; if (S.lockedUntil) stats.closed++; }
+      itemMap.set(i.id, same.id);
+    } else if (same) {
+      S.items.push({...i, id: copyId, name: `${i.name} (dari perangkat)`.slice(0, 120)});
+      itemMap.set(i.id, copyId); stats.items++;
+    } else { S.items.push({...i}); stats.items++; }
+  }
+  for (const v of L.vendors) {
+    const same = S.vendors.find(x => x.id === v.id) || S.vendors.find(x => norm(x.name) === norm(v.name));
+    if (same) venMap.set(v.id, same.id); else { S.vendors.push({...v}); stats.vendors++; }
+  }
+  for (const e of L.employees) {
+    const same = S.employees.find(x => x.id === e.id) || S.employees.find(x => e.nik ? x.nik === e.nik : norm(x.name) === norm(e.name));
+    if (same) empMap.set(e.id, same.id); else { S.employees.push({...e}); stats.employees++; }
+  }
+  if (noEmployees && L.employees.length) S.hr = {...L.hr};
+  if (noTrades && L.trades.length) S.tax = {...L.tax};
+  const tradeIds = new Set(S.trades.map(t => t.id));
+  for (const t of L.trades) {
+    if (tradeIds.has(t.id)) continue;
+    const linked = L.tx.find(x => x.tradeId === t.id), ref = linked ? S.tx.find(x => x.id === linked.id)?.ref : null;
+    if (closed(t.date)) stats.closed++;
+    S.trades.push({...t, ref: ref || t.ref, vendorId: t.vendorId ? venMap.get(t.vendorId) ?? t.vendorId : null,
+      accountId: t.accountId ? accMap.get(t.accountId) ?? t.accountId : null,
+      lines: t.lines.map(l => ({...l, itemId: itemMap.get(l.itemId) ?? l.itemId}))});
+    stats.trades++;
+  }
+  const payIds = new Set(S.payrolls.map(p => p.id));
+  for (const p of L.payrolls) {
+    if (payIds.has(p.id)) continue;
+    const linked = L.tx.find(x => x.payrollId === p.id), ref = linked ? S.tx.find(x => x.id === linked.id)?.ref : null;
+    if (closed(p.date)) stats.closed++;
+    S.payrolls.push({...p, ref: ref || p.ref, accountId: accMap.get(p.accountId) ?? p.accountId,
+      lines: p.lines.map(l => ({...l, empId: empMap.get(l.empId) ?? l.empId}))});
+    stats.payrolls++;
+  }
+  for (const k of ['name', 'tagline', 'logo', 'address', 'npwp', 'nib', 'phone', 'email', 'preparedName', 'checkedName', 'taxYear', 'bankInfo', 'invoiceNote'])
     if (!S.company[k] && L.company[k]) S.company[k] = L.company[k];
   const seen = new Set(S.audit.map(auditKey));
   L.audit.forEach(a => { if (!seen.has(auditKey(a))) S.audit.push(a); });
@@ -412,11 +578,11 @@ async function mergeLocalData() {
     fillLr(L);
     if (!hasData(L)) return clearLocalStore();
     const {merged, stats} = mergeStates(state, L);
-    state = merged; state.version = 3;
+    state = merged; state.version = 4; ensureCats(state);
     // Data yang tadinya terenkripsi tidak boleh terkirim ke server tanpa enkripsi
     if (localVault && !vault) { vault = localVault; resetIdle(); }
-    const added = stats.tx + stats.debts + stats.accounts + stats.categories;
-    if (added) log('gabung', 'data', '', `Data tanpa akun digabung ke akun: ${stats.tx} transaksi, ${stats.debts} piutang/utang, ${stats.accounts} akun kas/bank baru, ${stats.categories} kategori baru, ${stats.renumbered} no. bukti diberi akhiran -P, ${stats.closed} data masuk periode yang sudah ditutup`);
+    const added = stats.tx + stats.debts + stats.accounts + stats.categories + stats.items + stats.vendors + stats.employees + stats.trades + stats.payrolls;
+    if (added) log('gabung', 'data', '', `Data tanpa akun digabung ke akun: ${stats.tx} transaksi, ${stats.debts} piutang/utang, ${stats.trades} jual/beli, ${stats.items} barang, ${stats.vendors} vendor, ${stats.employees} karyawan, ${stats.payrolls} penggajian, ${stats.accounts} akun kas/bank baru, ${stats.categories} kategori baru, ${stats.renumbered} no. bukti diberi akhiran -P, ${stats.closed} data masuk periode yang sudah ditutup`);
     localMergePending = true;
     renderAll();
     mergeNote = stats.renumbered || stats.closed || stats.accounts
@@ -660,6 +826,32 @@ function buildJournal() {
     if (a.opening > 0) add('', 'SA', 'Saldo awal ' + a.name, cashAcc(a.id), ACC_OPENING, a.opening, 'saldo');
     if (a.opening < 0) add('', 'SA', 'Saldo awal ' + a.name, ACC_OPENING, cashAcc(a.id), -a.opening, 'saldo');
   });
+  state.items.forEach(i => { if (i.kind === 'barang') add('', 'SA', 'Stok awal ' + i.name, ACC_PERSEDIAAN, ACC_OPENING, Math.round(i.openQty * i.openCost), 'saldo'); });
+  // Harga pokok diakui saat barang terjual: persediaan berkurang, beban HPP bertambah
+  const {cogs, svc} = M().stock;
+  state.trades.forEach(t => {
+    if (t.kind === 'sale') {
+      add(t.date, t.ref, 'Harga pokok ' + t.ref, ACC_HPP, ACC_PERSEDIAAN, cogs.get(t.id) || 0, 'hpp');
+      // Kas/piutang tercatat sebesar yang benar-benar diterima; pendapatan dikoreksi menjadi DPP
+      const rev = catAcc(tradeCat(t)?.id);
+      if (!t.wapu) add(t.date, t.ref, 'PPN keluaran ' + t.ref, rev, ACC_PPN, t.ppn, 'pajak');
+      add(t.date, t.ref, 'PPh dipotong pembeli ' + t.ref, ACC_KREDIT_PPH, rev, t.pph, 'pajak');
+    } else {
+      if (t.wapu) add(t.date, t.ref, 'PPN dipungut (WAPU) ' + t.ref, ACC_PERSEDIAAN, ACC_PPN, t.ppn, 'pajak');
+      add(t.date, t.ref, 'PPh dipotong/dipungut ' + t.ref, ACC_PERSEDIAAN, ACC_PPH_POT, t.pph, 'pajak');
+      if (t.ppnCredit) add(t.date, t.ref, 'PPN masukan ' + t.ref, ACC_PPN_IN, ACC_PERSEDIAAN, t.ppn, 'pajak');
+      add(t.date, t.ref, 'Beban jasa ' + t.ref, ACC_BEBAN_JASA, ACC_PERSEDIAAN, svc.get(t.id) || 0, 'hpp');
+    }
+  });
+  state.payrolls.forEach(p => {
+    const s = paySum(p), gaji = catAcc(sysCat('5-201')?.id), cash = cashAcc(p.accountId), desc = 'Gaji ' + ymLabel(p.period);
+    add(p.date, p.ref, desc, gaji, cash, s.net, 'gaji');
+    if (s.pph >= 0) add(p.date, p.ref, 'PPh 21 ' + ymLabel(p.period), gaji, ACC_PPH21, s.pph, 'gaji');
+    else add(p.date, p.ref, 'Kelebihan PPh 21 ' + ymLabel(p.period), ACC_PPH21, gaji, -s.pph, 'gaji');
+    add(p.date, p.ref, 'Iuran BPJS bagian karyawan ' + ymLabel(p.period), gaji, ACC_BPJS, s.ee, 'gaji');
+    add(p.date, p.ref, 'Iuran BPJS bagian perusahaan ' + ymLabel(p.period), ACC_BEBAN_BPJS, ACC_BPJS, s.co, 'gaji');
+    add(p.date, p.ref, 'Potongan kasbon ' + ymLabel(p.period), gaji, ACC_KASBON, s.deduct, 'gaji');
+  });
   const debtById = new Map(state.debts.map(d => [d.id, d]));
   state.debts.forEach(d => {
     const c = catAcc(d.categoryId), desc = `${d.kind === 'piutang' ? 'Faktur kepada' : 'Tagihan dari'} ${d.party}${d.desc ? ' · ' + d.desc : ''}`;
@@ -667,6 +859,7 @@ function buildJournal() {
     else add(d.date, d.ref, desc, c, ACC_UTANG, d.amount, 'faktur');
   });
   state.tx.forEach(t => {
+    if (t.payrollId) return; // sudah dijurnal lengkap dari data penggajian
     const acc = cashAcc(t.accountId), desc = t.desc || (t.type === 'transfer' ? 'Mutasi antarakun' : catName(t.categoryId));
     if (t.type === 'transfer') return add(t.date, t.ref, desc, cashAcc(t.toAccountId), acc, t.amount, 'mutasi');
     const debt = t.debtId && debtById.get(t.debtId);
@@ -686,8 +879,19 @@ function lrData(from, to) {
   const ins = new Map(), outs = new Map();
   const put = (m, key, label, v) => { const r = m.get(key) || {label, v: 0}; r.v += v; m.set(key, r); };
   if (state.company.basis === 'kas') {
-    for (const t of state.tx) if (inRange(t.date, from, to) && inLR(t))
+    for (const t of state.tx) if (inRange(t.date, from, to) && inLR(t) && !t.payrollId)
       put(t.type === 'in' ? ins : outs, t.categoryId, catLabel(t.categoryId), t.amount);
+    for (const t of state.trades) if (inRange(t.date, from, to)) {
+      if (t.kind === 'purchase') { put(outs, accKey(ACC_BEBAN_JASA), accHTML(ACC_BEBAN_JASA), M().stock.svc.get(t.id) || 0); continue; }
+      put(outs, accKey(ACC_HPP), accHTML(ACC_HPP), M().stock.cogs.get(t.id) || 0);
+      const c = tradeCat(t);
+      put(ins, c?.id, catLabel(c?.id), t.pph - (t.wapu ? 0 : t.ppn));
+    }
+    for (const p of state.payrolls) if (inRange(p.date, from, to)) {
+      const s = paySum(p), g = sysCat('5-201');
+      put(outs, g?.id, catLabel(g?.id), s.net + s.pph + s.ee + s.deduct);
+      put(outs, accKey(ACC_BEBAN_BPJS), accHTML(ACC_BEBAN_BPJS), s.co);
+    }
   } else {
     for (const e of M().journal) {
       if (!e.date || !inRange(e.date, from, to)) continue;
@@ -699,9 +903,10 @@ function lrData(from, to) {
     }
   }
   const list = m => [...m.values()].filter(r => r.v).sort((a, b) => a.label.localeCompare(b.label));
+  const hpp = outs.get(accKey(ACC_HPP))?.v || 0;
   const I = list(ins), O = list(outs);
   const ti = I.reduce((s, r) => s + r.v, 0), to_ = O.reduce((s, r) => s + r.v, 0);
-  return {ins: I, outs: O, ti, to: to_, net: ti - to_};
+  return {ins: I, outs: O, opex: O.filter(r => r !== outs.get(accKey(ACC_HPP))), hpp, ti, to: to_, net: ti - to_};
 }
 
 // Laporan posisi keuangan per tanggal
@@ -763,6 +968,7 @@ function obligations() {
   const omzet = lrData(y + '-01-01', y + '-12-31').ti;
   if (omzet > OMZET_CAP) out.push(['bad', `Peredaran bruto ${y} (${rp(omzet)}) melewati Rp4,8 miliar: tahun pajak berikutnya tidak lagi memakai PPh final 0,5%.`]);
   else if (omzet > OMZET_CAP * 0.8) out.push(['warn', `Peredaran bruto ${y} sudah ${rp(omzet)} (mendekati batas Rp4,8 miliar PPh final).`]);
+  out.push(...bizObligations());
   const suggestedLock = lastDayOf(addMonths(ym, -2));
   if (state.tx.length && (!state.lockedUntil || state.lockedUntil < suggestedLock))
     out.push(['warn', `Belum tutup buku s.d. ${fmtDate(suggestedLock)}. Tutup buku mencegah data periode lalu berubah setelah dilaporkan. <button class="btn sm" data-act="goLock">Tutup buku</button>`]);
@@ -802,6 +1008,10 @@ function renderDashboard() {
     [`Laba/Rugi ${esc(year)}`, rp(lr.net), lr.net >= 0 ? 'in' : 'out', lr.ti ? `Margin laba ${String(margin).replace('.', ',')}%` : ''],
     ['Piutang Belum Tertagih', rp(p.open), '', p.no ? `<span class="out">${p.no} lewat jatuh tempo (${rp(p.overdue)})</span>` : `${p.n} tagihan`],
     ['Utang Belum Dibayar', rp(u.open), '', u.no ? `<span class="out">${u.no} lewat jatuh tempo (${rp(u.overdue)})</span>` : `${u.n} tagihan`],
+    ...(state.trades.length || state.items.length ? [
+      [`Laba Kotor ${esc(year)}`, rp(lr.ti - lr.hpp), lr.ti - lr.hpp >= 0 ? 'in' : 'out', `HPP ${rp(lr.hpp)}`],
+      ['Nilai Persediaan', rp(stockValue()), '', `${state.items.filter(i => i.kind === 'barang').length} jenis barang`],
+    ] : []),
   ].map(statCard).join('');
 
   const ob = obligations();
@@ -940,9 +1150,10 @@ function openTx(id) {
   setTxType(t.type);
   if (t.categoryId) $('txCat').value = t.categoryId;
   const debt = editing?.debtId && state.debts.find(d => d.id === editing.debtId);
-  const locked = editing && isLocked(editing.date);
+  const linked = editing && (editing.tradeId || editing.payrollId);
+  const locked = editing && (isLocked(editing.date) || !!linked);
   $('txLink').style.display = debt || locked ? '' : 'none';
-  $('txLink').textContent = [locked ? lockMsg() : '', debt ? `Pembayaran ${KIND_LABEL[debt.kind].toLowerCase()} — ${debt.party}${debt.ref ? ' · ' + debt.ref : ''}` : ''].filter(Boolean).join(' ');
+  $('txLink').textContent = [linked ? `Transaksi ini dibuat otomatis dari menu ${editing.tradeId ? 'Jual/Beli' : 'Karyawan → Penggajian'}; ubah atau hapus dari sana.` : locked ? lockMsg() : '', debt ? `Pembayaran ${KIND_LABEL[debt.kind].toLowerCase()} — ${debt.party}${debt.ref ? ' · ' + debt.ref : ''}` : ''].filter(Boolean).join(' ');
   document.querySelectorAll('#txTypeSeg button').forEach(b => b.disabled = !!debt || locked);
   $('txDialogTitle').textContent = editing ? (locked ? 'Detail Transaksi' : 'Ubah Transaksi') : 'Transaksi Baru';
   $('txAmount').value = t.amount ? t.amount.toLocaleString('id-ID') : '';
@@ -961,7 +1172,7 @@ $('btnAdd').onclick = () => openTx();
 $('btnCancelTx').onclick = () => $('txDialog').close();
 $('btnPrintTx').onclick = () => { if (editing) printVoucher(editing); };
 $('btnDeleteTx').onclick = () => {
-  if (!editing || isLocked(editing.date)) return toast(lockMsg());
+  if (!editing || isLocked(editing.date) || editing.tradeId || editing.payrollId) return toast(lockMsg());
   const reason = askReason('menghapus transaksi'); if (!reason) return;
   log('hapus', 'transaksi', editing.id, `${txSummary(editing)} · alasan: ${reason}`);
   state.tx = state.tx.filter(t => t !== editing);
@@ -970,7 +1181,7 @@ $('btnDeleteTx').onclick = () => {
 $('txForm').onsubmit = e => {
   const amount = parseNum($('txAmount').value), date = $('txDate').value;
   const fail = msg => { e.preventDefault(); toast(msg); };
-  if (editing && isLocked(editing.date)) return fail(lockMsg());
+  if (editing && (isLocked(editing.date) || editing.tradeId || editing.payrollId)) return fail(lockMsg());
   if (!DATE_RE.test(date)) return fail('Isi tanggal transaksi');
   if (isLocked(date)) return fail(lockMsg());
   if (amount <= 0) return fail('Jumlah harus lebih dari 0');
@@ -1096,7 +1307,8 @@ function openDebt(id) {
   const d = editingDebt || {kind: debtKind, date: today()};
   setDebtKind(d.kind);
   const pays = editingDebt ? debtTx(editingDebt).sort((a, b) => a.date.localeCompare(b.date)) : [];
-  const locked = editingDebt && isLocked(editingDebt.date);
+  const fromTrade = !!editingDebt?.tradeId;
+  const locked = editingDebt && (isLocked(editingDebt.date) || fromTrade);
   // Jenis tidak boleh diganti setelah ada pembayaran (arah transaksinya sudah tercatat)
   document.querySelectorAll('#debtKindSeg button').forEach(b => b.disabled = pays.length > 0 || locked);
   $('debtTitle').textContent = editingDebt ? 'Detail ' + KIND_LABEL[d.kind] : 'Piutang / Utang Baru';
@@ -1109,7 +1321,7 @@ function openDebt(id) {
   if (d.categoryId) $('dCat').value = d.categoryId;
   $('debtForm').querySelectorAll('.form-grid input, .form-grid select, .form-grid textarea').forEach(x => x.disabled = locked);
   $('partyList').innerHTML = [...new Set(state.debts.map(x => x.party))].map(p => `<option value="${esc(p)}">`).join('');
-  $('debtPayments').innerHTML = (locked ? `<div class="notice">${esc(lockMsg())}</div>` : '') + (!editingDebt ? '' : `<h3 style="font-size:13px;margin:0 0 6px">Riwayat pembayaran</h3>` + (pays.length
+  $('debtPayments').innerHTML = (locked ? `<div class="notice">${esc(fromTrade ? 'Data ini dibuat otomatis dari menu Jual/Beli; ubah atau hapus dari sana.' : lockMsg())}</div>` : '') + (!editingDebt ? '' : `<h3 style="font-size:13px;margin:0 0 6px">Riwayat pembayaran</h3>` + (pays.length
     ? `<table><tbody>${pays.map(t => `<tr><td>${fmtDate(t.date)}</td><td>${esc(t.ref)}</td><td class="num">${rp(t.amount)}</td>
         <td class="num"><button type="button" class="btn sm" data-act="editPayment" data-id="${esc(t.id)}">Buka</button></td></tr>`).join('')}
         <tr><td colspan="2"><b>Sisa</b></td><td class="num"><b>${rp(Math.max(0, remainOf(editingDebt)))}</b></td><td></td></tr></tbody></table>`
@@ -1123,7 +1335,7 @@ $('btnCancelDebt').onclick = () => $('debtDialog').close();
 $('debtForm').onsubmit = e => {
   const amount = parseNum($('dAmount').value), party = $('dParty').value.trim().slice(0, 120), date = $('dDate').value;
   const fail = msg => { e.preventDefault(); toast(msg); };
-  if (editingDebt && isLocked(editingDebt.date)) return fail(lockMsg());
+  if (editingDebt && (isLocked(editingDebt.date) || editingDebt.tradeId)) return fail(lockMsg());
   if (!party) return fail('Isi nama pihak');
   if (!DATE_RE.test(date)) return fail('Isi tanggal faktur');
   if (isLocked(date)) return fail(lockMsg());
@@ -1146,7 +1358,7 @@ $('debtForm').onsubmit = e => {
   save(); toast('Data tersimpan');
 };
 $('btnDeleteDebt').onclick = () => {
-  if (!editingDebt || isLocked(editingDebt.date)) return toast(lockMsg());
+  if (!editingDebt || isLocked(editingDebt.date) || editingDebt.tradeId) return toast(lockMsg());
   const n = debtTx(editingDebt).length;
   if (n && debtTx(editingDebt).some(t => isLocked(t.date))) return toast('Ada pembayaran di periode yang sudah ditutup; data ini tidak bisa dihapus.');
   if (!confirm(n ? `Hapus data ini? ${n} transaksi pembayarannya tetap ada di daftar Transaksi, tetapi tidak lagi terhubung.` : 'Hapus data ini?')) return;
@@ -1220,8 +1432,10 @@ function lrTable(L) {
   return `<table>
     <tr class="sect"><td colspan="2">Pendapatan</td></tr>${rows(L.ins)}
     <tr><td><b>Total Pendapatan</b></td><td class="num"><b>${rp(L.ti)}</b></td></tr>
-    <tr class="sect"><td colspan="2">Beban</td></tr>${rows(L.outs)}
-    <tr><td><b>Total Beban</b></td><td class="num"><b>(${rp(L.to)})</b></td></tr>
+    ${L.hpp ? `<tr><td style="padding-left:24px">${accHTML(ACC_HPP)}</td><td class="num">(${rp(L.hpp)})</td></tr>
+    <tr><td><b>Laba Kotor</b></td><td class="num"><b>${rp(L.ti - L.hpp)}</b></td></tr>` : ''}
+    <tr class="sect"><td colspan="2">Beban</td></tr>${rows(L.opex)}
+    <tr><td><b>Total Beban</b></td><td class="num"><b>(${rp(L.to - L.hpp)})</b></td></tr>
     <tr class="total"><td>${L.net >= 0 ? 'LABA BERSIH' : 'RUGI BERSIH'}</td><td class="num ${L.net >= 0 ? 'in' : 'out'}">${rp(L.net)}</td></tr>
   </table>`;
 }
@@ -1253,6 +1467,7 @@ function notesHTML(from, to, N, L) {
     <li><b>Kas dan setara kas</b> terdiri atas kas tunai dan saldo rekening bank: ${state.accounts.map(a => esc(a.name) + ' ' + rp(balance(a.id, N.asOf))).join('; ') || 'nihil'}.</li>
     <li><b>Piutang usaha</b> dicatat sebesar nilai faktur dikurangi pelunasan. Rincian per ${fmtDate(N.asOf)}:<table>${debtRows('piutang')}</table></li>
     <li><b>Utang usaha</b> dicatat sebesar nilai tagihan dikurangi pembayaran. Rincian per ${fmtDate(N.asOf)}:<table>${debtRows('utang')}</table></li>
+    ${state.items.some(i => i.kind === 'barang') ? `<li><b>Persediaan</b> dicatat sebesar biaya perolehan dengan metode rata-rata tertimbang (moving average). Nilai per ${fmtDate(N.asOf)}: ${rp(stockValue(N.asOf))}.</li>` : ''}
     <li><b>Aset tetap</b> dicatat sebesar biaya perolehan. Penyusutan belum dihitung otomatis oleh aplikasi; bila material, catat beban penyusutan sesuai kebijakan entitas.</li>
     <li><b>Perpajakan.</b> ${last ? `Entitas memakai PPh final ${String(c.pphRate).replace('.', ',')}% atas peredaran bruto (PP 55/2022) sampai tahun pajak ${last}.` : `Tarif PPh final yang dipakai ${String(c.pphRate).replace('.', ',')}% atas peredaran bruto (PP 55/2022).`} Beban PPh final periode ini termasuk dalam beban usaha.</li>
     <li><b>Pemisahan harta.</b> Penarikan untuk keperluan pribadi pemilik (prive) periode ini: ${rp(prive)}, dicatat sebagai pengurang ekuitas, bukan beban usaha.</li>
@@ -1270,7 +1485,7 @@ function renderReport() {
   fillSelect($('rAcc'), state.accounts);
   const type = $('rType').value, from = cleanDate($('rFrom').value), to = cleanDate($('rTo').value);
   $('rAccWrap').style.display = type === 'bk' ? '' : 'none';
-  $('rFromWrap').style.display = type === 'umur' || type === 'neraca' || type === 'ns' ? 'none' : '';
+  $('rFromWrap').style.display = ['umur', 'neraca', 'ns', 'stok', 'sdm'].includes(type) ? 'none' : '';
   const period = `Periode ${from ? fmtDate(from) : 'awal'} s.d. ${to ? fmtDate(to) : 'sekarang'}`;
   const dayBefore = from ? new Date(new Date(from).getTime() - 864e5).toISOString().slice(0, 10) : null;
   const inRangeTx = state.tx.filter(t => inRange(t.date, from, to));
@@ -1401,10 +1616,11 @@ function renderReport() {
         || '<tr><td colspan="5" class="muted">Belum ada catatan pada periode ini.</td></tr>'}
     </table><p class="muted" style="font-size:12px">Jejak audit mencatat setiap penambahan, perubahan, dan penghapusan data beserta alasannya. Catatan ini tidak dapat diubah dari aplikasi.</p>`;
   }
+  html ||= bizReport(type, from, to, period);
   $('reportOut').innerHTML = html + (type !== 'audit' ? footerNote() : '');
 }
 ['rType', 'rFrom', 'rTo', 'rAcc'].forEach(id => $(id).oninput = renderReport);
-$('rType').addEventListener('change', () => { if (['umur', 'neraca', 'ns'].includes($('rType').value) && $('rTo').value > today()) { $('rTo').value = today(); renderReport(); } });
+$('rType').addEventListener('change', () => { if (['umur', 'neraca', 'ns', 'stok', 'sdm'].includes($('rType').value) && $('rTo').value > today()) { $('rTo').value = today(); renderReport(); } });
 // Ekspor tabel laporan yang sedang tampil ke CSV (Excel)
 function reportCsv() {
   const rows = [];
@@ -1420,7 +1636,7 @@ function reportCsv() {
 /* ---------- Pengaturan ---------- */
 const PROFILE_FIELDS = {pName: 'name', pTagline: 'tagline', pAddress: 'address', pNpwp: 'npwp', pNib: 'nib', pPhone: 'phone',
   pEmail: 'email', pPrepName: 'preparedName', pPrepTitle: 'preparedTitle', pCheckName: 'checkedName', pCheckTitle: 'checkedTitle',
-  pPph: 'pphRate', pEntity: 'entity', pTaxYear: 'taxYear', pBasis: 'basis'};
+  pPph: 'pphRate', pEntity: 'entity', pTaxYear: 'taxYear', pBasis: 'basis', pBank: 'bankInfo', pInvNote: 'invoiceNote'};
 function renderHeader() {
   const c = state.company;
   $('companyName').textContent = displayName();
@@ -1703,7 +1919,963 @@ function renderInstall() {
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; if (state) renderInstall(); });
 addEventListener('appinstalled', () => { installPrompt = null; if (state) renderInstall(); toast('Aplikasi terpasang'); });
 
-const VIEWS = {dashboard: renderDashboard, transaksi: renderTx, hutang: renderDebts, laporan: renderReport, pengaturan: renderSettings};
+/* ---------- Jual beli, HPP & persediaan ----------
+   HPP memakai rata-rata tertimbang (moving average) dan dihitung ulang dari riwayat, sehingga selalu cocok dengan stok.
+   Penjualan/pembelian otomatis membentuk transaksi kas atau piutang/utang, jadi laporan dan sinkron server ikut terbarui. */
+const itemOf = id => state.items.find(i => i.id === id);
+const vendorOf = id => state.vendors.find(v => v.id === id);
+const sysCat = code => state.categories.find(c => c.code === code);
+const ymLabel = ym => `${MONTHS_FULL[+ym.slice(5) - 1]} ${ym.slice(0, 4)}`;
+const fmtQty = n => (+n).toLocaleString('id-ID', {maximumFractionDigits: 3});
+const pct = n => String(Math.round(n * 10) / 10).replace('.', ',') + '%';
+// tradeTotal = DPP (harga setelah diskon, sebelum PPN); tradePay = yang benar-benar berpindah tangan setelah PPN, pungutan WAPU, dan potongan PPh
+const tradeTotal = t => Math.max(0, Math.round(t.lines.reduce((s, l) => s + l.qty * l.price, 0)) - t.discount + t.extra);
+const tradePay = t => tradeTotal(t) + (t.wapu ? 0 : t.ppn) - t.pph;
+const tradeCat = t => sysCat(t.kind === 'purchase' ? ACC_PERSEDIAAN.code : t.lines.every(l => itemOf(l.itemId)?.kind === 'jasa') ? '4-102' : '4-101');
+const pphRateOf = code => state.tax[{22: 'pph22', 23: 'pph23', '23r': 'pph23r', '42k': 'pph42k', '42s': 'pph42s'}[code]];
+function taxCalc(d) {
+  const T = state.tax, buy = d.kind === 'purchase', v = buy ? vendorOf(d.vendorId) : null, dpp = tradeTotal(d);
+  const sub = d.lines.reduce((s, l) => s + l.qty * l.price, 0) || 1;
+  const wapu = buy ? !!v?.wapu : !!d.wapu, charge = buy ? !!v?.pkp : T.pkp, cut = buy ? !v?.noPph : !!d.cut && !T.skb;
+  let ppnBase = 0; const bases = {};
+  for (const l of d.lines) {
+    const ty = TAX_TYPES[itemOf(l.itemId)?.taxType] || TAX_TYPES.bkp, share = l.qty * l.price * dpp / sub;
+    if (ty.ppn) ppnBase += ty.lux ? share : share * T.dppNum / T.dppDen;
+    bases[ty.pph] = (bases[ty.pph] || 0) + share;
+  }
+  const ppn = charge ? Math.floor(Math.round(ppnBase * T.ppnRate) / 100) : 0;
+  const pphParts = Object.entries(bases).filter(([code]) => cut && (code !== '22' || wapu))
+    .map(([code, b]) => ({code, base: Math.round(b), rate: pphRateOf(code), amt: Math.floor(Math.round(b * pphRateOf(code)) / 100)})).filter(x => x.amt > 0);
+  return {ppn, wapu, pph: pphParts.reduce((s, x) => s + x.amt, 0), pphParts, ppnCredit: buy && T.pkp};
+}
+const partyOf = t => t.kind === 'purchase' ? vendorOf(t.vendorId)?.name || t.party || '—' : t.party || 'Umum';
+const tradeSummary = t => `${t.ref} · ${t.date} · ${t.kind === 'sale' ? 'Penjualan' : 'Pembelian'} · ${partyOf(t)} · ${rp(tradeTotal(t))} · ${t.pay === 'cash' ? 'tunai' : 'kredit'}`;
+function nextCode(prefix, date, used) {
+  const p = `${prefix}-${date.slice(2, 4)}${date.slice(5, 7)}-`;
+  let max = 0;
+  for (const r of used) if ((r || '').startsWith(p)) max = Math.max(max, parseInt(r.slice(p.length)) || 0);
+  return p + String(max + 1).padStart(3, '0');
+}
+
+function stockCalc(trades = state.trades, items = state.items) {
+  const stock = new Map(), cogs = new Map(), svc = new Map(), neg = new Set();
+  items.forEach(i => { if (i.kind === 'barang') stock.set(i.id, {qty: i.openQty, value: Math.round(i.openQty * i.openCost)}); });
+  const order = [...trades].sort((a, b) => a.date.localeCompare(b.date) || (a.kind === b.kind ? 0 : a.kind === 'purchase' ? -1 : 1) || a.created - b.created);
+  const r3 = n => Math.round(n * 1000) / 1000;
+  for (const t of order) {
+    if (t.kind === 'purchase') {
+      // Diskon dan ongkos dibagi ke tiap barang sesuai nilainya, sisa pembulatan masuk ke baris terakhir
+      const sub = t.lines.reduce((s, l) => s + l.qty * l.price, 0), total = tradeTotal(t) + (t.ppnCredit ? 0 : t.ppn || 0);
+      let left = total;
+      t.lines.forEach((l, n) => {
+        const v = n === t.lines.length - 1 ? left : Math.round(l.qty * l.price * total / (sub || 1));
+        left -= v;
+        const s = stock.get(l.itemId);
+        if (s) { s.qty = r3(s.qty + l.qty); s.value += v; } else svc.set(t.id, (svc.get(t.id) || 0) + v);
+      });
+    } else {
+      let c = 0;
+      for (const l of t.lines) {
+        const s = stock.get(l.itemId);
+        if (!s) continue;
+        if (l.qty > s.qty + 1e-9) neg.add(l.itemId);
+        const v = s.qty > 0 ? Math.round(s.value * Math.min(l.qty, s.qty) / s.qty) : 0;
+        s.qty = r3(s.qty - l.qty); s.value -= v; c += v;
+      }
+      cogs.set(t.id, c);
+    }
+  }
+  return {stock, cogs, svc, neg};
+}
+const stockAsOf = upTo => upTo ? stockCalc(state.trades.filter(t => t.date <= upTo)).stock : M().stock.stock;
+const stockValue = upTo => [...stockAsOf(upTo).values()].reduce((s, x) => s + x.value, 0);
+
+let tradeTab = 'trades', tradeKind = 'sale', editingTrade = null, tradeLines = [];
+function renderTrade() {
+  document.querySelectorAll('#tradeTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tradeTab));
+  ['trades', 'items', 'vendors', 'tax'].forEach(k => $('trade-' + k).style.display = k === tradeTab ? '' : 'none');
+  const from = $('tFrom').value, to = $('tTo').value, kind = $('tKind').value, q = $('tSearch').value.toLowerCase();
+  const inPeriod = state.trades.filter(t => inRange(t.date, from, to));
+  const cogs = M().stock.cogs;
+  const sales = inPeriod.filter(t => t.kind === 'sale'), rev = sales.reduce((s, t) => s + tradeTotal(t), 0), hpp = sales.reduce((s, t) => s + (cogs.get(t.id) || 0), 0);
+  $('tradeCards').innerHTML = [
+    ['Penjualan', rp(rev), 'in', `${sales.length} transaksi`],
+    ['Harga pokok (HPP)', rp(hpp), 'out'],
+    ['Laba kotor', rp(rev - hpp), rev - hpp >= 0 ? 'in' : 'out', rev ? 'Margin ' + pct((rev - hpp) / rev * 100) : ''],
+    ['Pembelian', rp(inPeriod.filter(t => t.kind === 'purchase').reduce((s, t) => s + tradeTotal(t), 0)), ''],
+    ['Nilai persediaan', rp(stockValue()), ''],
+  ].map(statCard).join('');
+  if (tradeTab === 'items') return renderItems();
+  if (tradeTab === 'vendors') return renderVendors();
+  if (tradeTab === 'tax') return renderTaxRules();
+  const rows = sorted(inPeriod).filter(t => (!kind || t.kind === kind) && (!q || (t.ref + ' ' + partyOf(t)).toLowerCase().includes(q)));
+  $('tradeBody').innerHTML = rows.length ? rows.slice(0, 500).map(t => {
+    const total = tradeTotal(t), sale = t.kind === 'sale', c = cogs.get(t.id) || 0;
+    return `<tr>
+      <td data-label="Tanggal">${fmtDate(t.date)}</td><td data-label="No. bukti">${esc(t.ref)}</td>
+      <td data-label="Jenis"><span class="badge ${sale ? 'in' : 'out'}">${sale ? 'Jual' : 'Beli'}</span></td>
+      <td data-label="Pihak">${esc(partyOf(t))}</td><td data-label="Bayar">${t.pay === 'cash' ? 'Tunai' : 'Kredit'}</td>
+      <td data-label="Total" class="num"><b>${rp(total)}</b></td>
+      <td data-label="HPP" class="num">${sale ? rp(c) : '—'}</td>
+      <td data-label="Laba" class="num ${total - c >= 0 ? 'in' : 'out'}">${sale ? rp(total - c) : '—'}</td>
+      <td data-label="" class="no-print num"><button class="btn sm" data-act="openTrade" data-id="${esc(t.id)}">Buka</button></td></tr>`;
+  }).join('') : '<tr><td colspan="9" class="empty" data-label="">Belum ada penjualan atau pembelian.</td></tr>';
+}
+['tFrom', 'tTo', 'tKind'].forEach(id => $(id).oninput = () => renderTrade());
+$('tSearch').oninput = debounce(() => renderTrade());
+document.querySelectorAll('#tradeTabs button').forEach(b => b.onclick = () => { tradeTab = b.dataset.tab; renderTrade(); });
+
+function renderItems() {
+  const st = M().stock.stock;
+  $('itemBody').innerHTML = state.items.length ? state.items.slice().sort((a, b) => a.name.localeCompare(b.name)).map(i => {
+    const s = st.get(i.id), low = s && i.minQty && s.qty <= i.minQty;
+    return `<tr><td data-label="Kode">${esc(i.code)}</td><td data-label="Nama"><b>${esc(i.name)}</b>${i.kind === 'jasa' ? ' <span class="badge tr">Jasa</span>' : ''}</td>
+      <td data-label="Stok" class="num ${low ? 'out' : ''}">${s ? fmtQty(s.qty) + ' ' + esc(i.unit) : '—'}</td>
+      <td data-label="HPP rata-rata" class="num">${s && s.qty ? rp(s.value / s.qty) : '—'}</td>
+      <td data-label="Harga jual" class="num">${rp(i.price)}</td><td data-label="Nilai stok" class="num">${s ? rp(s.value) : '—'}</td>
+      <td data-label="" class="no-print num"><button class="btn sm" data-act="openItem" data-id="${esc(i.id)}">Ubah</button></td></tr>`;
+  }).join('') : '<tr><td colspan="7" class="empty" data-label="">Belum ada barang atau jasa.</td></tr>';
+}
+function renderVendors() {
+  const bought = new Map();
+  state.trades.forEach(t => { if (t.kind === 'purchase') bought.set(t.vendorId, (bought.get(t.vendorId) || 0) + tradeTotal(t)); });
+  const owed = new Map();
+  state.debts.forEach(d => { if (d.kind === 'utang' && d.tradeId) { const v = state.trades.find(t => t.id === d.tradeId)?.vendorId; owed.set(v, (owed.get(v) || 0) + Math.max(0, remainOf(d))); } });
+  $('vendorBody').innerHTML = state.vendors.length ? state.vendors.slice().sort((a, b) => a.name.localeCompare(b.name)).map(v => `<tr>
+    <td data-label="Vendor"><b>${esc(v.name)}</b></td><td data-label="Kontak">${esc([v.pic, v.phone].filter(Boolean).join(' · '))}</td>
+    <td data-label="Pajak">${v.pkp ? '<span class="badge in">PKP</span> ' : ''}${v.wapu ? '<span class="badge warn">WAPU</span>' : ''}</td>
+    <td data-label="Tempo">${v.terms ? v.terms + ' hari' : 'Tunai'}</td>
+    <td data-label="Total beli" class="num">${rp(bought.get(v.id) || 0)}</td><td data-label="Utang" class="num">${rp(owed.get(v.id) || 0)}</td>
+    <td data-label="" class="no-print num"><button class="btn sm" data-act="openVendor" data-id="${esc(v.id)}">Ubah</button></td></tr>`).join('')
+    : '<tr><td colspan="7" class="empty" data-label="">Belum ada vendor/supplier.</td></tr>';
+}
+
+/* Dialog barang */
+let editingItem = null, afterItem = null;
+function openItem(id) {
+  editingItem = id ? itemOf(id) : null;
+  const i = editingItem || {kind: 'barang', unit: 'pcs'};
+  const used = editingItem && state.trades.some(t => t.lines.some(l => l.itemId === id));
+  $('itemTitle').textContent = editingItem ? 'Ubah Barang / Jasa' : 'Barang / Jasa Baru';
+  $('iName').value = i.name || ''; $('iCode').value = i.code || ''; $('iKind').value = i.kind; $('iUnit').value = i.unit || '';
+  $('iTax').value = i.taxType || 'bkp';
+  $('iPrice').value = i.price ? i.price.toLocaleString('id-ID') : ''; $('iMin').value = i.minQty || '';
+  $('iOpenQty').value = i.openQty || ''; $('iOpenCost').value = i.openCost ? i.openCost.toLocaleString('id-ID') : '';
+  $('iKind').disabled = !!used;
+  const lockOpen = !!state.lockedUntil && !!editingItem;
+  $('iOpenQty').disabled = $('iOpenCost').disabled = lockOpen;
+  $('iHint').textContent = lockOpen ? 'Stok awal terkunci karena sudah tutup buku.' : 'Stok awal = sisa barang saat mulai memakai aplikasi, dengan harga pokok per satuan. Nilainya masuk Persediaan di neraca.';
+  $('btnDeleteItem').style.display = editingItem ? '' : 'none';
+  $('itemDialog').showModal();
+}
+moneyInput($('iPrice')); moneyInput($('iOpenCost'));
+$('iTax').innerHTML = Object.entries(TAX_TYPES).map(([k, t]) => `<option value="${k}">${esc(t.label)}</option>`).join('');
+$('iTax').onchange = () => { $('iKind').value = TAX_TYPES[$('iTax').value].kind; };
+$('iKind').onchange = () => { if (TAX_TYPES[$('iTax').value].kind !== $('iKind').value) $('iTax').value = $('iKind').value === 'jasa' ? 'jasa' : 'bkp'; };
+$('btnCancelItem').onclick = () => $('itemDialog').close();
+$('itemForm').onsubmit = e => {
+  const fail = msg => { e.preventDefault(); toast(msg); };
+  const name = $('iName').value.trim().slice(0, 120);
+  if (!name) return fail('Isi nama barang/jasa');
+  if (state.items.some(x => x !== editingItem && x.name.toLowerCase() === name.toLowerCase())) return fail('Nama ini sudah ada');
+  const data = {name, code: $('iCode').value.trim().slice(0, 30), kind: $('iKind').value === 'jasa' ? 'jasa' : 'barang', taxType: Object.hasOwn(TAX_TYPES, $('iTax').value) ? $('iTax').value : 'bkp', unit: $('iUnit').value.trim().slice(0, 20),
+    price: parseNum($('iPrice').value), minQty: cleanQty(String($('iMin').value).replace(',', '.')),
+    openQty: cleanQty(String($('iOpenQty').value).replace(',', '.')), openCost: parseNum($('iOpenCost').value)};
+  if (data.kind === 'jasa') data.openQty = data.openCost = 0;
+  if (state.lockedUntil && !editingItem && data.openQty) return fail('Stok awal tidak bisa diisi setelah tutup buku; catat sebagai pembelian.');
+  if (editingItem) {
+    const cand = state.items.map(x => x === editingItem ? {...x, ...data} : x);
+    if (stockCalc(state.trades, cand).neg.size) return fail('Stok awal terlalu kecil untuk penjualan yang sudah tercatat');
+    const before = `${editingItem.name} stok awal ${editingItem.openQty} @ ${rp(editingItem.openCost)}`;
+    Object.assign(editingItem, data);
+    log('ubah', 'barang', editingItem.id, `${before} ⇒ ${data.name} stok awal ${data.openQty} @ ${rp(data.openCost)}`);
+  } else {
+    const it = {id: uid(), ...data};
+    state.items.push(it); editingItem = it;
+    log('tambah', 'barang', it.id, `${it.name} · stok awal ${it.openQty} @ ${rp(it.openCost)}`);
+  }
+  save(); toast('Barang tersimpan');
+  if (afterItem) { afterItem(editingItem); afterItem = null; }
+};
+$('btnDeleteItem').onclick = () => {
+  if (!editingItem) return;
+  if (state.trades.some(t => t.lines.some(l => l.itemId === editingItem.id))) return toast('Barang sudah dipakai di jual/beli, tidak bisa dihapus');
+  if (editingItem.openQty && state.lockedUntil) return toast('Barang berstok awal tidak bisa dihapus setelah tutup buku');
+  if (!confirm('Hapus barang ini?')) return;
+  log('hapus', 'barang', editingItem.id, editingItem.name);
+  state.items = state.items.filter(x => x !== editingItem);
+  $('itemDialog').close(); save();
+};
+
+/* Dialog vendor */
+let editingVendor = null, afterVendor = null;
+const VENDOR_FIELDS = {vName: 'name', vPic: 'pic', vPhone: 'phone', vEmail: 'email', vAddress: 'address', vNpwp: 'npwp', vBank: 'bank', vNote: 'note'};
+function openVendor(id) {
+  editingVendor = id ? vendorOf(id) : null;
+  const v = editingVendor || {};
+  $('vendorTitle').textContent = editingVendor ? 'Ubah Vendor / Supplier' : 'Vendor / Supplier Baru';
+  Object.entries(VENDOR_FIELDS).forEach(([el, k]) => $(el).value = v[k] || '');
+  $('vTerms').value = v.terms || '';
+  $('vPkp').checked = !!v.pkp; $('vWapu').checked = !!v.wapu; $('vNoPph').checked = !!v.noPph;
+  $('btnDeleteVendor').style.display = editingVendor ? '' : 'none';
+  $('vendorDialog').showModal();
+}
+$('btnCancelVendor').onclick = () => $('vendorDialog').close();
+$('vendorForm').onsubmit = e => {
+  const fail = msg => { e.preventDefault(); toast(msg); };
+  const name = $('vName').value.trim();
+  if (!name) return fail('Isi nama vendor');
+  if (state.vendors.some(x => x !== editingVendor && x.name.toLowerCase() === name.toLowerCase())) return fail('Vendor ini sudah ada');
+  const data = {terms: Math.abs(parseInt($('vTerms').value) || 0), pkp: $('vPkp').checked, wapu: $('vWapu').checked, noPph: $('vNoPph').checked};
+  Object.entries(VENDOR_FIELDS).forEach(([el, k]) => data[k] = $(el).value.trim().slice(0, k === 'address' || k === 'note' ? 300 : 120));
+  if (editingVendor) { Object.assign(editingVendor, data); log('ubah', 'vendor', editingVendor.id, data.name); }
+  else { editingVendor = {id: uid(), ...data}; state.vendors.push(editingVendor); log('tambah', 'vendor', editingVendor.id, data.name); }
+  save(); toast('Vendor tersimpan');
+  if (afterVendor) { afterVendor(editingVendor); afterVendor = null; }
+};
+$('btnDeleteVendor').onclick = () => {
+  if (!editingVendor) return;
+  if (state.trades.some(t => t.vendorId === editingVendor.id)) return toast('Vendor sudah dipakai di pembelian, tidak bisa dihapus');
+  if (!confirm('Hapus vendor ini?')) return;
+  log('hapus', 'vendor', editingVendor.id, editingVendor.name);
+  state.vendors = state.vendors.filter(x => x !== editingVendor);
+  $('vendorDialog').close(); save();
+};
+
+/* Dialog jual/beli */
+const tradeDebt = t => state.debts.find(d => d.tradeId === t.id);
+const tradeReadOnly = t => {
+  if (!t) return '';
+  if (isLocked(t.date)) return lockMsg();
+  const d = tradeDebt(t);
+  return d && paidOf(d) > 0 ? 'Sudah ada pelunasan di Piutang/Utang. Hapus pelunasannya dulu bila data ini perlu diubah.' : '';
+};
+function tradeItems() { return state.items; }
+function setTradeKind(k) {
+  tradeKind = k;
+  document.querySelectorAll('#tradeKindSeg button').forEach(b => b.classList.toggle('on', b.dataset.k === k));
+  $('tCustWrap').style.display = k === 'sale' ? '' : 'none';
+  $('tVendorWrap').style.display = k === 'sale' ? 'none' : '';
+  $('tExtraWrap').style.display = k === 'sale' ? 'none' : '';
+  ['tAddrWrap', 'tCustNpwpWrap', 'tPoWrap'].forEach(id => $(id).style.display = k === 'sale' ? '' : 'none');
+  $('tSaleTax').style.display = k === 'sale' ? 'flex' : 'none';
+  $('tAccLabel').textContent = k === 'sale' ? 'Masuk ke akun' : 'Dibayar dari akun';
+  if ($('tRef').dataset.auto === '1') refreshTradeRef();
+  renderTradeLines();
+}
+const refreshTradeRef = () => { if ($('tDate').value) $('tRef').value = nextCode(tradeKind === 'sale' ? 'INV' : 'BL', $('tDate').value, state.trades.map(t => t.ref)); };
+function setTradePay() {
+  const credit = $('tPay').value === 'credit';
+  $('tAccWrap').style.display = credit ? 'none' : '';
+  $('tDueWrap').style.display = credit ? '' : 'none';
+}
+function renderTradeLines() {
+  const opts = tradeItems().map(i => `<option value="${esc(i.id)}">${esc(i.name)}</option>`).join('');
+  $('tLines').innerHTML = tradeLines.map((l, n) => `<div class="tline" data-n="${n}">
+    <select class="tl-item" aria-label="Barang"><option value="">Pilih…</option>${opts}</select>
+    <input class="tl-qty" inputmode="decimal" placeholder="Jumlah" aria-label="Jumlah" value="${l.qty ? String(l.qty).replace('.', ',') : ''}">
+    <input class="tl-price" inputmode="numeric" placeholder="${tradeKind === 'sale' ? 'Harga jual' : 'Harga beli'}" aria-label="Harga" value="${l.price ? l.price.toLocaleString('id-ID') : ''}">
+    <button type="button" class="btn sm danger" data-act="delLine" data-id="${n}" aria-label="Hapus baris">✕</button></div>`).join('');
+  $('tLines').querySelectorAll('.tline').forEach((row, n) => { row.querySelector('.tl-item').value = tradeLines[n].itemId || ''; });
+  tradeSummaryBox();
+}
+function tradeDraft() {
+  const d = {...(editingTrade || {id: 'draft', created: Date.now()}), kind: tradeKind, date: $('tDate').value, ref: $('tRef').value.trim().slice(0, 40),
+    lines: tradeLines.filter(l => l.itemId && l.qty > 0).map(l => ({...l})), discount: parseNum($('tDiscount').value),
+    extra: tradeKind === 'purchase' ? parseNum($('tExtra').value) : 0, pay: $('tPay').value === 'credit' ? 'credit' : 'cash',
+    vendorId: tradeKind === 'purchase' ? $('tVendor').value || null : null, party: tradeKind === 'sale' ? $('tCust').value.trim().slice(0, 120) : '',
+    accountId: $('tPay').value === 'credit' ? null : $('tAcc').value, due: $('tPay').value === 'credit' ? $('tDue').value : '', desc: $('tDesc').value.trim().slice(0, 500),
+    wapu: tradeKind === 'sale' && $('tWapu').checked, cut: tradeKind === 'sale' && $('tCut').checked, fpNo: $('tFpNo').value.trim().slice(0, 40), fpDate: $('tFpDate').value,
+    poNo: tradeKind === 'sale' ? $('tPo').value.trim().slice(0, 60) : '', custAddr: tradeKind === 'sale' ? $('tCustAddr').value.trim().slice(0, 300) : '', custNpwp: tradeKind === 'sale' ? $('tCustNpwp').value.trim().slice(0, 30) : ''};
+  return Object.assign(d, taxCalc(d));
+}
+function tradeSummaryBox() {
+  const d = tradeDraft(), total = tradeTotal(d), sale = d.kind === 'sale';
+  const tax = `<div>DPP ${rp(total)} · PPN ${rp(d.ppn)}${d.wapu && d.ppn ? ' (dipungut WAPU, tidak ' + (sale ? 'diterima' : 'dibayar ke vendor') + ')' : ''}${d.pphParts.map(x => ` · ${PPH_LABEL[x.code]} ${String(x.rate).replace('.', ',')}% ${rp(x.amt)}`).join('')}</div>
+    <div>${sale ? 'Diterima' : 'Dibayar ke vendor'}: <b>${rp(tradePay(d))}</b></div>`;
+  if (!sale || !DATE_RE.test(d.date)) { $('tSummary').innerHTML = tax; return; }
+  const r = stockCalc([...state.trades.filter(t => t !== editingTrade), d]), c = r.cogs.get(d.id) || 0, short = d.lines.filter(l => r.neg.has(l.itemId));
+  $('tSummary').innerHTML = `${tax}HPP <b>${rp(c)}</b> · Laba <b class="${total - c >= 0 ? 'in' : 'out'}">${rp(total - c)}</b>${total ? ' (' + pct((total - c) / total * 100) + ')' : ''}
+    ${short.length ? `<div class="out">Stok tidak cukup: ${short.map(l => esc(itemOf(l.itemId)?.name)).join(', ')}</div>` : ''}`;
+}
+$('tLines').addEventListener('input', e => {
+  const row = e.target.closest('.tline'); if (!row) return;
+  const l = tradeLines[+row.dataset.n];
+  if (e.target.classList.contains('tl-item')) {
+    l.itemId = e.target.value;
+    const it = itemOf(l.itemId), s = M().stock.stock.get(l.itemId);
+    const price = tradeKind === 'sale' ? it?.price : s && s.qty ? Math.round(s.value / s.qty) : it?.openCost;
+    if (price && !l.price) { l.price = price; row.querySelector('.tl-price').value = price.toLocaleString('id-ID'); }
+  } else if (e.target.classList.contains('tl-qty')) l.qty = cleanQty(e.target.value.replace(/\./g, '').replace(',', '.'));
+  else if (e.target.classList.contains('tl-price')) { l.price = parseNum(e.target.value); e.target.value = l.price ? l.price.toLocaleString('id-ID') : ''; }
+  tradeSummaryBox();
+});
+['tDiscount', 'tExtra'].forEach(id => { moneyInput($(id)); $(id).addEventListener('input', tradeSummaryBox); });
+$('tWapu').onchange = () => { $('tCut').checked = $('tWapu').checked && !state.tax.skb; tradeSummaryBox(); };
+$('tCut').onchange = tradeSummaryBox;
+$('tDate').onchange = () => { if ($('tRef').dataset.auto === '1') refreshTradeRef(); tradeSummaryBox(); };
+$('tRef').oninput = () => { $('tRef').dataset.auto = ''; };
+$('tPay').onchange = setTradePay;
+$('tVendor').onchange = () => {
+  const v = vendorOf($('tVendor').value);
+  tradeSummaryBox();
+  if (v?.terms) { $('tPay').value = 'credit'; setTradePay(); if ($('tDate').value) $('tDue').value = new Date(new Date($('tDate').value).getTime() + v.terms * 864e5).toISOString().slice(0, 10); }
+};
+document.querySelectorAll('#tradeKindSeg button').forEach(b => b.onclick = () => setTradeKind(b.dataset.k));
+$('btnAddLine').onclick = () => { tradeLines.push({itemId: '', qty: 1, price: 0}); renderTradeLines(); };
+$('btnNewItem').onclick = () => {
+  afterItem = it => { const empty = tradeLines.find(l => !l.itemId); const price = tradeKind === 'sale' ? it.price : it.openCost;
+    if (empty) { empty.itemId = it.id; empty.price ||= price; } else tradeLines.push({itemId: it.id, qty: 1, price}); renderTradeLines(); };
+  openItem();
+};
+$('btnNewVendor').onclick = () => {
+  afterVendor = v => { fillSelect($('tVendor'), state.vendors, 'Pilih vendor', x => x.name); $('tVendor').value = v.id; $('tVendor').onchange(); };
+  openVendor();
+};
+function openTrade(id, kind) {
+  if (!state.accounts.length) return toast('Tambahkan akun dulu di menu Atur');
+  editingTrade = id ? state.trades.find(t => t.id === id) : null;
+  const t = editingTrade || {kind: kind || 'sale', date: today(), pay: 'cash', lines: [], discount: 0, extra: 0};
+  $('tDate').value = t.date; $('tDesc').value = t.desc || ''; $('tCust').value = t.party || '';
+  $('tRef').dataset.auto = editingTrade ? '' : '1'; $('tRef').value = t.ref || '';
+  $('tPay').value = t.pay; $('tDue').value = t.due || '';
+  fillSelect($('tAcc'), state.accounts);
+  fillSelect($('tVendor'), state.vendors, 'Pilih vendor', x => x.name);
+  $('tVendor').value = t.vendorId || '';
+  if (t.accountId) $('tAcc').value = t.accountId;
+  $('tWapu').checked = !!t.wapu && t.kind === 'sale'; $('tCut').checked = !!t.cut; $('tFpNo').value = t.fpNo || ''; $('tFpDate').value = t.fpDate || '';
+  $('tPo').value = t.poNo || ''; $('tCustAddr').value = t.custAddr || ''; $('tCustNpwp').value = t.custNpwp || '';
+  $('tDiscount').value = t.discount ? t.discount.toLocaleString('id-ID') : '';
+  $('tExtra').value = t.extra ? t.extra.toLocaleString('id-ID') : '';
+  $('custList').innerHTML = [...new Set(state.trades.filter(x => x.kind === 'sale' && x.party).map(x => x.party))].map(p => `<option value="${esc(p)}">`).join('');
+  tradeLines = t.lines.length ? t.lines.map(l => ({...l})) : [{itemId: '', qty: 1, price: 0}];
+  setTradeKind(t.kind); setTradePay();
+  const ro = tradeReadOnly(editingTrade);
+  $('tradeTitle').textContent = editingTrade ? (t.kind === 'sale' ? 'Detail Penjualan' : 'Detail Pembelian') : 'Jual / Beli Baru';
+  $('tradeNote').style.display = ro ? '' : 'none'; $('tradeNote').textContent = ro;
+  $('tradeForm').querySelectorAll('.bd input, .bd select, .bd textarea, .bd button').forEach(x => x.disabled = !!ro);
+  document.querySelectorAll('#tradeKindSeg button').forEach(b => b.disabled = !!editingTrade);
+  $('btnSaveTrade').style.display = ro ? 'none' : '';
+  $('btnDeleteTrade').style.display = editingTrade && !ro ? '' : 'none';
+  $('btnPrintTrade').style.display = editingTrade && t.kind === 'sale' ? '' : 'none';
+  $('tradeDialog').showModal();
+}
+// Membuat atau memperbarui transaksi kas / piutang-utang yang menyertai jual beli
+function postTrade(t) {
+  const sale = t.kind === 'sale', total = tradePay(t), categoryId = tradeCat(t)?.id;
+  const desc = (t.desc || `${sale ? 'Penjualan kepada' : 'Pembelian dari'} ${partyOf(t)}`).slice(0, 500);
+  const tx = state.tx.find(x => x.tradeId === t.id), debt = tradeDebt(t);
+  if (t.pay === 'cash') {
+    if (debt) state.debts = state.debts.filter(d => d !== debt);
+    const data = {type: sale ? 'in' : 'out', date: t.date, ref: t.ref, amount: total, accountId: t.accountId, categoryId, toAccountId: null, desc, tradeId: t.id};
+    if (tx) Object.assign(tx, data); else state.tx.push({id: uid(), created: Date.now(), ...data});
+  } else {
+    if (tx) state.tx = state.tx.filter(x => x !== tx);
+    const data = {kind: sale ? 'piutang' : 'utang', party: partyOf(t), ref: t.ref, date: t.date, due: t.due, amount: total, categoryId, desc, tradeId: t.id};
+    if (debt) Object.assign(debt, data); else state.debts.push({id: uid(), created: Date.now(), ...data});
+  }
+}
+$('btnCancelTrade').onclick = () => $('tradeDialog').close();
+$('tradeForm').onsubmit = e => {
+  const fail = msg => { e.preventDefault(); toast(msg); };
+  if (tradeReadOnly(editingTrade)) return fail(tradeReadOnly(editingTrade));
+  const d = tradeDraft();
+  if (!DATE_RE.test(d.date)) return fail('Isi tanggal');
+  if (isLocked(d.date)) return fail(lockMsg());
+  if (!d.ref) return fail('No. bukti wajib diisi');
+  if (state.trades.some(t => t !== editingTrade && t.ref === d.ref) || state.tx.some(t => t.ref === d.ref && t.tradeId !== d.id)) return fail(`No. bukti ${d.ref} sudah dipakai`);
+  if (d.kind === 'purchase' && !d.vendorId) return fail('Pilih vendor/supplier');
+  if (!d.lines.length) return fail('Tambahkan minimal satu barang');
+  if (tradeTotal(d) <= 0 || tradePay(d) <= 0) return fail('Total harus lebih dari 0');
+  if (d.pay === 'credit' && d.kind === 'sale' && !d.party) return fail('Isi nama pelanggan untuk penjualan kredit');
+  if (d.pay === 'credit' && d.due && d.due < d.date) return fail('Jatuh tempo tidak boleh sebelum tanggal');
+  if (d.pay === 'cash' && !d.accountId) return fail('Pilih akun kas/bank');
+  const id = editingTrade?.id || uid(), cand = {...d, id};
+  const r = stockCalc([...state.trades.filter(t => t !== editingTrade), cand]);
+  if (r.neg.size) return fail('Stok tidak cukup: ' + [...r.neg].map(x => itemOf(x)?.name).join(', '));
+  if (editingTrade) {
+    const before = tradeSummary(editingTrade);
+    Object.assign(editingTrade, cand);
+    postTrade(editingTrade);
+    log('ubah', 'jual beli', id, `${before} ⇒ ${tradeSummary(editingTrade)}`);
+  } else {
+    state.trades.push(cand);
+    postTrade(cand);
+    log('tambah', 'jual beli', id, tradeSummary(cand));
+  }
+  save(); toast(`${d.kind === 'sale' ? 'Penjualan' : 'Pembelian'} tersimpan · ${d.ref}`);
+};
+$('btnDeleteTrade').onclick = () => {
+  const t = editingTrade;
+  if (!t || tradeReadOnly(t)) return toast(tradeReadOnly(t) || 'Tidak bisa dihapus');
+  if (stockCalc(state.trades.filter(x => x !== t)).neg.size) return toast('Pembelian ini sudah terjual; hapus penjualannya dulu.');
+  const reason = askReason('menghapus jual/beli'); if (!reason) return;
+  log('hapus', 'jual beli', t.id, `${tradeSummary(t)} · alasan: ${reason}`);
+  state.tx = state.tx.filter(x => x.tradeId !== t.id);
+  state.debts = state.debts.filter(x => x.tradeId !== t.id);
+  state.trades = state.trades.filter(x => x !== t);
+  $('tradeDialog').close(); save(); toast('Data dihapus (tercatat di jejak audit)');
+};
+$('btnPrintTrade').onclick = () => { if (editingTrade) printInvoice(editingTrade); };
+$('btnNewSale').onclick = () => openTrade(null, 'sale');
+$('btnNewBuy').onclick = () => openTrade(null, 'purchase');
+$('btnAddItem').onclick = () => { afterItem = null; openItem(); };
+$('btnAddVendor').onclick = () => { afterVendor = null; openVendor(); };
+
+/* Pengaturan pajak jual beli */
+const TAX_PCT = {xPpn: 'ppnRate', x22: 'pph22', x23: 'pph23', x23r: 'pph23r', x42k: 'pph42k', x42s: 'pph42s'};
+function renderTaxRules() {
+  const T = state.tax;
+  $('xPkp').checked = T.pkp; $('xSkb').checked = T.skb; $('xNum').value = T.dppNum; $('xDen').value = T.dppDen;
+  Object.entries(TAX_PCT).forEach(([id, k]) => { if (document.activeElement !== $(id)) $(id).value = String(T[k]).replace('.', ','); });
+}
+$('btnSaveTax').onclick = () => {
+  const T = state.tax, before = JSON.stringify(T);
+  T.pkp = $('xPkp').checked; T.skb = $('xSkb').checked;
+  const n = +$('xNum').value, d = +$('xDen').value;
+  if (n > 0 && d > 0) { T.dppNum = n; T.dppDen = d; }
+  Object.entries(TAX_PCT).forEach(([id, k]) => T[k] = cleanPct($(id).value.replace(',', '.'), T[k]));
+  if (before !== JSON.stringify(T)) log('ubah', 'pajak', '', `PKP ${T.pkp ? 'ya' : 'tidak'}, PPN ${T.ppnRate}% × ${T.dppNum}/${T.dppDen}, PPh 22 ${T.pph22}%, PPh 23 ${T.pph23}%, final konstruksi ${T.pph42k}%, final sewa ${T.pph42s}%`);
+  save(); toast('Pengaturan pajak tersimpan');
+};
+function setorPajak(acc, label) {
+  const amt = Math.max(0, journalBal(acc));
+  openTx(); setTxType('out');
+  $('txCat').value = sysCat(acc.code)?.id || '';
+  $('txAmount').value = amt ? amt.toLocaleString('id-ID') : '';
+  $('txDesc').value = `Setoran ${label} (isi NTPN/kode bayar)`;
+}
+$('btnSetorPpn').onclick = () => setorPajak(ACC_PPN, 'PPN');
+$('btnSetorPot').onclick = () => setorPajak(ACC_PPH_POT, 'PPh potput');
+
+/* Invoice: susunan baku penagihan B2B: identitas penjual & pembeli, nomor dan tanggal, rincian, pajak, jumlah terhutang, cara bayar, tanda tangan */
+function printInvoice(t) {
+  const c = state.company, debt = tradeDebt(t), total = tradeTotal(t), gross = total + t.ppn, due = tradePay(t);
+  const remain = debt ? Math.max(0, remainOf(debt)) : 0, paid = !debt || remain <= 0, sub = t.lines.reduce((s, l) => s + l.qty * l.price, 0);
+  const meta = [c.address, c.phone, c.email].filter(Boolean).map(esc).join(' · ');
+  const ids = [c.npwp && 'NPWP ' + c.npwp, c.nib && 'NIB ' + c.nib].filter(Boolean).map(esc).join(' · ');
+  const kv = [['Tanggal', fmtDate(t.date)], ['Jatuh tempo', t.pay === 'credit' ? (t.due ? fmtDate(t.due) : 'Sesuai kesepakatan') : 'Saat diterima'], ['No. PO / kontrak', t.poNo && esc(t.poNo)], ['No. faktur pajak', t.fpNo && esc(t.fpNo)]].filter(x => x[1]);
+  const row = (a, b, neg) => `<tr><td>${a}</td><td>${neg ? '(' + rp(b) + ')' : rp(b)}</td></tr>`;
+  $('printArea').innerHTML = `<div class="inv">
+    <div class="inv-top">
+      <div class="inv-co">${logoHTML(56)}<div><b>${esc(c.name || 'Nama Perusahaan')}</b>${c.tagline ? `<i>${esc(c.tagline)}</i><br>` : ''}${meta}${ids ? '<br>' + ids : ''}</div></div>
+      <div class="inv-title"><h1>INVOICE</h1><div><b>${esc(t.ref)}</b></div><span class="inv-status ${paid ? 'paid' : 'due'}">${paid ? 'LUNAS' : 'BELUM LUNAS'}</span></div>
+    </div>
+    <div class="inv-meta">
+      <div><div class="inv-lbl">Ditagihkan kepada</div><b>${esc(partyOf(t))}</b>${t.custAddr ? '<br>' + esc(t.custAddr) : ''}${t.custNpwp ? '<br>NPWP ' + esc(t.custNpwp) : ''}</div>
+      <table class="inv-kv">${kv.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('')}</table>
+    </div>
+    <table class="lines"><thead><tr><th style="width:34px">No</th><th>Deskripsi</th><th class="num">Jumlah</th><th class="num">Harga satuan</th><th class="num">Subtotal</th></tr></thead><tbody>
+      ${t.lines.map((l, n) => { const it = itemOf(l.itemId); return `<tr><td>${n + 1}</td><td>${esc(it?.name)}${it?.code ? ` <span style="color:#566878">(${esc(it.code)})</span>` : ''}</td><td class="num">${fmtQty(l.qty)} ${esc(it?.unit)}</td><td class="num">${rp(l.price)}</td><td class="num">${rp(l.qty * l.price)}</td></tr>`; }).join('')}
+    </tbody></table>
+    <div class="inv-bottom">
+      <div>
+        ${c.bankInfo ? `<div class="inv-lbl">Pembayaran ke</div><div class="inv-pay">${esc(c.bankInfo)}\nCantumkan nomor invoice ${esc(t.ref)} pada berita transfer.</div>` : ''}
+        <div class="inv-lbl" style="margin-top:12px">Terbilang</div><i>${esc(terbilang(due))}</i>
+        ${t.desc || c.invoiceNote ? `<div class="inv-lbl" style="margin-top:12px">Catatan</div>${esc(t.desc || c.invoiceNote)}` : ''}
+      </div>
+      <table class="inv-sum">
+        ${row('Subtotal', Math.round(sub))}${t.discount ? row('Diskon', t.discount, true) : ''}
+        ${t.ppn ? row('Dasar pengenaan pajak', total) + row(`PPN (${state.tax.ppnRate}% × ${state.tax.dppNum}/${state.tax.dppDen})`, t.ppn) + row('Jumlah tagihan', gross) : ''}
+        ${t.wapu && t.ppn ? row('PPN dipungut pembeli (WAPU)', t.ppn, true) : ''}
+        ${t.pphParts.map(x => row(`${PPH_LABEL[x.code]} ${String(x.rate).replace('.', ',')}%`, x.amt, true)).join('')}
+        <tr class="grand"><td>${paid ? 'Total dibayar' : 'Jumlah harus dibayar'}</td><td>${rp(debt && !paid ? remain : due)}</td></tr>
+      </table>
+    </div>
+    <div class="inv-sign"><div>Hormat kami,${due > 5000000 ? '<div class="inv-stamp">Meterai Rp10.000</div>' : '<div style="height:66px"></div>'}<b>${c.checkedName ? esc(c.checkedName) : '(..............................)'}</b><div>${esc(c.checkedTitle)}</div></div></div>
+    <div class="inv-foot">Terima kasih atas kepercayaan Anda.</div></div>`;
+  document.body.classList.add('print-voucher');
+  window.print();
+}
+
+/* ---------- Karyawan & penggajian ----------
+   Dasar: UU 13/2003 jo. UU 6/2023, PP 35/2021 (PKWT, lembur), PP 36/2021 (upah), Permenaker 6/2016 (THR), PP 58/2023 (TER PPh 21).
+   Pilihan upah minimum dan seluruh tarif BPJS bisa diatur sendiri di Karyawan → Aturan. */
+const empOf = id => state.employees.find(e => e.id === id);
+const monthsBetween = (a, b) => {
+  if (!a || !b || b < a) return 0;
+  let m = (+b.slice(0, 4) - +a.slice(0, 4)) * 12 + +b.slice(5, 7) - +a.slice(5, 7);
+  if (+b.slice(8) < +a.slice(8)) m--;
+  return Math.max(0, m);
+};
+const terPct = (ptkp, bruto) => TER[TER_CAT[ptkp]].find(([up]) => bruto / 1e6 <= up)[1];
+function pasal17(pkp) {
+  let tax = 0, low = 0;
+  for (const [up, r] of PASAL17) { if (pkp <= low) break; tax += (Math.min(pkp, up) - low) * r / 100; low = up; }
+  return Math.floor(tax);
+}
+const empWage = e => e.wage + e.allow;
+const belowMin = e => state.hr.umpMode === 'wajib' && state.hr.ump > 0 && e.status !== 'harian' && empWage(e) < state.hr.ump;
+const belowFloor = e => state.hr.umpMode === 'kesepakatan' && state.hr.floor > 0 && e.status !== 'harian' && empWage(e) < state.hr.floor;
+const empActive = (e, ym) => (!e.joinDate || e.joinDate <= lastDayOf(ym)) && (!e.exitDate || e.exitDate >= ym + '-01');
+
+// Perhitungan satu karyawan satu bulan; prior = akumulasi Januari s.d. bulan sebelumnya, untuk hitung ulang Desember
+function payCalc(e, inp, ym, prior) {
+  const hr = state.hr, harian = e.status === 'harian', days = harian ? inp.days || 0 : 0;
+  const base = harian ? Math.round(e.wage * days) : e.wage, fixed = e.allow, wage = base + fixed;
+  const varAllow = inp.varAllow || 0, bonus = inp.bonus || 0, deduct = inp.deduct || 0;
+  // Upah lembur: PP 35/2021 Pasal 31-33
+  const monthly = (harian ? e.wage * (hr.workDays === 6 ? 25 : 21) : e.wage) + fixed, all = monthly + varAllow;
+  const hourly = (varAllow && monthly < all * .75 ? all * .75 : monthly) / 173;
+  const otHours = inp.otHours || 0, otDays = otHours ? Math.min(otHours, inp.otDays || Math.ceil(otHours / 4)) : 0;
+  const hdHours = inp.hdHours || 0, hdDays = hdHours ? inp.hdDays || 1 : 0, L = hr.workDays === 6 ? 7 : 8;
+  const hdPay = h => h <= L ? 2 * h : 2 * L + 3 * Math.min(1, h - L) + 4 * Math.max(0, h - L - 1);
+  const ot = Math.round(hourly * (1.5 * otDays + 2 * (otHours - otDays) + (hdDays ? hdDays * hdPay(hdHours / hdDays) : 0)));
+  // BPJS dihitung dari upah pokok + tunjangan tetap; JP dan Kesehatan memakai batas upah tertinggi
+  const r = (b, p) => Math.round(b * p / 100), tk = e.bpjsTk, ks = e.bpjsKes && hr.onKes;
+  const jpBase = Math.min(wage, hr.jpCap), kesBase = Math.min(wage, hr.kesCap);
+  const co = {jkk: tk && hr.onJkk ? r(wage, hr.jkk) : 0, jkm: tk && hr.onJkm ? r(wage, hr.jkm) : 0, jht: tk && hr.onJht ? r(wage, hr.jhtCo) : 0,
+    jp: tk && hr.onJp ? r(jpBase, hr.jpCo) : 0, kes: ks ? r(kesBase, hr.kesCo) : 0};
+  const ee = {jht: tk && hr.onJht ? r(wage, hr.jhtEe) : 0, jp: tk && hr.onJp ? r(jpBase, hr.jpEe) : 0, kes: ks ? r(kesBase, hr.kesEe) : 0};
+  const coTotal = co.jkk + co.jkm + co.jht + co.jp + co.kes, eeTotal = ee.jht + ee.jp + ee.kes;
+  const cash = wage + varAllow + ot + bonus;
+  // Objek PPh 21: JKK, JKM, dan BPJS Kesehatan bagian perusahaan ikut menambah bruto; JHT dan JP bagian perusahaan tidak
+  const b0 = cash + co.jkk + co.jkm + co.kes, dec = ym.endsWith('-12') && !harian;
+  const pphOf = b => {
+    if (harian) { const perDay = days ? b / days : b; return perDay > 2.5e6 ? pasal17(Math.round(b * .5)) : perDay <= 450000 ? 0 : Math.floor(b * .005); }
+    if (dec) {
+      const yb = prior.bruto + b, neto = yb - Math.min(yb * .05, 500000 * (prior.months + 1)) - prior.iur - ee.jht - ee.jp;
+      return pasal17(Math.floor(Math.max(0, neto - PTKP[e.ptkp]) / 1000) * 1000) - prior.pph;
+    }
+    return Math.floor(b * terPct(e.ptkp, b) / 100);
+  };
+  let taxAllow = 0, pph;
+  if (e.taxBy === 'perusahaan') {
+    for (let n = 0; n < 40; n++) { const next = Math.max(0, pphOf(b0 + taxAllow)); if (next === taxAllow) break; taxAllow = next; }
+    pph = taxAllow;
+  } else pph = pphOf(b0);
+  const bruto = b0 + taxAllow, net = cash - eeTotal - deduct - (e.taxBy === 'perusahaan' ? 0 : pph);
+  return {empId: e.id, name: e.name, title: e.title, ptkp: e.ptkp, status: e.status, taxBy: e.taxBy, days, otHours, hdHours, rate: harian || dec ? 0 : terPct(e.ptkp, bruto),
+    base, fixed, varAllow, ot, bonus, deduct, taxAllow, bruto, pph, net, co, ee, coTotal, eeTotal, dec};
+}
+function yearPrior(empId, ym) {
+  const p = {bruto: 0, iur: 0, pph: 0, months: 0};
+  for (const r of state.payrolls) {
+    if (r.period.slice(0, 4) !== ym.slice(0, 4) || r.period >= ym) continue;
+    for (const l of r.lines) if (l.empId === empId) { p.bruto += l.bruto; p.iur += l.ee.jht + l.ee.jp; p.pph += l.pph; p.months++; }
+  }
+  return p;
+}
+const lineCo = l => l.co.jkk + l.co.jkm + l.co.jht + l.co.jp + l.co.kes;
+const lineEe = l => l.ee.jht + l.ee.jp + l.ee.kes;
+const paySum = p => p.lines.reduce((s, l) => { s.net += l.net; s.pph += l.pph; s.co += lineCo(l); s.ee += lineEe(l); s.deduct += l.deduct; return s; }, {net: 0, pph: 0, co: 0, ee: 0, deduct: 0});
+function pkwtComp(e, upTo) {
+  const m = monthsBetween(e.joinDate, e.exitDate || upTo || today());
+  return m >= 1 ? Math.round(m / 12 * empWage(e)) : 0;
+}
+function journalBal(acc) {
+  let b = 0;
+  for (const x of M().journal) { if (x.cr.code === acc.code) b += x.amt; if (x.dr.code === acc.code) b -= x.amt; }
+  return b;
+}
+
+let hrTab = 'emp';
+function renderHr() {
+  document.querySelectorAll('#hrTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === hrTab));
+  ['emp', 'pay', 'rules'].forEach(k => $('hr-' + k).style.display = k === hrTab ? '' : 'none');
+  const hr = state.hr, ym = today().slice(0, 7), act = state.employees.filter(e => empActive(e, ym));
+  const lastRun = state.payrolls.slice().sort((a, b) => b.period.localeCompare(a.period))[0], s = lastRun && paySum(lastRun);
+  $('hrCards').innerHTML = [
+    ['Karyawan aktif', String(act.length), '', `${act.filter(e => e.status === 'pkwtt').length} tetap · ${act.filter(e => e.status === 'pkwt').length} kontrak · ${act.filter(e => e.status === 'harian').length} harian`],
+    ['Ditanggung perusahaan', s ? rp(s.co + lastRun.lines.reduce((x, l) => x + l.taxAllow, 0)) : '—', 'out', s ? 'BPJS + PPh ditanggung, ' + ymLabel(lastRun.period) : ''],
+    ['Ditanggung karyawan', s ? rp(s.ee + lastRun.lines.reduce((x, l) => x + (l.taxBy === 'karyawan' ? l.pph : 0), 0)) : '—', '', s ? 'BPJS + PPh 21 dipotong gaji' : ''],
+    ['Utang PPh 21', rp(journalBal(ACC_PPH21)), '', 'Belum disetor'],
+    ['Utang BPJS', rp(journalBal(ACC_BPJS)), '', 'Belum disetor'],
+  ].map(statCard).join('');
+  if (hrTab === 'rules') return renderRules();
+  if (hrTab === 'pay') {
+    $('payBody').innerHTML = state.payrolls.length ? state.payrolls.slice().sort((a, b) => b.period.localeCompare(a.period)).map(p => {
+      const t = paySum(p);
+      return `<tr><td data-label="Periode"><b>${ymLabel(p.period)}</b></td><td data-label="No. bukti">${esc(p.ref)}</td><td data-label="Karyawan">${p.lines.length}</td>
+        <td data-label="Gaji bersih" class="num">${rp(t.net)}</td><td data-label="PPh 21" class="num">${rp(t.pph)}</td>
+        <td data-label="BPJS perusahaan" class="num">${rp(t.co)}</td><td data-label="BPJS karyawan" class="num">${rp(t.ee)}</td>
+        <td data-label="" class="no-print num" style="white-space:nowrap"><button class="btn sm" data-act="openPayRun" data-id="${esc(p.id)}">Detail</button></td></tr>`;
+    }).join('') : '<tr><td colspan="8" class="empty" data-label="">Belum ada penggajian.</td></tr>';
+    return;
+  }
+  const now = today(), q = $('eSearch').value.toLowerCase();
+  const rows = state.employees.filter(e => !q || (e.name + ' ' + e.title).toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
+  $('empBody').innerHTML = rows.length ? rows.map(e => {
+    const out = e.exitDate && e.exitDate < now, soon = e.status === 'pkwt' && e.endDate && daysBetween(now, e.endDate) <= 30;
+    return `<tr><td data-label="Nama"><b>${esc(e.name)}</b><div class="muted" style="font-size:12px">${esc(e.title)}</div></td>
+      <td data-label="Status"><span class="badge ${e.status === 'pkwtt' ? 'in' : e.status === 'pkwt' ? 'warn' : 'tr'}">${EMP_STATUS[e.status]}</span>${out ? ' <span class="badge out">Keluar</span>' : ''}</td>
+      <td data-label="Mulai">${e.joinDate ? fmtDate(e.joinDate) : '—'}</td>
+      <td data-label="Kontrak s.d." class="${soon ? 'out' : ''}">${e.status === 'pkwt' && e.endDate ? fmtDate(e.endDate) : '—'}</td>
+      <td data-label="PTKP">${esc(e.ptkp)}</td>
+      <td data-label="Upah" class="num ${belowMin(e) || belowFloor(e) ? 'out' : ''}">${rp(empWage(e))}${e.status === 'harian' ? '/hari' : ''}</td>
+      <td data-label="" class="no-print num"><button class="btn sm" data-act="openEmp" data-id="${esc(e.id)}">Ubah</button></td></tr>`;
+  }).join('') : '<tr><td colspan="7" class="empty" data-label="">Belum ada data karyawan.</td></tr>';
+}
+document.querySelectorAll('#hrTabs button').forEach(b => b.onclick = () => { hrTab = b.dataset.tab; renderHr(); });
+$('eSearch').oninput = debounce(() => renderHr());
+
+/* Aturan upah minimum & tarif */
+const RULE_PCT = {hJkk: 'jkk', hJkm: 'jkm', hJhtCo: 'jhtCo', hJhtEe: 'jhtEe', hJpCo: 'jpCo', hJpEe: 'jpEe', hKesCo: 'kesCo', hKesEe: 'kesEe'};
+const RULE_MONEY = {hUmp: 'ump', hFloor: 'floor', hJpCap: 'jpCap', hKesCap: 'kesCap'};
+const RULE_ON = {hOnJkk: 'onJkk', hOnJkm: 'onJkm', hOnJht: 'onJht', hOnJp: 'onJp', hOnKes: 'onKes'};
+function showUmpMode() {
+  const wajib = $('hMode').value === 'wajib';
+  $('hUmpWrap').style.display = wajib ? '' : 'none';
+  $('hFloorWrap').style.display = wajib ? 'none' : '';
+  $('hModeInfo').textContent = wajib
+    ? 'Upah pokok + tunjangan tetap tidak boleh di bawah UMP/UMK yang ditetapkan gubernur. Isi angkanya dari keputusan gubernur tahun berjalan; aplikasi memberi peringatan bila ada upah di bawahnya.'
+    : 'Usaha mikro dan kecil dikecualikan dari upah minimum. Upah ditetapkan berdasarkan kesepakatan pengusaha dan pekerja, paling sedikit 50% rata-rata konsumsi masyarakat provinsi dan paling sedikit 25% di atas garis kemiskinan provinsi (PP 36/2021 Pasal 36). Uang kompensasi PKWT juga mengikuti kesepakatan (PP 35/2021 Pasal 16 ayat 6).';
+}
+function renderRules() {
+  const h = state.hr;
+  $('hMode').value = h.umpMode; $('hDays').value = String(h.workDays);
+  Object.entries(RULE_PCT).forEach(([id, k]) => { if (document.activeElement !== $(id)) $(id).value = String(h[k]).replace('.', ','); });
+  Object.entries(RULE_MONEY).forEach(([id, k]) => { if (document.activeElement !== $(id)) $(id).value = h[k] ? h[k].toLocaleString('id-ID') : ''; });
+  Object.entries(RULE_ON).forEach(([id, k]) => $(id).checked = h[k]);
+  showUmpMode();
+}
+Object.keys(RULE_MONEY).forEach(id => moneyInput($(id)));
+$('hMode').onchange = showUmpMode;
+$('btnSaveRules').onclick = () => {
+  const h = state.hr, before = JSON.stringify(h);
+  h.umpMode = $('hMode').value === 'kesepakatan' ? 'kesepakatan' : 'wajib';
+  h.workDays = +$('hDays').value === 6 ? 6 : 5;
+  Object.entries(RULE_PCT).forEach(([id, k]) => h[k] = cleanPct($(id).value.replace(',', '.'), h[k]));
+  Object.entries(RULE_MONEY).forEach(([id, k]) => h[k] = parseNum($(id).value));
+  Object.entries(RULE_ON).forEach(([id, k]) => h[k] = $(id).checked);
+  if (before !== JSON.stringify(h)) log('ubah', 'aturan upah', '', `Upah minimum: ${h.umpMode}, UMP ${rp(h.ump)}, JKK ${h.jkk}%, batas JP ${rp(h.jpCap)}, batas Kesehatan ${rp(h.kesCap)}`);
+  save(); toast('Aturan tersimpan');
+};
+
+/* Dialog karyawan */
+let editingEmp = null;
+const EMP_TEXT = {eName: 'name', eNik: 'nik', eNpwp: 'npwp', eTitle: 'title', eTkNo: 'bpjsTkNo', eKesNo: 'bpjsKesNo', eBank: 'bank'};
+function showEmpFields() {
+  const st = $('eStatus').value;
+  $('eEndWrap').style.display = st === 'pkwt' ? '' : 'none';
+  $('eWageLabel').textContent = st === 'harian' ? 'Upah per hari (Rp)' : 'Gaji pokok per bulan (Rp)';
+  const w = parseNum($('eWage').value) + parseNum($('eAllow').value), hr = state.hr, notes = [];
+  if (st !== 'harian' && hr.umpMode === 'wajib' && hr.ump && w && w < hr.ump) notes.push(`<span class="out">Upah di bawah UMP/UMK ${rp(hr.ump)}.</span>`);
+  if (st !== 'harian' && hr.umpMode === 'kesepakatan' && hr.floor && w && w < hr.floor) notes.push(`<span class="out">Upah di bawah batas bawah kesepakatan ${rp(hr.floor)}.</span>`);
+  if (st !== 'harian' && hr.umpMode === 'wajib' && !hr.ump) notes.push('Isi nilai UMP/UMK di tab Aturan agar upah bisa diperiksa.');
+  if (st === 'pkwt') {
+    notes.push('PKWT tidak boleh untuk pekerjaan tetap dan seluruh jangka waktunya beserta perpanjangan paling lama 5 tahun (PP 35/2021 Pasal 8).');
+    const j = $('eJoin').value, end = $('eEnd').value;
+    if (j && end && monthsBetween(j, end) > 60) notes.push('<span class="out">Jangka waktu kontrak melebihi 5 tahun.</span>');
+    if (j && w) {
+      const m = monthsBetween(j, end || today());
+      notes.push(hr.umpMode === 'kesepakatan' ? 'Uang kompensasi saat kontrak berakhir mengikuti kesepakatan (usaha mikro/kecil).'
+        : m >= 1 ? `Perkiraan uang kompensasi saat kontrak berakhir: ${rp(Math.round(m / 12 * w))} (${m} bulan ÷ 12 × upah).` : '');
+    }
+  }
+  $('eHint').innerHTML = notes.filter(Boolean).join('<br>');
+}
+function openEmp(id) {
+  editingEmp = id ? empOf(id) : null;
+  const e = editingEmp || {status: 'pkwtt', gender: 'L', ptkp: 'TK/0', taxBy: 'karyawan', bpjsTk: true, bpjsKes: true, joinDate: today()};
+  $('empTitle').textContent = editingEmp ? 'Ubah Data Karyawan' : 'Karyawan Baru';
+  Object.entries(EMP_TEXT).forEach(([el, k]) => $(el).value = e[k] || '');
+  $('eGender').value = e.gender; $('eStatus').value = e.status; $('ePtkp').value = e.ptkp; $('eTaxBy').value = e.taxBy;
+  $('eJoin').value = e.joinDate || ''; $('eEnd').value = e.endDate || ''; $('eExit').value = e.exitDate || '';
+  $('eWage').value = e.wage ? e.wage.toLocaleString('id-ID') : ''; $('eAllow').value = e.allow ? e.allow.toLocaleString('id-ID') : '';
+  $('eTk').checked = e.bpjsTk; $('eKes').checked = e.bpjsKes;
+  $('btnDeleteEmp').style.display = editingEmp ? '' : 'none';
+  showEmpFields();
+  $('empDialog').showModal();
+}
+moneyInput($('eWage')); moneyInput($('eAllow'));
+['eStatus', 'eWage', 'eAllow', 'eJoin', 'eEnd'].forEach(id => $(id).addEventListener('input', showEmpFields));
+$('btnCancelEmp').onclick = () => $('empDialog').close();
+$('empForm').onsubmit = ev => {
+  const fail = msg => { ev.preventDefault(); toast(msg); };
+  const name = $('eName').value.trim(), status = $('eStatus').value;
+  if (!name) return fail('Isi nama karyawan');
+  if (!DATE_RE.test($('eJoin').value)) return fail('Isi tanggal mulai kerja');
+  if (parseNum($('eWage').value) <= 0) return fail('Isi upah');
+  const nik = $('eNik').value.trim();
+  if (nik && !/^\d{16}$/.test(nik)) return fail('NIK harus 16 angka');
+  if (status === 'pkwt' && !DATE_RE.test($('eEnd').value)) return fail('Isi tanggal berakhir kontrak (PKWT)');
+  if (status === 'pkwt' && $('eEnd').value <= $('eJoin').value) return fail('Tanggal berakhir kontrak harus setelah tanggal mulai');
+  if (status === 'pkwt' && monthsBetween($('eJoin').value, $('eEnd').value) > 60) return fail('PKWT paling lama 5 tahun termasuk perpanjangan');
+  if ($('eExit').value && $('eExit').value < $('eJoin').value) return fail('Tanggal keluar tidak boleh sebelum tanggal mulai');
+  const data = {gender: $('eGender').value === 'P' ? 'P' : 'L', status, ptkp: $('ePtkp').value, taxBy: $('eTaxBy').value === 'perusahaan' ? 'perusahaan' : 'karyawan',
+    joinDate: $('eJoin').value, endDate: status === 'pkwt' ? $('eEnd').value : '', exitDate: $('eExit').value,
+    wage: parseNum($('eWage').value), allow: parseNum($('eAllow').value), bpjsTk: $('eTk').checked, bpjsKes: $('eKes').checked};
+  Object.entries(EMP_TEXT).forEach(([el, k]) => data[k] = $(el).value.trim().slice(0, 120));
+  if ((belowMin(data) || belowFloor(data)) && !confirm(`Upah ${data.name} ${rp(empWage(data))} di bawah batas yang diatur di tab Aturan. Tetap simpan?`)) return fail('Dibatalkan');
+  // Rincian pribadi (NIK, NPWP, rekening) tidak ditulis ke jejak audit
+  if (editingEmp) {
+    Object.assign(editingEmp, data);
+    log('ubah', 'karyawan', editingEmp.id, `${data.name} · ${EMP_STATUS[status]} · upah ${rp(empWage(data))}`);
+  } else {
+    const e = {id: uid(), created: Date.now(), ...data};
+    state.employees.push(e);
+    log('tambah', 'karyawan', e.id, `${data.name} · ${EMP_STATUS[status]} · upah ${rp(empWage(data))}`);
+  }
+  save(); toast('Data karyawan tersimpan');
+};
+$('btnDeleteEmp').onclick = () => {
+  if (!editingEmp) return;
+  if (state.payrolls.some(p => p.lines.some(l => l.empId === editingEmp.id))) return toast('Sudah ada riwayat gaji. Isi tanggal keluar saja agar riwayatnya tetap tersimpan.');
+  if (!confirm('Hapus data karyawan ini?')) return;
+  log('hapus', 'karyawan', editingEmp.id, editingEmp.name);
+  state.employees = state.employees.filter(x => x !== editingEmp);
+  $('empDialog').close(); save();
+};
+$('btnAddEmp').onclick = () => openEmp();
+
+/* Proses gaji: perhitungan langsung tampil saat angka diisi */
+const RUN_INPUTS = [['days', 'Hari kerja', 0], ['varAllow', 'Tunjangan tidak tetap', 1], ['otHours', 'Jam lembur hari kerja', 0], ['otDays', 'Dalam berapa hari', 0],
+  ['hdHours', 'Jam lembur hari libur', 0], ['hdDays', 'Dalam berapa hari', 0], ['bonus', 'Bonus / THR', 1], ['deduct', 'Potongan kasbon', 1]];
+const runPeriod = () => /^\d{4}-\d{2}$/.test($('runPeriod').value) ? $('runPeriod').value : today().slice(0, 7);
+function runInputs(row) {
+  const o = {};
+  row.querySelectorAll('input[data-k]').forEach(x => o[x.dataset.k] = x.classList.contains('m') ? parseNum(x.value) : cleanQty(x.value.replace(',', '.')));
+  return o;
+}
+function runRowCalc(row) {
+  const e = empOf(row.dataset.id), ym = runPeriod();
+  return payCalc(e, runInputs(row), ym, yearPrior(e.id, ym));
+}
+function runRefresh() {
+  const tot = {net: 0, pph: 0, co: 0, ee: 0, taxAllow: 0};
+  $('runRows').querySelectorAll('.prow').forEach(row => {
+    const c = runRowCalc(row);
+    tot.net += c.net; tot.pph += c.pph; tot.co += c.coTotal; tot.ee += c.eeTotal; tot.taxAllow += c.taxAllow;
+    const karyawanPph = c.taxBy === 'karyawan' ? c.pph : 0;
+    row.querySelector('.pcalc').innerHTML = `<table class="split"><thead><tr><th></th><th class="num">Perusahaan</th><th class="num">Karyawan</th></tr></thead>
+      <tr><td>JKK</td><td class="num">${rp(c.co.jkk)}</td><td class="num">—</td></tr>
+      <tr><td>JKM</td><td class="num">${rp(c.co.jkm)}</td><td class="num">—</td></tr>
+      <tr><td>JHT</td><td class="num">${rp(c.co.jht)}</td><td class="num">${rp(c.ee.jht)}</td></tr>
+      <tr><td>JP</td><td class="num">${rp(c.co.jp)}</td><td class="num">${rp(c.ee.jp)}</td></tr>
+      <tr><td>BPJS Kesehatan</td><td class="num">${rp(c.co.kes)}</td><td class="num">${rp(c.ee.kes)}</td></tr>
+      <tr><td>PPh 21 ${c.dec ? '(hitung ulang Desember)' : c.status === 'harian' ? '(TER harian)' : `(TER ${TER_CAT[c.ptkp]} ${String(c.rate).replace('.', ',')}%)`}</td><td class="num">${rp(c.taxAllow)}</td><td class="num">${rp(karyawanPph)}</td></tr>
+      <tr class="total"><td>Total ditanggung</td><td class="num">${rp(c.coTotal + c.taxAllow)}</td><td class="num">${rp(c.eeTotal + karyawanPph)}</td></tr></table>
+      <div style="margin-top:6px">Upah ${rp(c.base + c.fixed)}${c.ot ? ' · lembur ' + rp(c.ot) : ''} · bruto pajak ${rp(c.bruto)} · <b>Gaji bersih ${rp(c.net)}</b>${c.net < 0 ? ' <span class="out">minus, periksa potongan</span>' : ''}</div>`;
+  });
+  $('runTotal').innerHTML = `Dibayar ke karyawan <b>${rp(tot.net)}</b> · PPh 21 disetor <b>${rp(tot.pph)}</b> · BPJS disetor <b>${rp(tot.co + tot.ee)}</b> (perusahaan ${rp(tot.co)}, karyawan ${rp(tot.ee)})`;
+}
+function renderRun() {
+  const ym = runPeriod(), doneIds = new Set(state.payrolls.filter(p => p.period === ym).flatMap(p => p.lines.map(l => l.empId)));
+  const emps = state.employees.filter(e => empActive(e, ym) && !doneIds.has(e.id)).sort((a, b) => a.name.localeCompare(b.name));
+  $('runInfo').textContent = doneIds.size ? `${doneIds.size} karyawan sudah digaji untuk ${ymLabel(ym)} dan tidak ditampilkan lagi.` : '';
+  $('runRows').innerHTML = emps.length ? emps.map(e => `<div class="prow" data-id="${esc(e.id)}">
+    <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px"><div><b>${esc(e.name)}</b> <span class="muted">${esc(e.title)} · ${EMP_STATUS[e.status]} · ${esc(e.ptkp)}</span></div>
+    <button type="button" class="btn sm" data-act="fillThr" data-id="${esc(e.id)}">Hitung THR</button></div>
+    <div class="form-grid pin">${RUN_INPUTS.filter(([k]) => k !== 'days' || e.status === 'harian').map(([k, label, money]) => `<label class="f">${label}<input data-k="${k}" class="${money ? 'm' : ''}" inputmode="${money ? 'numeric' : 'decimal'}"></label>`).join('')}</div>
+    ${belowMin(e) ? `<div class="out" style="font-size:12px;margin-top:6px">Upah di bawah UMP/UMK ${rp(state.hr.ump)}.</div>` : ''}
+    <div class="pcalc"></div></div>`).join('') : '<div class="empty">Tidak ada karyawan yang perlu digaji pada periode ini.</div>';
+  $('runRef').value = nextCode('GJ', $('runDate').value || today(), state.payrolls.map(p => p.ref));
+  runRefresh();
+}
+$('runRows').addEventListener('input', e => {
+  if (e.target.classList.contains('m')) { const n = parseNum(e.target.value); e.target.value = n ? n.toLocaleString('id-ID') : ''; }
+  const row = e.target.closest('.prow'); if (row) runRefresh();
+});
+function openRun() {
+  if (!state.employees.length) return toast('Tambahkan data karyawan dulu');
+  if (!state.accounts.length) return toast('Tambahkan akun dulu di menu Atur');
+  fillSelect($('runAcc'), state.accounts);
+  $('runPeriod').value = today().slice(0, 7); $('runDate').value = today();
+  renderRun();
+  $('runDialog').showModal();
+}
+$('runPeriod').oninput = renderRun;
+$('runDate').onchange = () => { $('runRef').value = nextCode('GJ', $('runDate').value || today(), state.payrolls.map(p => p.ref)); };
+$('btnRun').onclick = openRun;
+$('btnCancelRun').onclick = () => $('runDialog').close();
+$('runForm').onsubmit = ev => {
+  const fail = msg => { ev.preventDefault(); toast(msg); };
+  const date = $('runDate').value, ref = $('runRef').value.trim().slice(0, 40), period = runPeriod();
+  const rows = [...$('runRows').querySelectorAll('.prow')];
+  if (!rows.length) return fail('Tidak ada karyawan pada periode ini');
+  if (!DATE_RE.test(date)) return fail('Isi tanggal bayar');
+  if (isLocked(date)) return fail(lockMsg());
+  if (!ref) return fail('No. bukti wajib diisi');
+  if (state.tx.some(t => t.ref === ref)) return fail(`No. bukti ${ref} sudah dipakai`);
+  const lines = rows.map(runRowCalc).map(cleanPayLine);
+  if (lines.some(l => l.net < 0)) return fail('Ada gaji bersih minus; periksa potongan');
+  const p = {id: uid(), created: Date.now(), period, date, ref, accountId: $('runAcc').value, lines}, s = paySum(p);
+  if (s.net <= 0) return fail('Total gaji harus lebih dari 0');
+  state.payrolls.push(p);
+  state.tx.push({id: uid(), created: Date.now(), type: 'out', date, ref, amount: s.net, accountId: p.accountId, categoryId: sysCat('5-201')?.id, toAccountId: null,
+    desc: `Gaji ${ymLabel(period)} (${lines.length} karyawan)`, payrollId: p.id});
+  log('tambah', 'penggajian', p.id, `${ref} · ${period} · ${lines.length} karyawan · bersih ${rp(s.net)} · PPh 21 ${rp(s.pph)} · BPJS ${rp(s.co + s.ee)}`);
+  hrTab = 'pay'; save(); toast('Penggajian tersimpan · ' + ref);
+};
+
+let viewingRun = null;
+function openPayRun(id) {
+  viewingRun = state.payrolls.find(p => p.id === id); if (!viewingRun) return;
+  const p = viewingRun, s = paySum(p);
+  $('prTitle').textContent = `Gaji ${ymLabel(p.period)} · ${p.ref}`;
+  $('prBody').innerHTML = `<table class="rtable"><thead><tr><th>Nama</th><th class="num">Bruto</th><th class="num">BPJS perusahaan</th><th class="num">BPJS karyawan</th><th class="num">PPh 21</th><th class="num">Bersih</th><th></th></tr></thead><tbody>
+    ${p.lines.map(l => `<tr><td data-label="Nama">${esc(l.name)}</td><td data-label="Bruto" class="num">${rp(l.bruto)}</td><td data-label="BPJS perusahaan" class="num">${rp(lineCo(l))}</td>
+      <td data-label="BPJS karyawan" class="num">${rp(lineEe(l))}</td><td data-label="PPh 21" class="num">${rp(l.pph)}${l.taxBy === 'perusahaan' ? ' (ditanggung)' : ''}</td><td data-label="Bersih" class="num"><b>${rp(l.net)}</b></td>
+      <td data-label="" class="num"><button type="button" class="btn sm" data-act="printSlip" data-id="${esc(l.empId)}">Slip</button></td></tr>`).join('')}
+    </tbody></table><p class="muted">Dibayar ${fmtDate(p.date)} dari ${esc(accName(p.accountId))}. Total bersih ${rp(s.net)}, PPh 21 ${rp(s.pph)}, BPJS ${rp(s.co + s.ee)}.</p>
+    ${isLocked(p.date) ? `<div class="notice">${esc(lockMsg())}</div>` : ''}`;
+  $('btnDeleteRun').style.display = isLocked(p.date) ? 'none' : '';
+  $('prDialog').showModal();
+}
+$('btnClosePr').onclick = () => $('prDialog').close();
+$('btnDeleteRun').onclick = () => {
+  const p = viewingRun;
+  if (!p || isLocked(p.date)) return toast(lockMsg());
+  if (state.payrolls.some(x => x !== p && x.period > p.period && x.period.slice(0, 4) === p.period.slice(0, 4) && x.period.endsWith('-12'))) return toast('Gaji Desember tahun ini sudah dihitung; hapus gaji Desember dulu.');
+  const reason = askReason('menghapus penggajian'); if (!reason) return;
+  log('hapus', 'penggajian', p.id, `${p.ref} · ${p.period} · alasan: ${reason}`);
+  state.tx = state.tx.filter(t => t.payrollId !== p.id);
+  state.payrolls = state.payrolls.filter(x => x !== p);
+  $('prDialog').close(); save(); toast('Penggajian dihapus (tercatat di jejak audit)');
+};
+function printSlip(empId) {
+  const p = viewingRun, l = p?.lines.find(x => x.empId === empId); if (!l) return;
+  const row = (a, b) => `<tr><td>${a}</td><td class="num">${rp(b)}</td></tr>`;
+  $('printArea').innerHTML = `<div class="report">${kop('SLIP GAJI', ymLabel(p.period) + ' · No. ' + esc(p.ref))}
+    <p>Nama: <b>${esc(l.name)}</b><br>Jabatan: ${esc(l.title)}<br>Status PTKP: ${esc(l.ptkp)}<br>Tanggal bayar: ${fmtDate(p.date)}</p>
+    <table><tr class="sect"><td colspan="2">Penerimaan</td></tr>${row('Gaji pokok', l.base)}${row('Tunjangan tetap', l.fixed)}${l.varAllow ? row('Tunjangan tidak tetap', l.varAllow) : ''}${l.ot ? row('Upah lembur', l.ot) : ''}${l.bonus ? row('Bonus / THR', l.bonus) : ''}
+    <tr class="sect"><td colspan="2">Potongan</td></tr>${row('BPJS JHT (2%)'.replace('2%', state.hr.jhtEe + '%'), l.ee.jht)}${row('BPJS JP', l.ee.jp)}${row('BPJS Kesehatan', l.ee.kes)}${l.taxBy === 'karyawan' ? row('PPh 21', l.pph) : ''}${l.deduct ? row('Kasbon', l.deduct) : ''}
+    <tr class="total"><td>Gaji bersih diterima</td><td class="num">${rp(l.net)}</td></tr></table>
+    <p class="muted" style="font-size:12px">Ditanggung perusahaan (tidak memotong gaji): BPJS ${rp(lineCo(l))}${l.taxBy === 'perusahaan' ? `, PPh 21 ${rp(l.pph)}` : ''}.</p>
+    <p><i>${esc(terbilang(l.net))}</i></p>
+    <div class="sign"><div>Penerima<div class="sp"></div><b>${esc(l.name.toUpperCase())}</b></div><div>Disetujui oleh<div class="sp"></div><b>${state.company.checkedName ? esc(state.company.checkedName.toUpperCase()) : '(..............................)'}</b></div></div></div>`;
+  document.body.classList.add('print-voucher');
+  window.print();
+}
+function setorUtang(acc) {
+  const amt = Math.max(0, journalBal(acc));
+  openTx();
+  setTxType('out');
+  $('txCat').value = sysCat(acc.code)?.id || '';
+  $('txAmount').value = amt ? amt.toLocaleString('id-ID') : '';
+  $('txDesc').value = `Setoran ${acc === ACC_PPH21 ? 'PPh 21' : 'iuran BPJS'} (isi NTPN/kode bayar)`;
+}
+$('btnSetorPph').onclick = () => setorUtang(ACC_PPH21);
+$('btnSetorBpjs').onclick = () => setorUtang(ACC_BPJS);
+
+Object.assign(ACTIONS, {
+  openTrade: id => openTrade(id), openItem: id => { afterItem = null; openItem(id); }, openVendor: id => { afterVendor = null; openVendor(id); },
+  openEmp, openPayRun, printSlip,
+  delLine: n => { tradeLines.splice(+n, 1); if (!tradeLines.length) tradeLines.push({itemId: '', qty: 1, price: 0}); renderTradeLines(); },
+  // THR: Permenaker 6/2016 Pasal 3, dihitung dari upah pokok + tunjangan tetap
+  fillThr: id => {
+    const e = empOf(id), row = $('runRows').querySelector(`.prow[data-id="${CSS.escape(id)}"]`); if (!e || !row) return;
+    const m = monthsBetween(e.joinDate, $('runDate').value || today());
+    if (m < 1) return toast('Masa kerja belum 1 bulan: belum berhak THR');
+    const wage = e.status === 'harian' ? e.wage * (state.hr.workDays === 6 ? 25 : 21) + e.allow : empWage(e);
+    const thr = Math.round(wage * Math.min(m, 12) / 12), el = row.querySelector('input[data-k="bonus"]');
+    el.value = thr.toLocaleString('id-ID');
+    toast(`THR ${e.name}: ${rp(thr)} (masa kerja ${m} bulan). Wajib dibayar paling lambat 7 hari sebelum hari raya.`);
+    runRefresh();
+  },
+});
+
+/* Pengingat & laporan modul usaha */
+function bizObligations() {
+  const out = [], now = today(), ym = now.slice(0, 7), hr = state.hr;
+  const ppn = journalBal(ACC_PPN), pot = journalBal(ACC_PPH_POT);
+  if (ppn > 0) out.push(['warn', `Utang PPN belum disetor: <b>${rp(ppn)}</b>. Lihat Rekap Faktur &amp; Pajak; setor dan lapor SPT Masa PPN sesuai jatuh temponya.`]);
+  if (pot > 0) out.push([+now.slice(8) > 15 ? 'bad' : 'warn', `PPh yang dipotong/dipungut dari vendor belum disetor: <b>${rp(pot)}</b>. Setor paling lambat tanggal 15 bulan berikutnya dan buat bukti potongnya.`]);
+  const low = state.items.filter(i => { const s = M().stock.stock.get(i.id); return s && i.minQty && s.qty <= i.minQty; });
+  if (low.length) out.push(['warn', `Stok menipis: ${low.slice(0, 5).map(i => esc(i.name)).join(', ')}${low.length > 5 ? ` dan ${low.length - 5} lainnya` : ''}.`]);
+  const act = state.employees.filter(e => empActive(e, ym));
+  if (!act.length) return out;
+  if (hr.umpMode === 'wajib' && !hr.ump) out.push(['warn', 'Isi nilai UMP/UMK, atau pilih <b>tidak wajib upah minimum</b> bila usaha mikro/kecil, di Karyawan → Aturan.']);
+  const under = act.filter(e => belowMin(e) || belowFloor(e));
+  if (under.length) out.push(['bad', `${under.length} karyawan bergaji di bawah batas upah yang diatur: ${under.slice(0, 5).map(e => esc(e.name)).join(', ')}.`]);
+  for (const e of act) {
+    if (e.status !== 'pkwt' || !e.endDate) continue;
+    const n = daysBetween(now, e.endDate);
+    if (n > 30) continue;
+    const comp = hr.umpMode === 'kesepakatan' ? 'kompensasi sesuai kesepakatan' : `uang kompensasi sekitar ${rp(pkwtComp({...e, exitDate: e.endDate}))}`;
+    out.push([n < 0 ? 'bad' : 'warn', `Kontrak ${esc(e.name)} ${n < 0 ? 'sudah berakhir' : 'berakhir'} ${fmtDate(e.endDate)}: perpanjang atau akhiri, ${comp}.`]);
+  }
+  const pph = journalBal(ACC_PPH21), bpjs = journalBal(ACC_BPJS), [y, m] = addMonths(ym, 0).split('-');
+  if (pph > 0) out.push([+now.slice(8) > 15 ? 'bad' : 'warn', `Utang PPh 21 belum disetor: <b>${rp(pph)}</b>. Setor paling lambat tanggal 15 bulan berikutnya, lapor tanggal 20.`]);
+  if (bpjs > 0) out.push([+now.slice(8) > 15 ? 'bad' : 'warn', `Iuran BPJS belum disetor: <b>${rp(bpjs)}</b>. Setor sesuai tagihan BPJS bulan ${MONTHS_FULL[+m - 1]} ${y}.`]);
+  if (!state.payrolls.some(p => p.period === addMonths(ym, -1))) out.push(['warn', `Gaji ${ymLabel(addMonths(ym, -1))} belum diproses di Karyawan → Penggajian.`]);
+  return out;
+}
+function bizReport(type, from, to, period) {
+  const asOf = to || today();
+  if (type === 'jual') {
+    const rows = sorted(state.trades.filter(t => t.kind === 'sale' && inRange(t.date, from, to))).reverse(), cogs = M().stock.cogs;
+    const per = new Map(); let tr = 0, tc = 0;
+    rows.forEach(t => { const total = tradeTotal(t), c = cogs.get(t.id) || 0; tr += total; tc += c;
+      const sub = t.lines.reduce((s, l) => s + l.qty * l.price, 0) || 1;
+      t.lines.forEach(l => { const r = per.get(l.itemId) || {qty: 0, rev: 0}; r.qty += l.qty; r.rev += l.qty * l.price * total / sub; per.set(l.itemId, r); }); });
+    return kop('Laba Penjualan', period) + `<table><thead><tr><th>Tanggal</th><th>No. Bukti</th><th>Pelanggan</th><th class="num">Penjualan</th><th class="num">HPP</th><th class="num">Laba kotor</th><th class="num">Margin</th></tr></thead>
+      ${rows.map(t => { const total = tradeTotal(t), c = cogs.get(t.id) || 0; return `<tr><td style="white-space:nowrap">${fmtDate(t.date)}</td><td>${esc(t.ref)}</td><td>${esc(partyOf(t))}</td><td class="num">${rp(total)}</td><td class="num">${rp(c)}</td><td class="num">${rp(total - c)}</td><td class="num">${total ? pct((total - c) / total * 100) : '—'}</td></tr>`; }).join('')}
+      <tr class="total"><td colspan="3">Total</td><td class="num">${rp(tr)}</td><td class="num">${rp(tc)}</td><td class="num">${rp(tr - tc)}</td><td class="num">${tr ? pct((tr - tc) / tr * 100) : '—'}</td></tr></table>
+      <h3>Penjualan per barang/jasa</h3><table><thead><tr><th>Barang/Jasa</th><th class="num">Terjual</th><th class="num">Penjualan bersih</th></tr></thead>
+      ${[...per.entries()].sort((a, b) => b[1].rev - a[1].rev).map(([id, r]) => `<tr><td>${esc(itemOf(id)?.name || '(terhapus)')}</td><td class="num">${fmtQty(r.qty)} ${esc(itemOf(id)?.unit)}</td><td class="num">${rp(r.rev)}</td></tr>`).join('')}</table>
+      <p class="muted" style="font-size:12px">HPP memakai metode rata-rata tertimbang (moving average). Diskon pada nota dibagi merata sesuai nilai barang.</p>` + signBlock();
+  }
+  if (type === 'stok') {
+    const st = stockAsOf(asOf); let tv = 0;
+    const rows = state.items.filter(i => st.has(i.id)).sort((a, b) => a.name.localeCompare(b.name));
+    return kop('Laporan Persediaan', 'Per ' + fmtDate(asOf)) + `<table><thead><tr><th>Kode</th><th>Barang</th><th class="num">Stok</th><th class="num">HPP rata-rata</th><th class="num">Nilai</th></tr></thead>
+      ${rows.map(i => { const s = st.get(i.id); tv += s.value; return `<tr><td>${esc(i.code)}</td><td>${esc(i.name)}</td><td class="num">${fmtQty(s.qty)} ${esc(i.unit)}</td><td class="num">${s.qty ? rp(s.value / s.qty) : '—'}</td><td class="num">${rp(s.value)}</td></tr>`; }).join('')}
+      <tr class="total"><td colspan="4">Total nilai persediaan</td><td class="num">${rp(tv)}</td></tr></table>
+      <p class="muted" style="font-size:12px">Total harus sama dengan akun 1-301 Persediaan di neraca pada tanggal yang sama. Cocokkan stok fisik secara berkala.</p>` + signBlock();
+  }
+  if (type === 'beli') {
+    const rows = sorted(state.trades.filter(t => t.kind === 'purchase' && inRange(t.date, from, to))).reverse(), per = new Map();
+    rows.forEach(t => per.set(partyOf(t), (per.get(partyOf(t)) || 0) + tradeTotal(t)));
+    const total = rows.reduce((s, t) => s + tradeTotal(t), 0);
+    return kop('Pembelian per Vendor', period) + `<table><thead><tr><th>Vendor</th><th class="num">Total pembelian</th></tr></thead>
+      ${[...per.entries()].sort((a, b) => b[1] - a[1]).map(([v, n]) => `<tr><td>${esc(v)}</td><td class="num">${rp(n)}</td></tr>`).join('')}
+      <tr class="total"><td>Total</td><td class="num">${rp(total)}</td></tr></table>
+      <h3>Rincian</h3><table><thead><tr><th>Tanggal</th><th>No. Bukti</th><th>Vendor</th><th>Bayar</th><th class="num">Total</th></tr></thead>
+      ${rows.map(t => `<tr><td style="white-space:nowrap">${fmtDate(t.date)}</td><td>${esc(t.ref)}</td><td>${esc(partyOf(t))}</td><td>${t.pay === 'cash' ? 'Tunai' : 'Kredit'}</td><td class="num">${rp(tradeTotal(t))}</td></tr>`).join('')}</table>` + signBlock();
+  }
+  if (type === 'faktur') {
+    const rows = state.trades.filter(t => inRange(t.fpDate || t.date, from, to) && (t.ppn || t.pph || t.fpNo)).sort((a, b) => (a.fpDate || a.date).localeCompare(b.fpDate || b.date));
+    const sum = f => rows.reduce((s, t) => s + f(t), 0), buy = t => t.kind === 'purchase';
+    const pphTxt = t => t.pphParts.map(x => `${PPH_LABEL[x.code]} ${rp(x.amt)}`).join('; ') || '—';
+    return kop('Rekap Faktur &amp; Pajak Jual Beli', period) + `<table><thead><tr><th>Tgl faktur</th><th>No. bukti</th><th>No. faktur pajak</th><th>Jenis</th><th>Pihak</th><th class="num">DPP</th><th class="num">PPN</th><th>Perlakuan PPN</th><th>PPh</th></tr></thead>
+      ${rows.map(t => `<tr><td style="white-space:nowrap">${fmtDate(t.fpDate || t.date)}</td><td>${esc(t.ref)}</td><td>${esc(t.fpNo) || '<span class="out">belum diisi</span>'}</td><td>${buy(t) ? 'Masukan' : 'Keluaran'}</td><td>${esc(partyOf(t))}</td><td class="num">${rp(tradeTotal(t))}</td><td class="num">${rp(t.ppn)}</td><td>${!t.ppn ? '—' : t.wapu ? (buy(t) ? 'Kami pungut (WAPU)' : 'Dipungut pembeli') : buy(t) ? (t.ppnCredit ? 'Dikreditkan' : 'Masuk harga pokok') : 'Disetor sendiri'}</td><td>${esc(pphTxt(t))}</td></tr>`).join('') || '<tr><td colspan="9" class="muted">Belum ada faktur pada periode ini.</td></tr>'}
+      </table><h3>Ringkasan</h3><table>
+      <tr><td>PPN keluaran disetor sendiri</td><td class="num">${rp(sum(t => !buy(t) && !t.wapu ? t.ppn : 0))}</td></tr>
+      <tr><td>PPN keluaran dipungut pembeli WAPU</td><td class="num">${rp(sum(t => !buy(t) && t.wapu ? t.ppn : 0))}</td></tr>
+      <tr><td>PPN masukan dapat dikreditkan</td><td class="num">${rp(sum(t => buy(t) && t.ppnCredit ? t.ppn : 0))}</td></tr>
+      <tr><td>PPN vendor yang kami pungut (WAPU)</td><td class="num">${rp(sum(t => buy(t) && t.wapu ? t.ppn : 0))}</td></tr>
+      <tr><td>PPh yang kami potong/pungut dari vendor</td><td class="num">${rp(sum(t => buy(t) ? t.pph : 0))}</td></tr>
+      <tr><td>PPh yang dipotong pembeli (kredit pajak)</td><td class="num">${rp(sum(t => buy(t) ? 0 : t.pph))}</td></tr>
+      <tr class="total"><td>Saldo utang PPN / PPh potput saat ini</td><td class="num">${rp(journalBal(ACC_PPN))} / ${rp(journalBal(ACC_PPH_POT))}</td></tr></table>
+      <p class="muted" style="font-size:12px">Faktur pajak tetap dibuat dan dilaporkan lewat Coretax; rekap ini untuk mencocokkan. PPN masukan dan keluaran tercatat terpisah di neraca sampai dikompensasi di SPT Masa PPN.</p>` + signBlock();
+  }
+  const runs = state.payrolls.filter(p => inRange(p.date, from, to)).sort((a, b) => a.period.localeCompare(b.period));
+  if (type === 'upah') {
+    let no = 0;
+    return kop('Daftar Upah', period) + `<table><thead><tr><th>No</th><th>Periode</th><th>Nama</th><th>Jabatan</th><th class="num">Gaji pokok</th><th class="num">Tunjangan</th><th class="num">Lembur/bonus</th><th class="num">Potongan BPJS</th><th class="num">PPh 21</th><th class="num">Kasbon</th><th class="num">Bersih</th><th>Tgl bayar</th><th>Paraf</th></tr></thead>
+      ${runs.flatMap(p => p.lines.map(l => `<tr><td>${++no}</td><td>${ymLabel(p.period)}</td><td>${esc(l.name)}</td><td>${esc(l.title)}</td><td class="num">${rp(l.base)}</td><td class="num">${rp(l.fixed + l.varAllow)}</td><td class="num">${rp(l.ot + l.bonus)}</td><td class="num">${rp(lineEe(l))}</td><td class="num">${rp(l.taxBy === 'karyawan' ? l.pph : 0)}</td><td class="num">${rp(l.deduct)}</td><td class="num">${rp(l.net)}</td><td style="white-space:nowrap">${fmtDate(p.date)}</td><td></td></tr>`)).join('') || '<tr><td colspan="13" class="muted">Belum ada penggajian pada periode ini.</td></tr>'}
+      </table>` + signBlock();
+  }
+  if (type === 'bpjs') {
+    const sum = (p, f) => p.lines.reduce((s, l) => s + f(l), 0);
+    const cols = [['JKK', l => l.co.jkk], ['JKM', l => l.co.jkm], ['JHT prsh', l => l.co.jht], ['JP prsh', l => l.co.jp], ['Kes prsh', l => l.co.kes], ['JHT kary', l => l.ee.jht], ['JP kary', l => l.ee.jp], ['Kes kary', l => l.ee.kes], ['PPh 21', l => l.pph], ['PPh ditanggung', l => l.taxAllow]];
+    return kop('Rekap PPh 21 &amp; BPJS', period) + `<table><thead><tr><th>Masa</th>${cols.map(c => `<th class="num">${c[0]}</th>`).join('')}</tr></thead>
+      ${runs.map(p => `<tr><td>${ymLabel(p.period)}</td>${cols.map(c => `<td class="num">${rp(sum(p, c[1]))}</td>`).join('')}</tr>`).join('')}
+      <tr class="total"><td>Total</td>${cols.map(c => `<td class="num">${rp(runs.reduce((s, p) => s + sum(p, c[1]), 0))}</td>`).join('')}</tr></table>
+      <p>Utang PPh 21 saat ini ${rp(journalBal(ACC_PPH21))} · Utang BPJS saat ini ${rp(journalBal(ACC_BPJS))}.</p>
+      <p class="muted" style="font-size:12px">PPh 21 memakai tarif efektif PP 58/2023; masa Desember dihitung ulang dengan tarif Pasal 17. Buat bukti potong walaupun nihil. "PPh ditanggung" adalah tunjangan pajak yang dibayar perusahaan dan sudah termasuk di kolom PPh 21.</p>` + signBlock();
+  }
+  if (type === 'sdm') {
+    const ym = asOf.slice(0, 7), act = state.employees.filter(e => empActive(e, ym)), n = f => act.filter(f).length;
+    const monthly = act.filter(e => e.status !== 'harian').map(empWage);
+    return kop('Data Ketenagakerjaan', 'Per ' + fmtDate(asOf)) + `<table>
+      <tr class="sect"><td colspan="2">Jumlah pekerja</td></tr>
+      <tr><td>Laki-laki</td><td class="num">${n(e => e.gender === 'L')}</td></tr><tr><td>Perempuan</td><td class="num">${n(e => e.gender === 'P')}</td></tr>
+      ${Object.entries(EMP_STATUS).map(([k, v]) => `<tr><td>${v}</td><td class="num">${n(e => e.status === k)}</td></tr>`).join('')}
+      <tr class="total"><td>Total</td><td class="num">${act.length}</td></tr>
+      <tr class="sect"><td colspan="2">Upah bulanan (pokok + tunjangan tetap)</td></tr>
+      <tr><td>Terendah</td><td class="num">${monthly.length ? rp(Math.min(...monthly)) : '—'}</td></tr><tr><td>Tertinggi</td><td class="num">${monthly.length ? rp(Math.max(...monthly)) : '—'}</td></tr>
+      <tr><td>Dasar upah</td><td class="num">${state.hr.umpMode === 'wajib' ? 'Upah minimum' + (state.hr.ump ? ' ' + rp(state.hr.ump) : '') : 'Kesepakatan (usaha mikro/kecil)'}</td></tr>
+      <tr class="sect"><td colspan="2">Kepesertaan BPJS</td></tr>
+      <tr><td>BPJS Ketenagakerjaan</td><td class="num">${n(e => e.bpjsTk)}</td></tr><tr><td>BPJS Kesehatan</td><td class="num">${n(e => e.bpjsKes)}</td></tr>
+      </table><p class="muted" style="font-size:12px">Dapat dipakai sebagai bahan wajib lapor ketenagakerjaan.</p>` + signBlock();
+  }
+  return '';
+}
+
+const VIEWS = {dashboard: renderDashboard, transaksi: renderTx, jualbeli: renderTrade, hutang: renderDebts, karyawan: renderHr, laporan: renderReport, pengaturan: renderSettings};
 function renderView(v) { VIEWS[v]?.(); }
 function renderAll() { memo = null; renderHeader(); renderView(currentView); }
 
