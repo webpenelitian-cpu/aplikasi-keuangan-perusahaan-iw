@@ -126,6 +126,11 @@ export function watch(cb) {
   return F.onSnapshot(dataDoc('meta'), snap => { if (snap.exists() && !snap.metadata.hasPendingWrites) cb(snap.data()); }, () => {});
 }
 
+// Menunggu perubahan yang masih antre terkirim ke server; false bila belum selesai dalam 8 detik
+export function flush() {
+  return Promise.race([F.waitForPendingWrites(db).then(() => true), new Promise(r => setTimeout(() => r(false), 8000))]);
+}
+
 export async function signOut() {
   await A.signOut(auth); user = null;
   // Salinan data perusahaan di perangkat ikut dihapus saat keluar

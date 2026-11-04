@@ -9,6 +9,9 @@ const MODE_KEY = 'keuangan-mode';                 // 'lokal' bila pengguna memil
 const LAST_UID_KEY = 'keuangan-last-uid';
 const DEVICE_KEY = 'keuangan-device-id';
 const VIEW_KEY = 'keuangan-halaman';
+const ACTIVE_KEY = 'keuangan-aktif-terakhir';     // waktu terakhir akun dipakai di perangkat ini
+const IDLE_NOTE_KEY = 'keuangan-keluar-otomatis';
+const IDLE_LOGOUT_MS = 60 * 60 * 1000, IDLE_WARN_MS = 2 * 60 * 1000;
 const PBKDF2_ITER = 600000;
 const MIN_PW = 8;
 const TX_PAGE = 300;
@@ -770,6 +773,65 @@ function armAutoLock() {
     else if (vault && hiddenAt && Date.now() - hiddenAt > 60000) lockNow();
   });
   resetIdle();
+}
+
+/* ---------- Keluar otomatis ----------
+   Akun keluar sendiri setelah 1 jam tidak dipakai, termasuk bila aplikasi ditutup selama itu. Perubahan yang belum sampai
+   ke server tidak boleh hilang, jadi keluar ditunda sampai semuanya terkirim. */
+let lastMark = 0, idleBusy = false, idleWarned = false;
+const lastActive = () => { try { return +localStorage.getItem(ACTIVE_KEY) || 0; } catch { return 0; } };
+const idleExpired = () => lastActive() > 0 && Date.now() - lastActive() >= IDLE_LOGOUT_MS;
+function markActive(force) {
+  const now = Date.now();
+  idleWarned = false;
+  if (!force && now - lastMark < 30000) return;
+  lastMark = now;
+  try { localStorage.setItem(ACTIVE_KEY, String(now)); } catch {}
+}
+const companyCopies = () => Object.keys(localStorage).filter(k => k.startsWith(KEY + ':co:'));
+function leaveDevice() {
+  [storeKey, metaKey(), LAST_UID_KEY, ACTIVE_KEY, ...conflictKeys(), ...companyCopies()].forEach(k => localStorage.removeItem(k));
+  try { sessionStorage.setItem(IDLE_NOTE_KEY, '1'); } catch {}
+  location.reload();
+}
+async function idleLogout() {
+  if (idleBusy || !cloudUser || !navigator.onLine) return;
+  idleBusy = true;
+  try {
+    if (dirty) await pushNow();
+    if (dirty || !await Cloud.flush()) return; // dicoba lagi pada pemeriksaan berikutnya
+    await Cloud.signOut();
+    leaveDevice();
+  } catch {} finally { idleBusy = false; }
+}
+function idleTick() {
+  if (!cloudUser) return;
+  const idle = Date.now() - lastActive();
+  if (idle >= IDLE_LOGOUT_MS) idleLogout();
+  else if (idle >= IDLE_LOGOUT_MS - IDLE_WARN_MS && !idleWarned) { idleWarned = true; toast('Tidak ada aktivitas. Akun keluar otomatis dalam 2 menit.'); }
+}
+function armIdleLogout() {
+  markActive(true);
+  if (armIdleLogout.done) return;
+  armIdleLogout.done = true;
+  ['pointerdown', 'keydown', 'touchstart', 'wheel'].forEach(ev => addEventListener(ev, () => markActive(), {passive: true}));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) idleTick(); });
+  // Keluar di satu tab ikut mengeluarkan tab lain
+  addEventListener('storage', e => { if (e.key === ACTIVE_KEY && e.newValue === null && cloudUser) location.reload(); });
+  setInterval(idleTick, 30000);
+}
+// Aplikasi dibuka lagi setelah lebih dari 1 jam; true bila akun berhasil dikeluarkan
+async function idleLogoutAtStart(user) {
+  if (!idleExpired() || !navigator.onLine) return false;
+  storeKey = KEY + ':' + user.uid;
+  try {
+    const r = await Cloud.pull(), local = localStorage.getItem(storeKey);
+    if (local && (!r || readMeta().updatedAt > r.updatedAt)) return false; // ada perubahan belum terkirim: buka dulu agar tersimpan
+    if (!await Cloud.flush()) return false;
+    await Cloud.signOut();
+    leaveDevice();
+    return true;
+  } catch { return false; }
 }
 
 /* ---------- Pengaturan keamanan ---------- */
@@ -1799,6 +1861,7 @@ function renderAccount() {
   box.innerHTML = `<div>Masuk sebagai <b>@${esc(cloudInfo.username || '—')}</b></div>
     <div class="muted" style="font-size:12px">${cloudInfo.google ? 'Akun Google · ' + esc(cloudInfo.email || '') : 'Akun username & kata sandi'}</div>
     <div class="muted" id="syncStatus" style="margin:8px 0">${esc(syncMsg)}</div>
+    <div class="muted" style="font-size:12px;margin-bottom:8px">Akun keluar otomatis setelah 1 jam tidak dipakai.</div>
     <div class="muted" style="font-size:12px;margin-bottom:10px">${vault
       ? 'Data dienkripsi di perangkat sebelum dikirim, sehingga server pun tidak bisa membacanya.'
       : 'Tips: pasang kata sandi di kartu Keamanan agar data dienkripsi sebelum dikirim ke server.'}</div>
@@ -1928,7 +1991,7 @@ const ACTIONS = {
     if (dirty) await pushNow();
     if (dirty && !confirm('Ada perubahan yang BELUM tersimpan ke server (offline?). Tetap keluar dan buang perubahan itu?')) return;
     await Cloud.signOut().catch(() => {});
-    [storeKey, metaKey(), LAST_UID_KEY, ...conflictKeys()].forEach(k => localStorage.removeItem(k));
+    [storeKey, metaKey(), LAST_UID_KEY, ACTIVE_KEY, ...conflictKeys()].forEach(k => localStorage.removeItem(k));
     location.reload();
   },
   // Hak penghapusan data pribadi (UU 27/2022 tentang Pelindungan Data Pribadi)
@@ -1937,7 +2000,7 @@ const ACTIONS = {
     if (prompt(`Ketik username Anda (${cloudInfo.username}) untuk konfirmasi`) !== cloudInfo.username) return toast('Konfirmasi tidak cocok');
     try {
       await Cloud.deleteAccount(cloudInfo.username);
-      [storeKey, metaKey(), LAST_UID_KEY, ...conflictKeys()].forEach(k => localStorage.removeItem(k));
+      [storeKey, metaKey(), LAST_UID_KEY, ACTIVE_KEY, ...conflictKeys()].forEach(k => localStorage.removeItem(k));
       alert('Akun dan data di server sudah dihapus.');
       location.reload();
     } catch (e) {
@@ -3375,6 +3438,7 @@ function askUsername() {
 
 async function openAccount(user) {
   cloudUser = user;
+  armIdleLogout();
   storeKey = KEY + ':' + user.uid;
   localStorage.setItem(LAST_UID_KEY, user.uid);
   localStorage.removeItem(MODE_KEY);
@@ -3430,14 +3494,16 @@ async function boot() {
   try { Cloud = await import('./cloud.js'); } catch { Cloud = null; }
   if (!Cloud?.enabled() || localStorage.getItem(MODE_KEY) === 'lokal') return openStore(KEY);
   const res = await Cloud.init();
-  if (res.user) return openAccount(res.user);
+  if (res.user) { if (await idleLogoutAtStart(res.user)) return; return openAccount(res.user); }
   if (!res.online) {
     // Tanpa internet: buka salinan akun terakhir di perangkat ini bila ada
     const last = localStorage.getItem(LAST_UID_KEY);
     if (last && localStorage.getItem(KEY + ':' + last)) { offlineAccount = true; return openStore(KEY + ':' + last); }
     return showAuth('Tidak bisa terhubung ke server. Periksa internet, atau pakai tanpa akun.');
   }
-  showAuth();
+  let note = '';
+  try { if (sessionStorage.getItem(IDLE_NOTE_KEY)) { note = 'Anda keluar otomatis karena 1 jam tidak ada aktivitas. Silakan masuk kembali.'; sessionStorage.removeItem(IDLE_NOTE_KEY); } } catch {}
+  showAuth(note);
 }
 // Menunggu erp.js selesai dimuat
 addEventListener('DOMContentLoaded', boot);
