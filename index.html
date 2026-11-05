@@ -187,6 +187,7 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
 .ug-item{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--soft)}
 .ug-item p{margin:2px 0 0;font-size:12px}.ug-item .btn{flex:0 0 auto}
 .log-info{min-width:220px;overflow-wrap:anywhere}
+.pd-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}.pd-head h2{font-size:18px;margin:0 0 2px}.pd-head p{margin:0}.pd-head>div{flex:1 1 280px;min-width:0}#pdPdf{flex:0 0 auto;text-decoration:none}
 .pd-card{margin-top:12px}.pd-steps{margin:0;padding-left:22px;line-height:1.6}.pd-steps li{margin-bottom:6px}.pd-steps li:last-child{margin-bottom:0}
 .pd-x{border-top:1px solid var(--line);padding:10px 0}.pd-x summary{cursor:pointer}.pd-x .table-wrap{margin-top:10px;max-height:none}.pd-x th{position:static}
 /* Tampilan modern: hanya untuk layar, hasil cetak tetap polos */
@@ -689,7 +690,8 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
 
   <!-- PANDUAN -->
   <section class="view" id="view-panduan">
-    <div class="toolbar"><div class="seg ttabs scroll" id="pdTabs" style="margin:0;flex:1 1 auto;min-width:0"></div><a class="btn accent" id="pdPdf" style="text-decoration:none">Unduh panduan PDF</a></div>
+    <div class="seg ttabs scroll" id="pdTabs"></div>
+    <div class="pd-head"><div id="pdHead"></div><a class="btn accent" id="pdPdf">Unduh panduan PDF</a></div>
     <div id="pdBody"></div>
   </section>
 

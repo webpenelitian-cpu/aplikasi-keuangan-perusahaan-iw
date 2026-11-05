@@ -79,8 +79,8 @@ function renderPanduan() {
   $('pdTabs').innerHTML = tabs.map(k => `<button type="button" data-act="pdTab" data-id="${k}" class="${k === pdTab ? 'on' : ''}" aria-pressed="${k === pdTab}">${esc(PANDUAN[k].title)}</button>`).join('');
   const p = PANDUAN[pdTab], who = pdTab === 'mulai' ? company?.role || 'owner' : pdTab, link = $('pdPdf');
   link.href = `panduan/panduan-${PD_FILE[who]}.pdf`; link.download = `panduan-${PD_FILE[who]}.pdf`; link.textContent = `Unduh panduan PDF ${PANDUAN[who].title}`;
-  $('pdBody').innerHTML = `<div class="dash-head"><div><h2>Panduan ${esc(p.title)}</h2><p class="muted">${esc(p.intro)}</p></div></div>
-    ${p.rutin ? `<div class="card pd-card"><h3>Pekerjaan rutin</h3><table class="dt"><tbody>${p.rutin.map(([w, t]) => `<tr><td style="width:96px"><b>${esc(w)}</b></td><td>${pdRich(t)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+  $('pdHead').innerHTML = `<h2>Panduan ${esc(p.title)}</h2><p class="muted">${esc(p.intro)}</p>`;
+  $('pdBody').innerHTML = `${p.rutin ? `<div class="card pd-card"><h3>Pekerjaan rutin</h3><table class="dt"><tbody>${p.rutin.map(([w, t]) => `<tr><td style="width:96px"><b>${esc(w)}</b></td><td>${pdRich(t)}</td></tr>`).join('')}</tbody></table></div>` : ''}
     ${p.guides.map(g => `<div class="card pd-card"><h3>${esc(g.t)}</h3>${g.steps ? `<ol class="pd-steps">${g.steps.map(s => `<li>${pdRich(s)}</li>`).join('')}</ol>` : ''}${g.list ? `<ul class="pd-steps">${g.list.map(s => `<li>${pdRich(s)}</li>`).join('')}</ul>` : ''}${g.tip ? `<div class="notice" style="margin:10px 0 0">${pdRich(g.tip)}</div>` : ''}</div>`).join('')}
     ${pdExcel(pdTab)}`;
 }
