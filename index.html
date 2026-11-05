@@ -18,8 +18,8 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
 :root{
-  --bg:#eef2f3; --panel:#fff; --text:#14304a; --muted:#566878; --line:#d3dce1; --soft:#f6f8f9;
-  --primary:#14304a; --primary-soft:#e3eaf0; --accent:#e5a100; --accent-ink:#7a5200;
+  --bg:#f3f5f9; --panel:#fff; --text:#16283a; --muted:#5b6b7b; --line:#e2e7ee; --soft:#f6f8fb;
+  --primary:#1a4c8b; --primary-soft:#e6eefa; --accent:#e5a100; --accent-ink:#7a5200;
   --in:#1d7447; --in-soft:#e3f2ea; --out:#b3261e; --out-soft:#fbe7e5; --tr:#6a4fd6; --tr-soft:#efeafe;
   --safe-top:env(safe-area-inset-top,0px); --safe-bottom:env(safe-area-inset-bottom,0px);
   --field:#fff; --warn-bg:#fff8e1; --warn-line:#f3dd9c; --badge-warn:#fff3d6;
@@ -182,6 +182,47 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
 #printArea{display:none}
 .toast{position:fixed;bottom:20px;right:20px;left:auto;background:#14304a;color:#fff;padding:10px 16px;border-radius:8px;opacity:0;transition:.25s;pointer-events:none;z-index:50}
 .toast.show{opacity:1}
+.ug-group{margin:14px 0 8px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}.ug-group:first-child{margin-top:0}
+.ug-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),1fr));gap:10px}
+.ug-item{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--soft)}
+.ug-item p{margin:2px 0 0;font-size:12px}.ug-item .btn{flex:0 0 auto}
+.log-info{min-width:220px;overflow-wrap:anywhere}
+.pd-card{margin-top:12px}.pd-steps{margin:0;padding-left:22px;line-height:1.6}.pd-steps li{margin-bottom:6px}.pd-steps li:last-child{margin-bottom:0}
+.pd-x{border-top:1px solid var(--line);padding:10px 0}.pd-x summary{cursor:pointer}.pd-x .table-wrap{margin-top:10px;max-height:none}.pd-x th{position:static}
+/* Tampilan modern: hanya untuk layar, hasil cetak tetap polos */
+@media screen{
+  body{line-height:1.45;-webkit-font-smoothing:antialiased}
+  header{box-shadow:0 1px 0 var(--line);border-bottom:0}
+  nav button{border-radius:10px;font-weight:500;transition:background .15s,color .15s}
+  nav button:hover{background:var(--soft);color:var(--text)}
+  nav button.active{box-shadow:inset 0 0 0 1px var(--primary-soft)}
+  .card{border-radius:14px;border-color:var(--line);box-shadow:0 1px 2px rgba(16,32,48,.04),0 6px 16px rgba(16,32,48,.04);padding:18px}
+  .card h3{font-size:15px;letter-spacing:-.01em}
+  .stat .label{text-transform:none;letter-spacing:0;font-size:12.5px;font-weight:500}
+  .stat .value{letter-spacing:-.02em}
+  .table-wrap{border-radius:12px}
+  th{font-weight:600;background:var(--soft);border-bottom:1px solid var(--line)}
+  tbody tr{transition:background .12s}
+  .rtable tbody tr:hover td{background:var(--soft)}
+  .btn{border-radius:10px;font-weight:500;transition:background .15s,box-shadow .15s,transform .05s}
+  .btn:active:not(:disabled){transform:translateY(1px)}
+  .btn.primary{box-shadow:0 1px 2px rgba(16,32,48,.18)}
+  .btn:focus-visible,nav button:focus-visible,.seg button:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+  input,select,textarea{border-radius:10px;transition:border-color .15s,box-shadow .15s}
+  input:focus,select:focus,textarea:focus{outline:0;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+  .seg{border-radius:12px;background:var(--soft);padding:3px;gap:2px;border-color:var(--line)}
+  .seg button{background:none;border-radius:9px;font-weight:500}
+  .seg button.on{background:var(--panel);color:var(--primary);font-weight:600;box-shadow:0 1px 3px rgba(16,32,48,.14)}
+  .badge{border-radius:999px;padding:2px 10px}
+  .notice{border-radius:12px}
+  dialog{border-radius:18px;box-shadow:0 24px 60px rgba(10,20,30,.28)}
+  dialog::backdrop{background:rgba(10,20,30,.5);backdrop-filter:blur(2px)}
+  dialog .hd{font-size:15px}
+  .toast{border-radius:12px;box-shadow:0 10px 26px rgba(10,20,30,.28)}
+  .dash-sec+.dash-sec{border-top-width:1px}
+}
+@media screen and (prefers-color-scheme:dark){.btn.primary{background:#2a68ad;border-color:#2a68ad}} /* teks putih tetap terbaca (kontras minimal 4,5:1) */
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
 
 /* ---------- Ponsel (Android & iOS) ---------- */
 @media (max-width:760px){
@@ -191,7 +232,7 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
   nav button{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;padding:6px 0;border-radius:8px}
   nav button svg{display:block}
   nav .nl{display:none}nav .ns{display:inline}
-  nav button[data-view=hutang]{display:none}
+  nav button[data-view=hutang],nav button[data-view=unggah],nav button[data-view=panduan]{display:none}
   .onlymobile{display:inline-block}
   .tline{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto}.tline .tl-item{grid-column:1/-1}
   dialog.big{width:100vw}
@@ -229,6 +270,8 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
 </style>
 <script src="app.js" defer></script>
 <script src="erp.js" defer></script>
+<script src="unggah.js" defer></script>
+<script src="panduan.js" defer></script>
 </head>
 <body class="booting">
 <noscript><p style="padding:20px">Aktifkan JavaScript untuk memakai aplikasi ini.</p></noscript>
@@ -297,7 +340,9 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
     <button data-view="erp"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>ERP</button>
     <button data-view="hutang"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 7h13l-3-3M17 17H4l3 3"/></svg><span class="nl">Piutang/Utang</span><span class="ns">Utang</span></button>
     <button data-view="karyawan"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-5 4-7 8-7s7 2 8 7"/></svg>Karyawan</button>
+    <button data-view="unggah"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V5M7 10l5-5 5 5M4 20h16"/></svg>Unggah</button>
     <button data-view="laporan"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h9l4 4v14H6zM9 13h6M9 17h6"/></svg>Laporan</button>
+    <button data-view="panduan"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2zM8 7h7M8 11h7"/></svg>Panduan</button>
     <button data-view="pengaturan"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>Atur</button>
   </nav>
   <button class="btn primary" id="btnAdd">+ Transaksi</button>
@@ -622,8 +667,35 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
     <div class="card report"><div class="table-wrap" style="max-height:none;border:0" id="reportOut"></div></div>
   </section>
 
+  <!-- UNGGAH EXCEL -->
+  <section class="view" id="view-unggah">
+    <div class="card" id="ugForm">
+      <h3>Unggah Data dari Excel</h3>
+      <p class="muted" style="margin-top:0">Pilih jenis data, isi templatenya, lalu unggah. Semua baris diperiksa lebih dulu dan baru tersimpan bila tidak ada yang salah.</p>
+      <div class="toolbar">
+        <label class="f">Jenis data<select id="ugKind"></select></label>
+        <button type="button" class="btn" id="btnUgTpl">Unduh template</button>
+        <label class="f">File Excel (.xlsx atau .csv)<input type="file" id="ugFileInput" accept=".xlsx,.csv"></label>
+        <label class="check" id="ugUpdateWrap"><input type="checkbox" id="ugUpdate">Perbarui data yang sudah ada</label>
+      </div>
+      <p class="muted" id="ugNeed" style="font-size:12px;margin:0"></p>
+    </div>
+    <div id="ugResult" style="margin-top:12px"></div>
+    <div class="card" style="margin-top:12px">
+      <h3>Template Standar</h3>
+      <div id="ugList"></div>
+    </div>
+  </section>
+
+  <!-- PANDUAN -->
+  <section class="view" id="view-panduan">
+    <div class="toolbar"><div class="seg ttabs scroll" id="pdTabs" style="margin:0;flex:1 1 auto;min-width:0"></div><a class="btn accent" id="pdPdf" style="text-decoration:none">Unduh panduan PDF</a></div>
+    <div id="pdBody"></div>
+  </section>
+
   <!-- PENGATURAN -->
   <section class="view" id="view-pengaturan">
+    <div class="toolbar"><button type="button" class="btn" id="btnGoPanduan">Panduan pengisian</button><button type="button" class="btn" id="btnGoUnggah">Unggah data dari Excel</button></div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
       <div class="card">
         <h3>Akun &amp; Penyimpanan Server</h3>

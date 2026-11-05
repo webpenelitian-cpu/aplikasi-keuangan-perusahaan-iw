@@ -25,6 +25,10 @@ service cloud.firestore {
       return role(cid) == 'owner' || ym == '' || !exists(settings) || ym > get(settings).data.r.get(['lockedUntil', 'v'], '');
     }
     // Pengaturan: pimpinan bebas; keuangan hanya boleh memajukan tutup buku; SDM hanya boleh mengubah pengaturan SDM
+    // Nama kelompok harus baku: jenis, bulan (boleh kosong), dan nomor pecahan. Menutup celah kelompok tanpa bulan yang lolos dari tutup buku.
+    function validBucket(b) {
+      return b.matches('^[a-z]+~([0-9]{4}-[0-9]{2})?~[0-3]$');
+    }
     function settingsOk(cid) {
       let old = resource == null ? {} : resource.data.r;
       let next = request.resource.data.r;
@@ -87,15 +91,19 @@ service cloud.firestore {
         allow delete: if (hasRole(cid, ['owner']) && uid != request.auth.uid) || (isOwner(uid) && role(cid) != 'owner');
       }
       // Data usaha, dikelompokkan per jenis dan bulan. Jejak audit hanya bisa ditambah, tidak bisa diubah atau dihapus.
+      // Tiap akun hanya menulis ke kelompok audit yang memuat uid-nya, jadi penulis catatan tidak bisa dipalsukan.
+      // Format lama tanpa uid hanya untuk pimpinan saat menyalin data pribadi ke perusahaan.
       match /buckets/{b} {
         allow read: if isMember(cid);
         allow delete: if false;
         allow create, update: if isMember(cid) && request.resource.data.keys().hasOnly(['r']) && (
           b.matches('^audit~.*')
-            ? (role(cid) != 'viewer' && (resource == null
+            ? (role(cid) != 'viewer'
+              && ((b.split('~').size() == 4 && b.split('~')[2] == request.auth.uid) || (b.split('~').size() == 3 && role(cid) == 'owner'))
+              && (resource == null
                 || (request.resource.data.r.diff(resource.data.r).changedKeys().size() == 0
                   && request.resource.data.r.diff(resource.data.r).removedKeys().size() == 0)))
-            : (openPeriod(cid, b) && (!b.matches('^settings~.*') || (b == 'settings~~0' && settingsOk(cid))) && (role(cid) in ['owner', 'finance']
+            : (validBucket(b) && openPeriod(cid, b) && (!b.matches('^settings~.*') || (b == 'settings~~0' && settingsOk(cid))) && (role(cid) in ['owner', 'finance']
               || (role(cid) == 'sales' && b.matches('^(tx|debts|trades|returns|orders|customers|contacts)~.*'))
               || (role(cid) == 'warehouse' && b.matches('^(tx|debts|trades|returns|orders|items|vendors|adjusts|transfers|warehouses|batches)~.*'))
               || (role(cid) == 'hr' && b.matches('^(tx|settings)~.*')))));
@@ -103,7 +111,7 @@ service cloud.firestore {
       // Data karyawan: hanya pimpinan, keuangan, dan SDM yang bisa membuka; peran yang sama bisa mengubah
       match /hrdata/{b} {
         allow read: if hasRole(cid, ['owner', 'finance', 'hr']);
-        allow create, update: if hasRole(cid, ['owner', 'finance', 'hr']) && request.resource.data.keys().hasOnly(['r']) && openPeriod(cid, b);
+        allow create, update: if hasRole(cid, ['owner', 'finance', 'hr']) && request.resource.data.keys().hasOnly(['r']) && validBucket(b) && openPeriod(cid, b);
         allow delete: if false;
       }
     }

@@ -2,10 +2,10 @@
 /* Modul ERP: perusahaan bersama (banyak pengguna), penjualan & CRM, pembelian & gudang, akuntansi lanjutan, dan SDM lanjutan.
    Berkas ini dimuat setelah app.js dan memakai fungsi serta data yang sama. */
 
-const APP_VERSION = '21'; // samakan dengan versi CACHE di sw.js
+const APP_VERSION = '24'; // samakan dengan versi CACHE di sw.js
 const ROLES = {owner: 'Pimpinan', finance: 'Keuangan', sales: 'Penjualan', warehouse: 'Gudang & pembelian', hr: 'SDM', viewer: 'Hanya lihat'};
-const ROLE_VIEWS = {sales: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'laporan', 'pengaturan'], warehouse: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'laporan', 'pengaturan'],
-  hr: ['dashboard', 'karyawan', 'laporan', 'pengaturan'], viewer: ['dashboard', 'laporan', 'pengaturan']};
+const ROLE_VIEWS = {sales: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'], warehouse: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'],
+  hr: ['dashboard', 'karyawan', 'unggah', 'laporan', 'panduan', 'pengaturan'], viewer: ['dashboard', 'laporan', 'panduan', 'pengaturan']};
 const ACC_ASET = {code: '1-401', name: 'Pembelian aset tetap'};
 const ACC_AKUM = {code: '1-491', name: 'Akumulasi penyusutan'};
 const ACC_DEP = {code: '5-401', name: 'Beban penyusutan'};
@@ -75,6 +75,8 @@ const shardOf = id => hash(id).charCodeAt(0) % 4;
 function bucketOf(col, id, rec) {
   const kind = SYNC_COLS[col], dated = kind === 1 || kind === 3;
   const when = dated ? String(rec.date || rec.ts || '').slice(0, 7) || 'x' : '';
+  // Jejak audit tiap akun punya kelompok sendiri yang memuat uid-nya, jadi penulisnya dibuktikan oleh aturan server
+  if (col === 'audit' && rec.u) return {sub: 'buckets', id: `audit~${when}~${rec.u}~${shardOf(id)}`};
   return {sub: kind >= 2 ? 'hrdata' : 'buckets', id: `${col}~${when}~${shardOf(id)}`};
 }
 function flatten(s) {
@@ -84,18 +86,23 @@ function flatten(s) {
   for (const k of SETTING_KEYS) put('settings', k, {v: s[k]}, {sub: 'buckets', id: 'settings~~0'});
   return m;
 }
-let shadow = new Map(), remote = new Map(), remoteReady = {buckets: false, hrdata: false}, rebuildTimer = null, unwatch = [];
+let bucketStray = 0, shadow = new Map(), remote = new Map(), remoteReady = {buckets: false, hrdata: false}, rebuildTimer = null, unwatch = [];
 // companyFresh: data perusahaan belum ada di server, jadi seluruh isi state harus diunggah
 let companyFresh = false;
 const companyShadow = () => { shadow = companyFresh ? new Map() : flatten(state); companyFresh = false; };
 function companyData() {
-  const d = {version: DATA_VERSION, audit: [], accounts: [], categories: [], tx: [], debts: [], security: state?.security || {autoLockMin: 5}};
+  const d = {version: DATA_VERSION, audit: [], accounts: [], categories: [], tx: [], debts: [], security: state?.security || {autoLockMin: 5}}; let stray = 0;
   for (const col of Object.keys(SYNC_COLS)) d[col] ||= [];
   for (const [bid, r] of remote) {
     const col = bid.split('~')[0];
-    if (col === 'settings') { for (const k of SETTING_KEYS) if (r[k]) d[k] = r[k].v; continue; }
-    if (d[col]) d[col].push(...Object.values(r));
+    if (col === 'settings') { if (bid === 'settings~~0') for (const k of SETTING_KEYS) if (r[k]) d[k] = r[k].v; continue; }
+    // Identitas diambil dari nama kelompok yang dijaga server, bukan dari isi catatan yang ditulis peramban
+    if (col === 'audit') { const owner = bid.split('~')[3] === undefined ? undefined : bid.split('~')[2]; for (const a of Object.values(r)) { const {u, ...rest} = a; d.audit.push(owner ? {...rest, u: owner} : rest); } continue; }
+    // Server hanya bisa mengunci bulan lewat nama kelompok. Catatan bertanggal lain yang diselipkan ke kelompok ini tidak dipakai,
+    // sehingga bulan yang sudah ditutup tetap aman dari aplikasi yang dimodifikasi
+    if (d[col]) for (const x of Object.values(r)) { if ([1, 3].includes(SYNC_COLS[col]) && String(x?.date || x?.ts || '').slice(0, 7) !== bid.split('~')[1]) stray++; else d[col].push(x); }
   }
+  bucketStray = stray;
   d.accounts.sort((a, b) => a.code.localeCompare(b.code)); d.categories.sort((a, b) => a.code.localeCompare(b.code));
   d.audit.sort((a, b) => a.ts.localeCompare(b.ts));
   return d;
@@ -178,6 +185,7 @@ function applyRole() {
   document.querySelectorAll('nav button').forEach(b => { b.hidden = !!views && !views.includes(b.dataset.view); });
   document.querySelectorAll('#view-pengaturan .card').forEach((c, i) => { c.hidden = i > 0 && !['owner', 'finance'].includes(role); });
   $('btnWipe').hidden = role !== 'owner';
+  $('btnGoUnggah').hidden = role === 'viewer';
   // Laporan yang tampil mengikuti peran
   const reports = REPORT_ROLES[role];
   if (reports) {
@@ -518,6 +526,7 @@ document.addEventListener('change', e => {
   if (!e.target.value) state.attendance = state.attendance.filter(x => x !== cur);
   else if (cur) cur.status = e.target.value;
   else state.attendance.push({id, empId, date: attDate, status: e.target.value});
+  log('ubah', 'absensi', id, `Absensi ${attDate}`); // tanpa nama dan status: jejak audit terbaca semua anggota, sedangkan kehadiran dan sakit adalah data SDM
   persist();
 });
 $('btnNewLeave').onclick = () => { if (!state.employees.length) return toast('Tambahkan data karyawan dulu'); openForm('leaves'); };
@@ -774,6 +783,7 @@ function financeDash() {
 // Pemeriksaan kesehatan data: tanpa kode server, dua pengguna bersamaan bisa menghasilkan nomor ganda atau stok minus
 function integrityIssues() {
   const out = [], seen = new Set(), dup = new Set();
+  if (bucketStray) out.push(['bad', `${bucketStray} catatan di server diabaikan karena tanggalnya tidak sesuai dengan bulan penyimpanannya. Ini bisa berarti ada pengubahan di luar aplikasi; periksa Log aktivitas.`]);
   for (const t of state.trades) { if (seen.has(t.ref)) dup.add(t.ref); seen.add(t.ref); }
   if (dup.size) out.push(['bad', `No. bukti ganda di Jual/Beli: ${[...dup].slice(0, 4).map(esc).join(', ')}. Periksa dan ubah salah satunya.`]);
   const neg = [...M().stock.stock].filter(([, s]) => s.qty < 0).map(([id]) => itemOf(id)?.name);
@@ -800,7 +810,67 @@ function ownerDash() {
       panel('Proyeksi kas 3 bulan', cashForecast().map(([m, v]) => tr(m, rp(v))), ''), panel('Saldo per akun', balances(), 'Belum ada akun.'), panel('Beban terbesar tahun ini', expenses(), 'Belum ada beban.'), panel('Umur piutang', meterRows(aging('piutang')), '')]});
 }
 // Akun pimpinan melihat semua dasbor dalam satu halaman, dipisah per bagian dan bisa dilompati lewat menu di atas
-const DASH_PARTS = [['Pimpinan', ownerDash], ['Keuangan', financeDash], ['Penjualan', salesDash], ['Gudang', warehouseDash], ['SDM', hrDash]];
+const DASH_PARTS = [['Pimpinan', ownerDash], ['Keuangan', financeDash], ['Penjualan', salesDash], ['Gudang', warehouseDash], ['SDM', hrDash], ['Log aktivitas', logDash]];
+
+/* Log aktivitas: seluruh jejak audit yang tersimpan di server, bisa disaring per akun. Hanya tampil di akun pimpinan.
+   Rule server membuat catatan ini tidak bisa diubah atau dihapus. */
+const LOG_PAGE = 100, LOG_ACTS = {tambah: ['Tambah', 'in'], ubah: ['Ubah', 'tr'], hapus: ['Hapus', 'out'], unggah: ['Unggah', 'tr'], tutup: ['Tutup buku', 'warn'], buka: ['Buka buku', 'out'], setuju: ['Setujui', 'in']};
+const logAcc = a => { const m = a.u && logMembers?.find(x => x.uid === a.u); return m ? '@' + m.name : String(a.by || '').split('/')[0] || 'tidak dikenal'; };
+const LOG_ENTS = {contacts: 'riwayat kontak', batches: 'batch', leaves: 'cuti', kasbons: 'kasbon', assets: 'aset', journals: 'jurnal', budgets: 'anggaran', centers: 'pusat biaya', warehouses: 'gudang', transfers: 'pindah stok', customers: 'pelanggan', salespeople: 'tenaga penjual', recurring: 'tagihan berulang', empdocs: 'dokumen karyawan', reviews: 'penilaian'};
+const logEnt = e => LOG_ENTS[e] || e;
+const logDevice = a => String(a.by || '').split('/')[1] || '';
+const logF = {who: '', act: '', ent: '', from: '', to: '', q: '', limit: LOG_PAGE};
+let logMembers = null, logMembersFor = '';
+function logLoadMembers() {
+  if (!company || logMembersFor === company.id) return;
+  logMembersFor = company.id;
+  Cloud.listMembers(company.id).then(m => { logMembers = m; if ($('logAccounts')) renderRoleDash(); }).catch(() => {});
+}
+function logRows() {
+  const q = norm(logF.q);
+  return state.audit.filter(a => (!logF.who || logAcc(a) === logF.who) && (!logF.act || a.act === logF.act) && (!logF.ent || a.ent === logF.ent) && inRange(a.ts.slice(0, 10), logF.from, logF.to)
+    && (!q || norm(a.info).includes(q) || norm(a.ent).includes(q))).reverse();
+}
+const logTime = ts => { const d = new Date(ts); return Number.isNaN(+d) ? ts : d.toLocaleString('id-ID', {day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'}); };
+function logAccounts() {
+  const now = today(), since = days(now, -30), m = new Map();
+  (logMembers || []).forEach(x => m.set('@' + x.name, {role: ROLES[x.role] || x.role, n: 0, day: 0, last: null}));
+  for (const a of state.audit) {
+    const k = logAcc(a); if (!m.has(k)) m.set(k, {role: '—', n: 0, day: 0, last: null});
+    const r = m.get(k), d = a.ts.slice(0, 10); if (d >= since) r.n++; if (d === now) r.day++; r.last = a;
+  }
+  return [...m.entries()].sort((a, b) => (b[1].last?.ts || '').localeCompare(a[1].last?.ts || ''));
+}
+function logRender() {
+  const rows = logRows(), shown = rows.slice(0, logF.limit), acts = logAccounts();
+  $('logAccounts').innerHTML = `<table class="rtable"><thead><tr><th>Akun</th><th>Peran</th><th class="num">Hari ini</th><th class="num">30 hari</th><th>Terakhir mengisi</th><th>Kegiatan terakhir</th></tr></thead><tbody>${acts.map(([k, r]) => `<tr><td data-label="Akun"><b>${esc(k)}</b></td><td data-label="Peran">${esc(r.role)}</td><td data-label="Hari ini" class="num">${r.day}</td><td data-label="30 hari" class="num">${r.n}</td><td data-label="Terakhir mengisi">${r.last ? esc(logTime(r.last.ts)) : 'Belum ada'}</td><td data-label="Kegiatan terakhir">${r.last ? esc(`${r.last.act} ${logEnt(r.last.ent)}`) : '—'}</td></tr>`).join('') || '<tr><td colspan="6" class="empty" data-label="">Belum ada aktivitas.</td></tr>'}</tbody></table>`;
+  $('logCount').textContent = `${rows.length.toLocaleString('id-ID')} catatan cocok dari ${state.audit.length.toLocaleString('id-ID')}`;
+  $('logBody').innerHTML = shown.map(a => { const b = LOG_ACTS[a.act] || [a.act, 'warn']; return `<tr><td data-label="Waktu" style="white-space:nowrap">${esc(logTime(a.ts))}</td><td data-label="Akun"><b>${esc(logAcc(a))}</b></td><td data-label="Aksi"><span class="badge ${b[1]}">${esc(b[0])}</span></td><td data-label="Data">${esc(logEnt(a.ent))}</td><td data-label="Rincian" class="log-info">${esc(a.info)}</td><td data-label="Perangkat" class="muted">${esc(logDevice(a))}</td></tr>`; }).join('') || '<tr><td colspan="6" class="empty" data-label="">Tidak ada catatan yang cocok.</td></tr>';
+  $('logMore').hidden = rows.length <= shown.length;
+}
+function logDash() {
+  const now = today(), wk = days(now, -7), todays = state.audit.filter(a => a.ts.startsWith(now)), week = state.audit.filter(a => a.ts.slice(0, 10) >= wk);
+  const opt = (vals, cur, label) => `<option value="">${label}</option>` + vals.map(([v, t]) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(t)}</option>`).join('');
+  const uniq = f => [...new Set(state.audit.map(f))].sort();
+  queueMicrotask(() => { if ($('logBody')) { logRender(); logLoadMembers(); } });
+  return `<div class="dash-head"><div><h2>Log Aktivitas Server</h2><p class="muted">Riwayat input semua akun. Catatan tersimpan di server dan tidak bisa diubah atau dihapus.</p></div></div>
+    <div class="grid cards">${[['Aktivitas hari ini', todays.length.toLocaleString('id-ID'), '', `${new Set(todays.map(logAcc)).size} akun aktif`], ['Aktivitas 7 hari', week.length.toLocaleString('id-ID'), '', `${new Set(week.map(logAcc)).size} akun aktif`], ['Perubahan dan hapus 7 hari', String(week.filter(a => ['ubah', 'hapus', 'buka'].includes(a.act)).length), '', 'Perlu dicermati'], ['Total catatan', state.audit.length.toLocaleString('id-ID'), '', state.audit[0] ? 'Sejak ' + fmtDate(state.audit[0].ts.slice(0, 10)) : '']].map(statCard).join('')}</div>
+    <div class="card" style="margin-top:16px"><h3>Ringkasan per akun</h3><div class="table-wrap" id="logAccounts"></div></div>
+    <div class="card" style="margin-top:16px"><h3>Riwayat input</h3>
+      <div class="toolbar" id="logFilter">
+        <label class="f">Akun<select data-log="who">${opt(uniq(logAcc).map(v => [v, v]), logF.who, 'Semua akun')}</select></label>
+        <label class="f">Aksi<select data-log="act">${opt(uniq(a => a.act).map(v => [v, LOG_ACTS[v]?.[0] || v]), logF.act, 'Semua aksi')}</select></label>
+        <label class="f">Data<select data-log="ent">${opt(uniq(a => a.ent).map(v => [v, logEnt(v)]), logF.ent, 'Semua data')}</select></label>
+        <label class="f">Dari<input type="date" data-log="from" value="${esc(logF.from)}"></label>
+        <label class="f">Sampai<input type="date" data-log="to" value="${esc(logF.to)}"></label>
+        <label class="f" style="flex:1;min-width:160px">Cari<input type="search" data-log="q" value="${esc(logF.q)}" placeholder="No. bukti, nama, nilai"></label>
+      </div>
+      <p class="muted" id="logCount" style="font-size:12px;margin:0 0 8px"></p>
+      <div class="table-wrap"><table class="rtable"><thead><tr><th>Waktu</th><th>Akun</th><th>Aksi</th><th>Data</th><th>Rincian</th><th>Perangkat</th></tr></thead><tbody id="logBody"></tbody></table></div>
+      <div style="text-align:center;margin-top:10px"><button type="button" class="btn sm" id="logMore" data-act="logMore" hidden>Tampilkan lebih banyak</button></div>
+    </div>`;
+}
+document.addEventListener('input', e => { const k = e.target.dataset?.log; if (!k) return; logF[k] = e.target.value; logF.limit = LOG_PAGE; logRender(); });
 function allDash() {
   return `<p class="muted" style="margin:0">Halaman ini memuat ${DASH_PARTS.length} dasbor. Pilih bagian atau gulir ke bawah.</p>
     <nav class="dash-jump" aria-label="Bagian dasbor">${DASH_PARTS.map(([name], i) => `<button type="button" class="btn sm" data-act="dJump" data-id="${i}">${name}</button>`).join('')}</nav>`
@@ -815,7 +885,7 @@ function renderRoleDash() {
   if (jump) jump.style.top = document.querySelector('header').offsetHeight + 'px'; // tetap terlihat di bawah kepala halaman
   return true;
 }
-Object.assign(ACTIONS, {dJump: i => $('dash-' + i)?.scrollIntoView({block: 'start'})});
+Object.assign(ACTIONS, {dJump: i => $('dash-' + i)?.scrollIntoView({block: 'start'}), logMore: () => { logF.limit += LOG_PAGE; logRender(); }});
 
 /* ---------- Pelengkap tiap bidang ---------- */
 const SHIFTS = {pagi: 'Pagi', siang: 'Siang', malam: 'Malam', libur: 'Libur'};

@@ -256,7 +256,7 @@ function sanitizeState(d) {
     lockedUntil: cleanDate(d.lockedUntil),
     audit: (Array.isArray(d.audit) ? d.audit : []).slice(-20000).map(a => ({
       ts: cleanStr(a?.ts, 30), by: cleanStr(a?.by, 40), act: cleanStr(a?.act, 20), ent: cleanStr(a?.ent, 20),
-      id: cleanId(a?.id) || '', info: cleanStr(a?.info, 600)})).filter(a => a.ts && a.act),
+      id: cleanId(a?.id) || '', info: cleanStr(a?.info, 600), ...(cleanId(a?.u) ? {u: a.u} : {})})).filter(a => a.ts && a.act),
     accounts: d.accounts.map(a => ({id: cleanId(a?.id), code: cleanStr(a?.code, 20), name: cleanStr(a?.name, 120), opening: cleanNum(a?.opening)}))
       .filter(a => a.id),
     categories: d.categories.map(c => ({id: cleanId(c?.id), code: cleanStr(c?.code, 20), name: cleanStr(c?.name, 120),
@@ -391,8 +391,10 @@ function M() {
 const txSummary = t => `${t.ref || '-'} · ${t.date} · ${TYPE_LABEL[t.type]} · ${rp(t.amount)} · ${accName(t.accountId)}${t.type === 'transfer' ? ' → ' + accName(t.toAccountId) : ' · ' + catName(t.categoryId)}${t.desc ? ' · ' + t.desc : ''}`;
 const debtSummary = d => `${d.kind} · ${d.ref || '-'} · ${d.party} · ${d.date} · ${rp(d.amount)} · ${catName(d.categoryId)}`;
 function log(act, ent, id, info) {
-  state.audit.push({ts: new Date().toISOString(), by: (cloudInfo?.username ? '@' + cloudInfo.username : 'perangkat') + '/' + deviceId.slice(0, 6),
-    act, ent, id: id || '', info: String(info).slice(0, 600)});
+  const a = {ts: new Date().toISOString(), by: (cloudInfo?.username ? '@' + cloudInfo.username : 'perangkat') + '/' + deviceId.slice(0, 6),
+    act, ent, id: id || '', info: String(info).slice(0, 600)};
+  if (company && cloudUser) a.u = cloudUser.uid; // menentukan kelompok audit milik akun ini; server menolak bila uid-nya bukan milik penulis
+  state.audit.push(a);
 }
 const isLocked = date => !!state.lockedUntil && !!date && date <= state.lockedUntil;
 const lockMsg = () => `Periode s.d. ${fmtDate(state.lockedUntil)} sudah ditutup (tutup buku). Data di periode itu tidak bisa diubah atau dihapus.`;
@@ -1105,7 +1107,9 @@ function restoreView() {
   if (['trades', 'items', 'vendors', 'tax'].includes(s?.trade)) tradeTab = s.trade;
   if (['emp', 'pay', 'rules', 'att', 'leave', 'kas', 'doc', 'rev', 'shift'].includes(s?.hr)) hrTab = s.hr;
   if ([...$('rType').options].some(o => o.value === s?.report)) $('rType').value = s.report;
-  showView(Object.hasOwn(VIEWS, s?.view) ? s.view : currentView);
+  // Halaman yang diingat hanya dibuka bila peran saat ini berhak melihatnya
+  const allowed = ROLE_VIEWS[company?.role];
+  showView(Object.hasOwn(VIEWS, s?.view) && (!allowed || allowed.includes(s.view)) ? s.view : currentView);
 }
 const goView = v => document.querySelector(`nav button[data-view="${v}"]`).click();
 
@@ -3357,7 +3361,7 @@ function bizReport(type, from, to, period) {
   return '';
 }
 
-const VIEWS = {dashboard: renderDashboard, transaksi: renderTx, jualbeli: renderTrade, erp: () => renderErp(), hutang: renderDebts, karyawan: renderHr, laporan: renderReport, pengaturan: renderSettings};
+const VIEWS = {dashboard: renderDashboard, transaksi: renderTx, jualbeli: renderTrade, erp: () => renderErp(), hutang: renderDebts, karyawan: renderHr, laporan: renderReport, pengaturan: renderSettings, unggah: () => renderUnggah(), panduan: () => renderPanduan()};
 function renderView(v) { VIEWS[v]?.(); }
 function renderAll() { memo = null; renderHeader(); renderView(currentView); }
 
