@@ -2,7 +2,7 @@
 /* Modul ERP: perusahaan bersama (banyak pengguna), penjualan & CRM, pembelian & gudang, akuntansi lanjutan, dan SDM lanjutan.
    Berkas ini dimuat setelah app.js dan memakai fungsi serta data yang sama. */
 
-const APP_VERSION = '26'; // samakan dengan versi CACHE di sw.js
+const APP_VERSION = '27'; // samakan dengan versi CACHE di sw.js
 const ROLES = {owner: 'Pimpinan', finance: 'Keuangan', sales: 'Penjualan', warehouse: 'Gudang & pembelian', hr: 'SDM', viewer: 'Hanya lihat'};
 const ROLE_VIEWS = {sales: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'], warehouse: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'],
   hr: ['dashboard', 'karyawan', 'unggah', 'laporan', 'panduan', 'pengaturan'], viewer: ['dashboard', 'laporan', 'panduan', 'pengaturan']};
@@ -1012,7 +1012,6 @@ function weekDates() {
   return Array.from({length: 7}, (_, i) => days(mon, i));
 }
 function renderHrMore() {
-  const y = today().slice(0, 4);
   if (hrTab === 'doc') {
     $('docBody').innerHTML = state.empdocs.slice().sort((a, b) => (a.exp || '9').localeCompare(b.exp || '9')).map(x => `<tr><td data-label="Nama"><b>${esc(empOf(x.empId)?.name)}</b></td><td data-label="Dokumen">${DOC_TYPES[x.type]} ${esc(x.no)}</td><td data-label="Berlaku s.d." class="${x.exp && x.exp < days(today(), 30) ? 'out' : ''}">${x.exp ? fmtDate(x.exp) : 'Tanpa batas'}</td><td data-label="" class="no-print num"><button class="btn sm" data-act="openDoc" data-id="${esc(x.id)}">Ubah</button></td></tr>`).join('') || '<tr><td colspan="4" class="empty" data-label="">Belum ada dokumen.</td></tr>';
   } else if (hrTab === 'rev') {

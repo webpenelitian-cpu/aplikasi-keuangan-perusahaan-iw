@@ -792,9 +792,9 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
         <h3>Akun Kas &amp; Bank</h3>
         <table><thead><tr><th>Kode</th><th>Nama</th><th class="num">Saldo awal</th><th></th></tr></thead><tbody id="accList"></tbody></table>
         <div class="form-grid" style="margin-top:10px">
-          <input id="newAccCode" placeholder="Kode (mis. 1-104)">
-          <input id="newAccName" placeholder="Nama akun (mis. Bank BSI)">
-          <input id="newAccOpen" placeholder="Saldo awal" inputmode="numeric">
+          <input id="newAccCode" placeholder="Kode (mis. 1-104)" aria-label="Kode akun baru">
+          <input id="newAccName" placeholder="Nama akun (mis. Bank BSI)" aria-label="Nama akun baru">
+          <input id="newAccOpen" placeholder="Saldo awal" inputmode="numeric" aria-label="Saldo awal akun baru">
           <button class="btn" id="btnAddAcc">Tambah akun</button>
         </div>
       </div>
@@ -803,9 +803,9 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
         <p class="muted" style="margin-top:0;font-size:12px">Hilangkan centang <b>L/R</b> untuk kategori yang bukan pendapatan/beban, mis. setoran modal, pinjaman, atau pembelian aset.</p>
         <div style="overflow:auto"><table><thead><tr><th>Kode</th><th>Nama</th><th>Jenis</th><th>L/R</th><th></th></tr></thead><tbody id="catList"></tbody></table></div>
         <div class="form-grid" style="margin-top:10px">
-          <input id="newCatCode" placeholder="Kode akun">
-          <input id="newCatName" placeholder="Nama kategori">
-          <select id="newCatType"><option value="in">Pemasukan</option><option value="out">Pengeluaran</option></select>
+          <input id="newCatCode" placeholder="Kode akun" aria-label="Kode akun kategori baru">
+          <input id="newCatName" placeholder="Nama kategori" aria-label="Nama kategori baru">
+          <select id="newCatType" aria-label="Jenis kategori baru"><option value="in">Pemasukan</option><option value="out">Pengeluaran</option></select>
           <button class="btn" id="btnAddCat">Tambah kategori</button>
         </div>
       </div>
@@ -1175,7 +1175,7 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
     <div class="bd">
       <p class="muted" id="pwHint" style="margin-top:0"></p>
       <div class="form-grid">
-        <label class="f wide">Kata sandi<input type="password" id="pw1"></label>
+        <label class="f wide">Kata sandi<input type="password" id="pw1" autocomplete="current-password"></label>
         <label class="f wide" id="pw2Wrap">Ulangi kata sandi<input type="password" id="pw2" autocomplete="new-password"></label>
       </div>
       <p class="out" id="pwErr" style="min-height:1.2em;margin-bottom:0"></p>

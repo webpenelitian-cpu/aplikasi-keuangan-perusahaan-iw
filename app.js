@@ -1291,7 +1291,7 @@ const csvCell = v => {
   if (typeof v !== 'number' && /^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return `"${s.replace(/"/g, '""')}"`;
 };
-const toCsv = rows => '﻿' + rows.map(r => r.map(csvCell).join(';')).join('\r\n');
+const toCsv = rows => '\uFEFF' + rows.map(r => r.map(csvCell).join(';')).join('\r\n');
 $('btnCsv').onclick = () => {
   const rows = [['Tanggal', 'No. Bukti', 'Jenis', 'Kode Akun', 'Kategori', 'Akun', 'Ke Akun', 'Uraian', 'Jumlah']];
   filteredTx().forEach(t => rows.push([t.date, t.ref || '', TYPE_LABEL[t.type], t.type === 'transfer' ? '' : catOf(t.categoryId)?.code || '',
@@ -2944,7 +2944,7 @@ let hrTab = 'emp';
 function renderHr() {
   document.querySelectorAll('#hrTabs button').forEach(b => { b.classList.toggle('on', b.dataset.tab === hrTab); b.setAttribute('aria-pressed', b.dataset.tab === hrTab); });
   ['emp', 'pay', 'rules', 'att', 'leave', 'kas', 'doc', 'rev', 'shift'].forEach(k => $('hr-' + k).style.display = k === hrTab ? '' : 'none');
-  const hr = state.hr, ym = today().slice(0, 7), act = state.employees.filter(e => empActive(e, ym));
+  const ym = today().slice(0, 7), act = state.employees.filter(e => empActive(e, ym));
   const lastRun = state.payrolls.slice().sort((a, b) => b.period.localeCompare(a.period))[0], s = lastRun && paySum(lastRun);
   $('hrCards').innerHTML = [
     ['Karyawan aktif', String(act.length), '', `${act.filter(e => e.status === 'pkwtt').length} tetap · ${act.filter(e => e.status === 'pkwt').length} kontrak · ${act.filter(e => e.status === 'harian').length} harian`],

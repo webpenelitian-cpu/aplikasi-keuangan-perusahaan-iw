@@ -28,7 +28,8 @@ function zipStore(files) {
 async function inflate(bytes) {
   const r = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader(), out = []; let n = 0;
   for (;;) {
-    const {done, value} = await r.read(); if (done) break;
+    let step; try { step = await r.read(); } catch { throw new Error('File rusak dan tidak bisa dibaca. Simpan ulang dari Excel, lalu unggah lagi.'); }
+    const {done, value} = step; if (done) break;
     n += value.length;
     if (n > XL_MAX_PART) { await r.cancel(); throw new Error('Isi file terlalu besar.'); }
     out.push(value);
@@ -44,13 +45,18 @@ function zipOpen(buf) {
   for (let i = 0, n = v.getUint16(e + 10, true); i < n; i++) {
     if (p + 46 > buf.byteLength || v.getUint32(p, true) !== 0x02014b50) throw bad();
     const nl = v.getUint16(p + 28, true), xl = v.getUint16(p + 30, true), cl = v.getUint16(p + 32, true);
-    map.set(dec.decode(u8.subarray(p + 46, p + 46 + nl)), {method: v.getUint16(p + 10, true), size: v.getUint32(p + 20, true), at: v.getUint32(p + 42, true)});
+    map.set(dec.decode(u8.subarray(p + 46, p + 46 + nl)), {method: v.getUint16(p + 10, true), crc: v.getUint32(p + 16, true), size: v.getUint32(p + 20, true), usize: v.getUint32(p + 24, true), at: v.getUint32(p + 42, true)});
     p += 46 + nl + xl + cl;
   }
+  // Setiap bagian dicocokkan dengan CRC32 bawaan ZIP: file yang rusak sebagian ditolak, bukan dibaca dengan angka yang berubah diam-diam
   return async name => {
     const f = map.get(name); if (!f) return null;
-    const s = f.at + 30 + v.getUint16(f.at + 26, true) + v.getUint16(f.at + 28, true), raw = u8.subarray(s, s + f.size);
-    return dec.decode(f.method === 8 ? await inflate(raw) : raw);
+    if (f.at + 30 > buf.byteLength || v.getUint32(f.at, true) !== 0x04034b50 || ![0, 8].includes(f.method)) throw bad();
+    const s = f.at + 30 + v.getUint16(f.at + 26, true) + v.getUint16(f.at + 28, true);
+    if (s + f.size > buf.byteLength || f.usize > XL_MAX_PART) throw bad();
+    const raw = u8.subarray(s, s + f.size), data = f.method === 8 ? await inflate(raw) : raw;
+    if (data.length !== f.usize || crc32(data) !== f.crc) throw new Error('File rusak (isi tidak cocok dengan tanda pengamannya). Simpan ulang dari Excel, lalu unggah lagi.');
+    return dec.decode(data);
   };
 }
 
@@ -86,7 +92,7 @@ async function readXlsx(buf) {
   return {rows, date1904};
 }
 function readCsv(text) {
-  text = text.replace(/^﻿/, '');
+  text = text.replace(/^\uFEFF/, '');
   const first = text.split(/\r?\n/, 1)[0], sep = (first.match(/;/g) || []).length >= (first.match(/,/g) || []).length ? ';' : ',', rows = [];
   let cell = '', cells = [], q = false, line = 1;
   const endRow = () => { cells.push(cell); cell = ''; if (cells.some(x => x.trim())) rows.push({line, cells}); cells = []; line++; };
