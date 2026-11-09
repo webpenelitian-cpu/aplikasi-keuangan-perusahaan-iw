@@ -448,6 +448,11 @@ async function pushNow() {
   }
 }
 addEventListener('online', () => { if (dirty) pushNow(); });
+// Penanda koneksi di kepala halaman: pengguna tahu isiannya tersimpan di perangkat dan akan dikirim nanti
+function netBadge() { const b = document.getElementById('netBadge'); if (b) b.hidden = navigator.onLine; }
+addEventListener('online', () => { netBadge(); if (company) setSync('Kembali online: mengirim perubahan ke server…'); });
+addEventListener('offline', () => { netBadge(); setSync('Offline: perubahan tersimpan di perangkat dan dikirim otomatis saat online.'); });
+addEventListener('DOMContentLoaded', netBadge);
 
 // Server punya versi lebih baru dari perangkat lain: data perangkat ini diamankan sebagai salinan, lalu versi server dipakai.
 async function resolveConflict() {
@@ -791,7 +796,8 @@ function markActive(force) {
   lastMark = now;
   try { localStorage.setItem(ACTIVE_KEY, String(now)); } catch {}
 }
-const companyCopies = () => Object.keys(localStorage).filter(k => k.startsWith(KEY + ':co:'));
+// Salinan dan penanda yang tertinggal di perangkat: ikut dihapus saat keluar agar perangkat bersama tidak menyimpan jejak akun
+const companyCopies = () => Object.keys(localStorage).filter(k => [':co:', ':co-of:', ':uname:'].some(p => k.startsWith(KEY + p)));
 function leaveDevice() {
   [storeKey, metaKey(), LAST_UID_KEY, ACTIVE_KEY, ...conflictKeys(), ...companyCopies()].forEach(k => localStorage.removeItem(k));
   try { sessionStorage.setItem(IDLE_NOTE_KEY, '1'); } catch {}
@@ -807,10 +813,18 @@ async function idleLogout() {
     leaveDevice();
   } catch {} finally { idleBusy = false; }
 }
+// Offline tidak bisa keluar tanpa membuang isian yang belum terkirim, jadi layar dikunci; begitu online, akun dikeluarkan
+// setelah semua isian terkirim (lewat idleLogoutAtStart saat aplikasi dimuat ulang).
+function offlineLock() {
+  document.body.classList.add('offline-locked');
+  ['companyName', 'companyTagline'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = ''; });
+}
+addEventListener('online', () => { if (document.body.classList.contains('offline-locked')) location.reload(); });
 function idleTick() {
   if (!cloudUser) return;
   const idle = Date.now() - lastActive();
-  if (idle >= IDLE_LOGOUT_MS) idleLogout();
+  if (idle >= IDLE_LOGOUT_MS && !navigator.onLine) offlineLock();
+  else if (idle >= IDLE_LOGOUT_MS) idleLogout();
   else if (idle >= IDLE_LOGOUT_MS - IDLE_WARN_MS && !idleWarned) { idleWarned = true; toast('Tidak ada aktivitas. Akun keluar otomatis dalam 2 menit.'); }
 }
 function armIdleLogout() {
@@ -1998,7 +2012,7 @@ const ACTIONS = {
     const unsent = dirty || (company && !await Cloud.flush());
     if (unsent && !confirm('Ada perubahan yang BELUM tersimpan ke server (offline?). Tetap keluar dan buang perubahan itu?')) return;
     await Cloud.signOut().catch(() => {});
-    [storeKey, metaKey(), LAST_UID_KEY, ACTIVE_KEY, ...conflictKeys()].forEach(k => localStorage.removeItem(k));
+    [storeKey, metaKey(), LAST_UID_KEY, ACTIVE_KEY, ...conflictKeys(), ...companyCopies()].forEach(k => localStorage.removeItem(k));
     location.reload();
   },
   // Hak penghapusan data pribadi (UU 27/2022 tentang Pelindungan Data Pribadi)
@@ -2008,7 +2022,7 @@ const ACTIONS = {
     if (prompt(`Ketik username Anda (${cloudInfo.username}) untuk konfirmasi`) !== cloudInfo.username) return toast('Konfirmasi tidak cocok');
     try {
       await Cloud.deleteAccount(cloudInfo.username);
-      [storeKey, metaKey(), LAST_UID_KEY, ACTIVE_KEY, ...conflictKeys()].forEach(k => localStorage.removeItem(k));
+      [storeKey, metaKey(), LAST_UID_KEY, ACTIVE_KEY, ...conflictKeys(), ...companyCopies()].forEach(k => localStorage.removeItem(k));
       alert('Akun dan data di server sudah dihapus.');
       location.reload();
     } catch (e) {
@@ -3475,20 +3489,25 @@ function askUsername() {
 
 async function openAccount(user) {
   cloudUser = user;
+  // Dibuka lagi tanpa internet setelah lebih dari 1 jam: data tidak dibuka sama sekali sampai ada koneksi
+  if (idleExpired() && !navigator.onLine) return offlineLock();
   armIdleLogout();
   storeKey = KEY + ':' + user.uid;
   localStorage.setItem(LAST_UID_KEY, user.uid);
   localStorage.removeItem(MODE_KEY);
   $('authMsg').textContent = 'Memuat data akun…';
-  let username = null;
-  try { username = await Cloud.getUsername(); } catch {}
+  let username = null, unameKey = KEY + ':uname:' + user.uid;
+  try { username = await Cloud.getUsername(); } catch { username = localStorage.getItem(unameKey); } // offline: pakai username yang tersimpan
   if (!username && user.email?.endsWith('@pengguna.invalid')) username = user.email.split('@')[0];
   if (!username) {
     username = await askUsername();
     if (username === null) { await Cloud.signOut(); cloudUser = null; return showAuth(); }
   }
+  try { localStorage.setItem(unameKey, username); } catch {}
   cloudInfo = {username, email: user.email, google: user.providerData.some(p => p.providerId === 'google.com')};
-  if (await openCompany()) return;
+  const co = await openCompany();
+  if (co === 'offline-kosong') return showAuth('Data perusahaan belum tersimpan di perangkat ini. Sambungkan internet, lalu buka aplikasi sekali agar datanya tersalin; setelah itu aplikasi bisa dipakai offline.');
+  if (co) return;
 
   let remote = null, reachable = true;
   try { remote = await Cloud.pull(); } catch { reachable = false; }
@@ -3535,6 +3554,8 @@ async function boot() {
   if (!res.online) {
     // Tanpa internet: buka salinan akun terakhir di perangkat ini bila ada
     const last = localStorage.getItem(LAST_UID_KEY);
+    // Akun perusahaan butuh program Firebase yang tersimpan; tanpa itu jangan membuka data pribadi seolah data perusahaan
+    if (last && localStorage.getItem(KEY + ':co-of:' + last)) return showAuth('Tidak bisa terhubung ke server. Buka aplikasi sekali saat online agar mode offline untuk data perusahaan siap dipakai.');
     if (last && localStorage.getItem(KEY + ':' + last)) { offlineAccount = true; return openStore(KEY + ':' + last); }
     return showAuth('Tidak bisa terhubung ke server. Periksa internet, atau pakai tanpa akun.');
   }

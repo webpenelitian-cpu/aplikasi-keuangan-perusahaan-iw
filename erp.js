@@ -2,7 +2,7 @@
 /* Modul ERP: perusahaan bersama (banyak pengguna), penjualan & CRM, pembelian & gudang, akuntansi lanjutan, dan SDM lanjutan.
    Berkas ini dimuat setelah app.js dan memakai fungsi serta data yang sama. */
 
-const APP_VERSION = '25'; // samakan dengan versi CACHE di sw.js
+const APP_VERSION = '26'; // samakan dengan versi CACHE di sw.js
 const ROLES = {owner: 'Pimpinan', finance: 'Keuangan', sales: 'Penjualan', warehouse: 'Gudang & pembelian', hr: 'SDM', viewer: 'Hanya lihat'};
 const ROLE_VIEWS = {sales: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'], warehouse: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'],
   hr: ['dashboard', 'karyawan', 'unggah', 'laporan', 'panduan', 'pengaturan'], viewer: ['dashboard', 'laporan', 'panduan', 'pengaturan']};
@@ -127,7 +127,7 @@ function companyPersist() {
     if (bad) {
       const code = bad.reason?.code || bad.reason?.message || 'tidak diketahui';
       setSync('Gagal menyimpan ke server: ' + code);
-      toast(code === 'permission-denied' ? 'Sebagian perubahan ditolak server: peran Anda tidak mengizinkannya, atau aturan Firestore belum terpasang.' : 'Gagal menyimpan ke server: ' + code);
+      toast(code === 'permission-denied' ? 'Sebagian perubahan ditolak server: peran Anda tidak mengizinkannya, atau bulannya sudah ditutup buku (misalnya isian offline yang terkirim setelah tutup buku). Periksa kembali data tersebut.' : 'Gagal menyimpan ke server: ' + code);
       companyRebuild();
     } else setSync('Tersimpan di server · ' + new Date().toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}));
   });
@@ -139,30 +139,50 @@ function companyRebuild() {
   try { state = sanitizeState(companyData()); } catch { return; }
   companyShadow(); migrate(); memo = null; renderAll();
 }
+// bucketsFromCache: data pertama yang terbaca berasal dari salinan di perangkat (offline), bukan dari server
+let bucketsFromCache = false;
 function companyWatch() {
   return new Promise(resolve => {
     const done = () => { if (remoteReady.buckets && remoteReady.hrdata) resolve(); };
-    const apply = (sub, changes) => {
+    // Tanpa internet, salinan perangkat yang kosong kadang baru dilaporkan setelah beberapa detik; jangan menunggu selamanya
+    setTimeout(() => { if (!remoteReady.buckets) bucketsFromCache = true; remoteReady.buckets = remoteReady.hrdata = true; resolve(); }, 15000);
+    const apply = (sub, changes, fromCache) => {
       for (const c of changes) { if (c.removed) remote.delete(c.id); else remote.set(c.id, c.r); }
       const first = !remoteReady[sub]; remoteReady[sub] = true;
+      if (sub === 'buckets') bucketsFromCache = !!fromCache;
       if (first) done(); else if (state) companyRebuild();
     };
     // Ditolak setelah berjalan berarti akses dicabut: muat ulang agar data tidak terus tampil
-    unwatch.push(Cloud.watchBuckets(company.id, 'buckets', c => apply('buckets', c), () => { if (remoteReady.buckets) return location.reload(); remoteReady.buckets = true; done(); }));
-    unwatch.push(Cloud.watchBuckets(company.id, 'hrdata', c => apply('hrdata', c), () => { remoteReady.hrdata = true; done(); }));
+    unwatch.push(Cloud.watchBuckets(company.id, 'buckets', (c, fc) => apply('buckets', c, fc), () => { if (remoteReady.buckets) return location.reload(); remoteReady.buckets = true; done(); }));
+    unwatch.push(Cloud.watchBuckets(company.id, 'hrdata', (c, fc) => apply('hrdata', c, fc), () => { remoteReady.hrdata = true; done(); }));
   });
 }
+// Perusahaan terakhir yang dibuka di perangkat ini, agar tetap bisa dibuka saat offline. Hanya penanda; hak akses tetap diperiksa server.
+const coMemoKey = () => KEY + ':co-of:' + cloudUser.uid;
 async function openCompany() {
   let cid = null, member = null, co = null;
-  try { cid = await Cloud.getCompanyId(); if (cid) { member = await Cloud.getMember(cid); co = await Cloud.getCompany(cid); } } catch { return false; }
-  if (!cid || !member?.active) return false;
+  try { cid = await Cloud.getCompanyId(); if (cid) { member = await Cloud.getMember(cid); co = await Cloud.getCompany(cid); } }
+  catch {
+    // Server tidak terjangkau dan salinan perangkat belum lengkap: pakai perusahaan terakhir yang dibuka di perangkat ini
+    let m = null; try { m = JSON.parse(localStorage.getItem(coMemoKey())); } catch {}
+    if (!m?.id || !ROLES[m.role]) return false;
+    cid = m.id; member = {active: true, role: m.role}; co = {name: m.name};
+  }
+  if (!cid || !member?.active) { localStorage.removeItem(coMemoKey()); return false; }
+  try { localStorage.setItem(coMemoKey(), JSON.stringify({id: cid, role: member.role, name: co?.name || ''})); } catch {}
   company = {id: cid, name: co?.name || '', role: member.role};
   storeKey = KEY + ':co:' + cid;
   localStorage.removeItem(storeKey); // versi lama menyimpan salinan tanpa enkripsi di sini
   await companyWatch();
   unwatch.push(Cloud.watchMember(cid, m => { if (!m?.active || m.role !== company.role) location.reload(); }));
-  setSync('Tersinkron dengan server perusahaan');
   let data = companyData();
+  if (bucketsFromCache && !data.accounts.length) {
+    // Offline dan data perusahaan belum pernah tersimpan di perangkat ini. Membuka data kosong berisiko menimpa
+    // akun kas di server saat kembali online, jadi aplikasi menunggu koneksi.
+    unwatch.forEach(f => f()); unwatch = []; company = null; remote = new Map(); remoteReady = {buckets: false, hrdata: false};
+    return 'offline-kosong';
+  }
+  setSync(!navigator.onLine ? 'Offline: memakai salinan di perangkat. Perubahan dikirim otomatis saat online.' : 'Tersinkron dengan server perusahaan');
   // Perusahaan masih kosong: pimpinan mengisinya dari data pribadi di server, yang tidak pernah dihapus
   if (member.role === 'owner' && !data.accounts.length) { data = await personalData(); companyFresh = true; }
   start(data);

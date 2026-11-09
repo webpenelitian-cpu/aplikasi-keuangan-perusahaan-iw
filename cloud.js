@@ -177,7 +177,8 @@ export async function listMembers(cid) {
   return s.docs.map(d => ({uid: d.id, ...d.data()}));
 }
 export function watchMember(cid, cb) {
-  return F.onSnapshot(coDoc(cid, 'members', user.uid), s => cb(s.exists() ? s.data() : null), () => cb(null));
+  // Saat offline, dokumen yang belum pernah tersimpan di perangkat bukan berarti keanggotaan dicabut
+  return F.onSnapshot(coDoc(cid, 'members', user.uid), s => { if (!s.exists() && s.metadata.fromCache) return; cb(s.exists() ? s.data() : null); }, () => cb(null));
 }
 export const setMember = (cid, uid, data) => F.updateDoc(coDoc(cid, 'members', uid), data);
 export const removeMember = (cid, uid) => F.deleteDoc(coDoc(cid, 'members', uid));
@@ -190,7 +191,7 @@ export async function leaveCompany(cid) {
 // Memantau satu koleksi data; cb menerima perubahan dokumen, onDenied bila peran tidak boleh membukanya
 export function watchBuckets(cid, sub, cb, onDenied) {
   return F.onSnapshot(F.collection(db, 'companies', cid, sub), snap => {
-    cb(snap.docChanges().map(c => ({id: c.doc.id, removed: c.type === 'removed', r: c.doc.data().r || {}})));
+    cb(snap.docChanges().map(c => ({id: c.doc.id, removed: c.type === 'removed', r: c.doc.data().r || {}})), snap.metadata.fromCache);
   }, onDenied);
 }
 // Satu kelompok = satu penulisan; hanya data yang berubah yang ditimpa, jadi dua pengguna tidak saling menghapus

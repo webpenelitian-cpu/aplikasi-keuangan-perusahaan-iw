@@ -39,6 +39,10 @@
 html{-webkit-text-size-adjust:100%}
 body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:14px;font-variant-numeric:tabular-nums}
 body.booting > header, body.booting > main, body.locked > header, body.locked > main, body.auth > header, body.auth > main{display:none}
+#offLock{display:none;min-height:100vh;align-items:center;justify-content:center;padding:24px 16px;text-align:center}
+#offLock .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;width:min(420px,100%)}
+body.offline-locked #offLock{display:flex}
+body.offline-locked > header, body.offline-locked > main, body.offline-locked #auth, body.offline-locked #lock, body.offline-locked #btnAdd, body.offline-locked dialog{display:none!important}
 #lock,#auth{display:none;min-height:100vh;align-items:center;justify-content:center;padding:calc(24px + var(--safe-top)) 16px 24px}
 body.locked #lock, body.auth #auth{display:flex}
 #lock .box,#auth .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;width:min(400px,100%);text-align:center}
@@ -312,6 +316,13 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
 </div>
 
 <!-- LAYAR KUNCI -->
+<div id="offLock" role="alert">
+  <div class="box">
+    <h2 style="margin-top:0">Sesi dikunci</h2>
+    <p>Akun tidak dipakai lebih dari 1 jam, dan perangkat sedang offline.</p>
+    <p class="muted" style="font-size:13px">Isian yang belum terkirim tetap aman di perangkat ini. Sambungkan internet; aplikasi akan mengirimnya, lalu meminta Anda masuk kembali.</p>
+  </div>
+</div>
 <div id="lock">
   <form class="box" id="lockForm" autocomplete="off">
     <svg viewBox="0 0 64 64" width="56" height="56" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#14304a"/><text x="32" y="41" text-anchor="middle" font-family="Georgia,serif" font-size="25" font-weight="700" fill="#e5a100">Rp</text></svg>
@@ -333,6 +344,7 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
       <h1 id="companyName">Aplikasi Keuangan Perusahaan (UMKM)</h1>
       <div class="company" id="companyTagline"></div>
     </div>
+    <span class="badge warn" id="netBadge" hidden title="Tidak ada internet. Isian tetap tersimpan di perangkat dan dikirim otomatis saat online.">Offline</span>
   </div>
   <nav>
     <button data-view="dashboard" class="active"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-8 9 8M5 10v10h14V10"/></svg>Dasbor</button>
