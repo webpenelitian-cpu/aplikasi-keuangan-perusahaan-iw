@@ -282,7 +282,7 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
 <noscript><p style="padding:20px">Aktifkan JavaScript untuk memakai aplikasi ini.</p></noscript>
 
 <!-- LAYAR LOGIN -->
-<div id="auth">
+<div id="auth" role="main" aria-label="Masuk akun">
   <div class="box">
     <svg viewBox="0 0 64 64" width="56" height="56" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#14304a"/><text x="32" y="41" text-anchor="middle" font-family="Georgia,serif" font-size="25" font-weight="700" fill="#e5a100">Rp</text></svg>
     <h2>Aplikasi Keuangan Perusahaan (UMKM)</h2>
@@ -323,7 +323,7 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
     <p class="muted" style="font-size:13px">Isian yang belum terkirim tetap aman di perangkat ini. Sambungkan internet; aplikasi akan mengirimnya, lalu meminta Anda masuk kembali.</p>
   </div>
 </div>
-<div id="lock">
+<div id="lock" role="main" aria-label="Layar terkunci">
   <form class="box" id="lockForm" autocomplete="off">
     <svg viewBox="0 0 64 64" width="56" height="56" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#14304a"/><text x="32" y="41" text-anchor="middle" font-family="Georgia,serif" font-size="25" font-weight="700" fill="#e5a100">Rp</text></svg>
     <h2>Aplikasi terkunci</h2>
@@ -361,7 +361,7 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
   <button class="btn primary" id="btnAdd">+ Transaksi</button>
 </header>
 
-<main>
+<main aria-label="Isi aplikasi">
   <!-- DASBOR -->
   <section class="view active" id="view-dashboard">
     <div id="dashNotices"></div>

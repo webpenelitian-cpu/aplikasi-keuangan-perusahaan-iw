@@ -26,6 +26,10 @@ service cloud.firestore {
     }
     // Pengaturan: pimpinan bebas; keuangan hanya boleh memajukan tutup buku; SDM hanya boleh mengubah pengaturan SDM
     // Nama kelompok harus baku: jenis, bulan (boleh kosong), dan nomor pecahan. Menutup celah kelompok tanpa bulan yang lolos dari tutup buku.
+    // Nama (perusahaan atau anggota) wajib teks dengan panjang wajar, agar server tidak diisi teks raksasa
+    function nameOk(max) {
+      return request.resource.data.name is string && request.resource.data.name.size() <= max;
+    }
     function validBucket(b) {
       return b.matches('^[a-z]+~([0-9]{4}-[0-9]{2})?~[0-3]$');
     }
@@ -65,20 +69,25 @@ service cloud.firestore {
       allow list: if false;
       allow create: if request.auth != null && hasRole(request.resource.data.cid, ['owner'])
         && request.resource.data.keys().hasOnly(['cid', 'role', 'expires', 'by'])
-        && request.resource.data.role in ['finance', 'sales', 'warehouse', 'hr', 'viewer'];
+        && request.resource.data.role in ['finance', 'sales', 'warehouse', 'hr', 'viewer']
+        // Pembuat undangan harus akun itu sendiri; masa berlaku paling lama 30 hari
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.expires is number
+        && request.resource.data.expires <= request.time.toMillis() + 30 * 86400000;
       allow delete: if request.auth != null && (hasRole(resource.data.cid, ['owner'])
         || getAfter(/databases/$(database)/documents/companies/$(resource.data.cid)/members/$(request.auth.uid)).data.invite == code);
     }
     match /companies/{cid} {
       allow get: if isMember(cid);
       allow list: if false;
-      allow create: if request.auth != null && request.resource.data.ownerUid == request.auth.uid;
+      allow create: if request.auth != null && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['name', 'ownerUid', 'createdAt']) && nameOk(120);
       allow update: if hasRole(cid, ['owner']) && request.resource.data.keys().hasOnly(['name', 'ownerUid', 'createdAt'])
-        && request.resource.data.ownerUid == resource.data.ownerUid;
+        && request.resource.data.ownerUid == resource.data.ownerUid && nameOk(120);
       match /members/{uid} {
         allow read: if isMember(cid) || isOwner(uid);
         // Pendiri saat membuat perusahaan, atau anggota baru dengan undangan yang masih berlaku
-        allow create: if isOwner(uid) && request.resource.data.active == true
+        allow create: if isOwner(uid) && request.resource.data.active == true && nameOk(60)
           && request.resource.data.keys().hasOnly(['role', 'name', 'active', 'invite']) && (
           (request.resource.data.role == 'owner' && getAfter(/databases/$(database)/documents/companies/$(cid)).data.ownerUid == uid)
           || (exists(/databases/$(database)/documents/invites/$(request.resource.data.invite))
@@ -86,7 +95,10 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/invites/$(request.resource.data.invite)).data.role == request.resource.data.role
             && get(/databases/$(database)/documents/invites/$(request.resource.data.invite)).data.expires > request.time.toMillis()
             && !existsAfter(/databases/$(database)/documents/invites/$(request.resource.data.invite))));
+        // Pimpinan hanya mengubah peran dan status aktif; nama dan kode undangan anggota tetap
         allow update: if hasRole(cid, ['owner']) && uid != request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'active'])
+          && request.resource.data.active is bool
           && request.resource.data.role in ['finance', 'sales', 'warehouse', 'hr', 'viewer'];
         allow delete: if (hasRole(cid, ['owner']) && uid != request.auth.uid) || (isOwner(uid) && role(cid) != 'owner');
       }
