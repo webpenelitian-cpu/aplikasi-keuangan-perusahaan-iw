@@ -417,6 +417,16 @@ const deviceId = (() => {
 const metaKey = () => storeKey + '-meta';
 function readMeta() { try { return JSON.parse(localStorage.getItem(metaKey())) || {updatedAt: 0}; } catch { return {updatedAt: 0}; } }
 const writeMeta = updatedAt => localStorage.setItem(metaKey(), JSON.stringify({updatedAt}));
+// Salinan pengaman (konflik sinkron, data rusak) dibatasi 3 terakhir agar ruang penyimpanan perangkat tidak penuh
+// dan penyimpanan data utama tidak ikut gagal
+const COPY_KEEP = 3;
+function keepCopy(prefix, value) {
+  try {
+    const old = Object.keys(localStorage).filter(k => k.startsWith(prefix)).sort((a, b) => +a.slice(prefix.length) - +b.slice(prefix.length));
+    old.slice(0, Math.max(0, old.length - COPY_KEEP + 1)).forEach(k => localStorage.removeItem(k));
+    localStorage.setItem(prefix + Date.now(), value);
+  } catch {}
+}
 const conflictKeys = () => Object.keys(localStorage).filter(k => k.startsWith(storeKey + '-konflik-')).sort();
 
 function setSync(msg) {
@@ -456,7 +466,7 @@ addEventListener('DOMContentLoaded', netBadge);
 
 // Server punya versi lebih baru dari perangkat lain: data perangkat ini diamankan sebagai salinan, lalu versi server dipakai.
 async function resolveConflict() {
-  try { localStorage.setItem(`${storeKey}-konflik-${Date.now()}`, localStorage.getItem(storeKey) || ''); } catch {}
+  keepCopy(`${storeKey}-konflik-`, localStorage.getItem(storeKey) || '');
   dirty = false;
   await applyRemote(null, true);
   // Penggabungan data tanpa akun yang tertolak diulang di atas versi server terbaru
@@ -2079,6 +2089,8 @@ $('btnBackup').onclick = async () => {
 $('fileRestore').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
+  // Memulihkan mengganti seluruh data perusahaan, jadi sama seperti hapus semua: hanya pimpinan
+  if (company && company.role !== 'owner') return toast('Pemulihan data perusahaan hanya bisa dilakukan pimpinan.');
   if (f.size > 20 * 1024 * 1024) return toast('File terlalu besar untuk sebuah backup');
   try {
     let d = JSON.parse(await f.text());
@@ -3389,7 +3401,7 @@ function start(data) {
   try { state = data ? sanitizeState(data) : defaultState(); }
   catch {
     // Data rusak: simpan salinannya, jangan ditimpa diam-diam
-    try { localStorage.setItem(KEY + '-rusak-' + Date.now(), JSON.stringify(data)); } catch {}
+    keepCopy(KEY + '-rusak-', JSON.stringify(data));
     state = defaultState();
     setTimeout(() => toast('Data tersimpan rusak; salinannya diamankan. Pulihkan dari backup.'), 500);
   }
