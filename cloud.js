@@ -22,8 +22,8 @@ export async function init() {
       appCheckKey ? import(`${SDK}/firebase-app-check.js`) : null]);
     A = authMod; F = fsMod;
     const app = appMod.initializeApp(config);
-    // App Check: tiap permintaan ke server membawa bukti bahwa asalnya aplikasi ini (reCAPTCHA v3, tanpa teka-teki)
-    if (acMod) acMod.initializeAppCheck(app, {provider: new acMod.ReCaptchaV3Provider(appCheckKey), isTokenAutoRefreshEnabled: true});
+    // App Check: tiap permintaan ke server membawa bukti bahwa asalnya aplikasi ini (reCAPTCHA Enterprise, tanpa teka-teki)
+    if (acMod) acMod.initializeAppCheck(app, {provider: new acMod.ReCaptchaEnterpriseProvider(appCheckKey), isTokenAutoRefreshEnabled: true});
     auth = A.getAuth(app);
     auth.languageCode = 'id';
     // Salinan data di perangkat: aplikasi tetap bisa dipakai offline dan kuota baca server lebih hemat
