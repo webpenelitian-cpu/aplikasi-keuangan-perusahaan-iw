@@ -1,6 +1,6 @@
 // Service worker: aplikasi tetap terbuka tanpa internet.
 // Naikkan versi CACHE setiap kali file aplikasi diperbarui.
-const CACHE = 'keuangan-umkm-v29';
+const CACHE = 'keuangan-umkm-v30';
 const ASSETS = [
   './', './index.html', './app.js', './erp.js', './unggah.js', './panduan.js', './cloud.js', './firebase-config.js', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png',
@@ -11,7 +11,7 @@ const ASSETS = [
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
 // Sidik SHA-256 resmi tiap file. File yang isinya berbeda (dirusak di jalan atau di server) ditolak dan tidak disimpan.
 const SDK_SHA = {'firebase-app.js': 'CLg/AoWTKKq7ms6pNw1gD/5znZ4sJRtmaLb2/1ai4dE=', 'firebase-auth.js': 'my67pv/O1GV+EjAPQYfVPI/Bdi6YGI5eIAVAeobpJrY=',
-  'firebase-firestore.js': 'rssrW3ItGkVCYybNFEvAJdW+qMSPOlPso5FK1Yc2G9Q='};
+  'firebase-firestore.js': 'rssrW3ItGkVCYybNFEvAJdW+qMSPOlPso5FK1Yc2G9Q=', 'firebase-app-check.js': 'jWNyP8OtW3NCIwu+pKamCvkaNnJwP8C05PnWAWkYJAM='};
 const SDK_FILES = Object.keys(SDK_SHA).map(f => SDK + f);
 async function sdkGenuine(res, url) {
   const d = new Uint8Array(await crypto.subtle.digest('SHA-256', await res.clone().arrayBuffer()));

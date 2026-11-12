@@ -1,6 +1,6 @@
 // Login (Google atau username + kata sandi) dan penyimpanan data di Firebase.
 // SDK Firebase dimuat saat dibutuhkan; bila gagal (offline), aplikasi tetap jalan dengan data di perangkat.
-import config from './firebase-config.js';
+import config, {appCheckKey} from './firebase-config.js';
 
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.2';
 const CHUNK = 800000; // batas 1 MB per dokumen Firestore
@@ -17,10 +17,13 @@ export const enabled = () => !!(config.apiKey && config.projectId && config.auth
 export async function init() {
   if (!enabled()) return {enabled: false};
   try {
-    const [appMod, authMod, fsMod] = await Promise.all([
-      import(`${SDK}/firebase-app.js`), import(`${SDK}/firebase-auth.js`), import(`${SDK}/firebase-firestore.js`)]);
+    const [appMod, authMod, fsMod, acMod] = await Promise.all([
+      import(`${SDK}/firebase-app.js`), import(`${SDK}/firebase-auth.js`), import(`${SDK}/firebase-firestore.js`),
+      appCheckKey ? import(`${SDK}/firebase-app-check.js`) : null]);
     A = authMod; F = fsMod;
     const app = appMod.initializeApp(config);
+    // App Check: tiap permintaan ke server membawa bukti bahwa asalnya aplikasi ini (reCAPTCHA v3, tanpa teka-teki)
+    if (acMod) acMod.initializeAppCheck(app, {provider: new acMod.ReCaptchaV3Provider(appCheckKey), isTokenAutoRefreshEnabled: true});
     auth = A.getAuth(app);
     auth.languageCode = 'id';
     // Salinan data di perangkat: aplikasi tetap bisa dipakai offline dan kuota baca server lebih hemat

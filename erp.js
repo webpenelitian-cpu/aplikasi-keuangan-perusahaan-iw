@@ -2,7 +2,7 @@
 /* Modul ERP: perusahaan bersama (banyak pengguna), penjualan & CRM, pembelian & gudang, akuntansi lanjutan, dan SDM lanjutan.
    Berkas ini dimuat setelah app.js dan memakai fungsi serta data yang sama. */
 
-const APP_VERSION = '29'; // samakan dengan versi CACHE di sw.js
+const APP_VERSION = '30'; // samakan dengan versi CACHE di sw.js
 const ROLES = {owner: 'Pimpinan', finance: 'Keuangan', sales: 'Penjualan', warehouse: 'Gudang & pembelian', hr: 'SDM', viewer: 'Hanya lihat'};
 const ROLE_VIEWS = {sales: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'], warehouse: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'],
   hr: ['dashboard', 'karyawan', 'unggah', 'laporan', 'panduan', 'pengaturan'], viewer: ['dashboard', 'laporan', 'panduan', 'pengaturan']};
@@ -72,12 +72,21 @@ const SYNC_COLS = {accounts: 0, categories: 0, items: 0, vendors: 0, customers: 
 const SETTING_KEYS = ['company', 'hr', 'tax', 'lockedUntil', 'lastBackup'];
 const hash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 ^ s.charCodeAt(i)) >>> 0; return h.toString(36); };
 const shardOf = id => hash(id).charCodeAt(0) % 4;
+// Data keuangan internal disimpan terpisah: server hanya membukanya untuk pimpinan, keuangan, dan hanya-lihat
+const FIN_COLS = new Set(['journals', 'assets', 'budgets', 'recons', 'recurring']);
+// Peran terbatas (penjualan, gudang, SDM) hanya boleh mengubah catatan buatannya sendiri
+const limitedRole = () => !!company && !['owner', 'finance'].includes(company.role);
+// Pemilik catatan (jenis/id → uid) diambil dari nama kelompok yang dijaga server, bukan dari isi catatan
+let recOwner = new Map();
 function bucketOf(col, id, rec) {
   const kind = SYNC_COLS[col], dated = kind === 1 || kind === 3;
   const when = dated ? String(rec.date || rec.ts || '').slice(0, 7) || 'x' : '';
   // Jejak audit tiap akun punya kelompok sendiri yang memuat uid-nya, jadi penulisnya dibuktikan oleh aturan server
   if (col === 'audit' && rec.u) return {sub: 'buckets', id: `audit~${when}~${rec.u}~${shardOf(id)}`};
-  return {sub: kind >= 2 ? 'hrdata' : 'buckets', id: `${col}~${when}~${shardOf(id)}`};
+  if (kind >= 2) return {sub: 'hrdata', id: `${col}~${when}~${shardOf(id)}`};
+  if (FIN_COLS.has(col)) return {sub: 'fin', id: `${col}~${when}~${shardOf(id)}`};
+  const by = recOwner.get(col + '/' + id);
+  return {sub: 'buckets', id: `${col}~${when}~${by ? by + '~' : ''}${shardOf(id)}`};
 }
 function flatten(s) {
   const m = new Map(), put = (col, id, rec, b) => m.set(col + '/' + id, {rid: id, rec, json: JSON.stringify(rec), sub: b.sub, bid: b.id});
@@ -86,28 +95,45 @@ function flatten(s) {
   for (const k of SETTING_KEYS) put('settings', k, {v: s[k]}, {sub: 'buckets', id: 'settings~~0'});
   return m;
 }
-let bucketStray = 0, shadow = new Map(), remote = new Map(), remoteReady = {buckets: false, hrdata: false}, rebuildTimer = null, unwatch = [];
+// remote: kunci `koleksi/kelompok` (buckets, fin, hrdata) → isi kelompok
+const SUBS = ['buckets', 'fin', 'hrdata'];
+const notReady = () => ({buckets: false, fin: false, hrdata: false});
+let bucketStray = 0, shadow = new Map(), remote = new Map(), remoteReady = notReady(), rebuildTimer = null, unwatch = [];
 // companyFresh: data perusahaan belum ada di server, jadi seluruh isi state harus diunggah
 let companyFresh = false;
 const companyShadow = () => { shadow = companyFresh ? new Map() : flatten(state); companyFresh = false; };
 function companyData() {
   const d = {version: DATA_VERSION, audit: [], accounts: [], categories: [], tx: [], debts: [], security: state?.security || {autoLockMin: 5}}; let stray = 0;
   for (const col of Object.keys(SYNC_COLS)) d[col] ||= [];
-  for (const [bid, r] of remote) {
-    const col = bid.split('~')[0];
-    if (col === 'settings') { if (bid === 'settings~~0') for (const k of SETTING_KEYS) if (r[k]) d[k] = r[k].v; continue; }
+  // Urutan: kelompok bersama dulu, lalu kelompok ber-uid. Catatan ber-id sama di kelompok ber-uid diabaikan,
+  // sehingga peran terbatas tidak bisa menimpa catatan bersama dengan menyalin id-nya ke kelompok miliknya
+  const rank = ([key]) => { const [sub, bid] = key.split('/'), p = bid.split('~'); return (p.length === 4 && p[0] !== 'audit' ? 2 : 0) + (sub === 'buckets' && FIN_COLS.has(p[0]) ? 1 : 0); };
+  const seen = new Set(), owners = new Map();
+  for (const [key, r] of [...remote].sort((a, b) => rank(a) - rank(b) || a[0].localeCompare(b[0]))) {
+    const [sub, bid] = key.split('/'), parts = bid.split('~'), col = parts[0];
+    if (col === 'settings') { if (bid === 'settings~~0' && sub === 'buckets') for (const k of SETTING_KEYS) if (r[k]) d[k] = r[k].v; continue; }
     // Identitas diambil dari nama kelompok yang dijaga server, bukan dari isi catatan yang ditulis peramban
-    if (col === 'audit') { const owner = bid.split('~')[3] === undefined ? undefined : bid.split('~')[2]; for (const a of Object.values(r)) { const {u, ...rest} = a; d.audit.push(owner ? {...rest, u: owner} : rest); } continue; }
+    if (col === 'audit') { const owner = parts[3] === undefined ? undefined : parts[2]; for (const a of Object.values(r)) { const {u, ...rest} = a; d.audit.push(owner ? {...rest, u: owner} : rest); } continue; }
+    // Data karyawan hanya sah dari hrdata, data keuangan internal dari fin (atau tempat lamanya sebelum dipindah)
+    if ((SYNC_COLS[col] >= 2) !== (sub === 'hrdata') || (sub === 'fin' && !FIN_COLS.has(col))) continue;
+    const by = sub === 'buckets' && parts.length === 4 ? parts[2] : '';
     // Server hanya bisa mengunci bulan lewat nama kelompok. Catatan bertanggal lain yang diselipkan ke kelompok ini tidak dipakai,
     // sehingga bulan yang sudah ditutup tetap aman dari aplikasi yang dimodifikasi
-    if (d[col]) for (const x of Object.values(r)) { if ([1, 3].includes(SYNC_COLS[col]) && String(x?.date || x?.ts || '').slice(0, 7) !== bid.split('~')[1]) stray++; else d[col].push(x); }
+    if (d[col]) for (const [rid, x] of Object.entries(r)) {
+      if (x?.id !== rid || ([1, 3].includes(SYNC_COLS[col]) && String(x?.date || x?.ts || '').slice(0, 7) !== parts[1])) { stray++; continue; }
+      if (seen.has(col + '/' + rid)) { if (by) stray++; continue; }
+      seen.add(col + '/' + rid); if (by) owners.set(col + '/' + rid, by);
+      d[col].push(x);
+    }
   }
-  bucketStray = stray;
+  bucketStray = stray; recOwner = owners;
   d.accounts.sort((a, b) => a.code.localeCompare(b.code)); d.categories.sort((a, b) => a.code.localeCompare(b.code));
   d.audit.sort((a, b) => a.ts.localeCompare(b.ts));
   return d;
 }
 function companyPersist() {
+  // Catatan baru dari peran terbatas disimpan di kelompok ber-uid miliknya
+  if (limitedRole() && cloudUser) for (const [k, e] of flatten(state)) if (!shadow.has(k) && !recOwner.has(k) && e.sub === 'buckets' && !/^(audit|settings)$/.test(k.split('/')[0])) recOwner.set(k, cloudUser.uid);
   const now = flatten(state), groups = new Map();
   const group = e => { const k = e.sub + '|' + e.bid; if (!groups.has(k)) groups.set(k, {sub: e.sub, bid: e.bid, set: {}, del: []}); return groups.get(k); };
   for (const [k, e] of now) {
@@ -119,6 +145,15 @@ function companyPersist() {
   }
   for (const [k, o] of shadow) if (!now.has(k)) group(o).del.push(o.rid);
   shadow = now;
+  // Peran terbatas: perubahan atas catatan orang lain tidak dikirim (server pasti menolak); tampilan dikembalikan ke data server
+  if (limitedRole()) {
+    let blocked = 0;
+    for (const [k, g] of groups) {
+      const p = g.bid.split('~');
+      if (g.sub === 'buckets' && p[0] !== 'audit' && g.bid !== 'settings~~0' && !(p.length === 4 && p[2] === cloudUser?.uid)) { groups.delete(k); blocked++; }
+    }
+    if (blocked) { toast('Catatan buatan orang lain hanya bisa diubah atau dihapus pimpinan atau keuangan. Perubahan itu dibatalkan.'); setTimeout(companyRebuild, 0); }
+  }
   if (!groups.size) return Promise.resolve();
   setSync(navigator.onLine ? 'Menyimpan ke server…' : 'Offline: tersimpan di perangkat, dikirim otomatis saat online.');
   const writes = [...groups.values()].map(async g => Cloud.writeBucket(company.id, g.sub, g.bid, g.set, g.del));
@@ -143,18 +178,19 @@ function companyRebuild() {
 let bucketsFromCache = false;
 function companyWatch() {
   return new Promise(resolve => {
-    const done = () => { if (remoteReady.buckets && remoteReady.hrdata) resolve(); };
+    const done = () => { if (SUBS.every(x => remoteReady[x])) resolve(); };
     // Tanpa internet, salinan perangkat yang kosong kadang baru dilaporkan setelah beberapa detik; jangan menunggu selamanya
-    setTimeout(() => { if (!remoteReady.buckets) bucketsFromCache = true; remoteReady.buckets = remoteReady.hrdata = true; resolve(); }, 15000);
+    setTimeout(() => { if (!remoteReady.buckets) bucketsFromCache = true; SUBS.forEach(x => { remoteReady[x] = true; }); resolve(); }, 15000);
     const apply = (sub, changes, fromCache) => {
-      for (const c of changes) { if (c.removed) remote.delete(c.id); else remote.set(c.id, c.r); }
+      for (const c of changes) { if (c.removed) remote.delete(sub + '/' + c.id); else remote.set(sub + '/' + c.id, c.r); }
       const first = !remoteReady[sub]; remoteReady[sub] = true;
       if (sub === 'buckets') bucketsFromCache = !!fromCache;
       if (first) done(); else if (state) companyRebuild();
     };
     // Ditolak setelah berjalan berarti akses dicabut: muat ulang agar data tidak terus tampil
     unwatch.push(Cloud.watchBuckets(company.id, 'buckets', (c, fc) => apply('buckets', c, fc), () => { if (remoteReady.buckets) return location.reload(); remoteReady.buckets = true; done(); }));
-    unwatch.push(Cloud.watchBuckets(company.id, 'hrdata', (c, fc) => apply('hrdata', c, fc), () => { remoteReady.hrdata = true; done(); }));
+    // Koleksi yang tidak dibuka untuk peran ini (fin, hrdata) ditolak server: dianggap kosong
+    for (const sub of ['fin', 'hrdata']) unwatch.push(Cloud.watchBuckets(company.id, sub, (c, fc) => apply(sub, c, fc), () => { remoteReady[sub] = true; done(); }));
   });
 }
 // Perusahaan terakhir yang dibuka di perangkat ini, agar tetap bisa dibuka saat offline. Hanya penanda; hak akses tetap diperiksa server.
@@ -179,14 +215,25 @@ async function openCompany() {
   if (bucketsFromCache && !data.accounts.length) {
     // Offline dan data perusahaan belum pernah tersimpan di perangkat ini. Membuka data kosong berisiko menimpa
     // akun kas di server saat kembali online, jadi aplikasi menunggu koneksi.
-    unwatch.forEach(f => f()); unwatch = []; company = null; remote = new Map(); remoteReady = {buckets: false, hrdata: false};
+    unwatch.forEach(f => f()); unwatch = []; company = null; remote = new Map(); remoteReady = notReady();
     return 'offline-kosong';
   }
   setSync(!navigator.onLine ? 'Offline: memakai salinan di perangkat. Perubahan dikirim otomatis saat online.' : 'Tersinkron dengan server perusahaan');
   // Perusahaan masih kosong: pimpinan mengisinya dari data pribadi di server, yang tidak pernah dihapus
   if (member.role === 'owner' && !data.accounts.length) { data = await personalData(); companyFresh = true; }
   start(data);
+  moveFinData();
   return true;
+}
+// Pindahan sekali jalan: data keuangan internal versi lama (di koleksi bersama) dipindah ke koleksi fin yang tertutup.
+// Hanya pimpinan dan keuangan; bulan yang sudah ditutup buku hanya bisa dipindah pimpinan.
+async function moveFinData() {
+  if (!company || limitedRole() || !navigator.onLine) return;
+  for (const [key, r] of [...remote]) {
+    const [sub, bid] = key.split('/'), ids = Object.keys(r || {});
+    if (sub !== 'buckets' || !FIN_COLS.has(bid.split('~')[0]) || !ids.length) continue;
+    try { await Cloud.writeBucket(company.id, 'fin', bid, r, []); await Cloud.writeBucket(company.id, 'buckets', bid, {}, ids); } catch {}
+  }
 }
 async function personalData() {
   let r = null; try { r = await Cloud.pull(); } catch {}
