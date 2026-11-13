@@ -12,6 +12,9 @@ const err = (code, msg = code) => Object.assign(new Error(msg), {code});
 
 let A, F, auth, db, user = null;
 
+// App Check hanya di situs terbit. Di komputer pengembang (localhost) kunci reCAPTCHA memang tidak berlaku dan
+// server Firebase juga menolak alamat itu, jadi App Check dilewati agar uji tidak dipenuhi galat reCAPTCHA.
+const appCheckOn = !!appCheckKey && !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 export const enabled = () => !!(config.apiKey && config.projectId && config.authDomain && config.appId);
 
 export async function init() {
@@ -19,7 +22,7 @@ export async function init() {
   try {
     const [appMod, authMod, fsMod, acMod] = await Promise.all([
       import(`${SDK}/firebase-app.js`), import(`${SDK}/firebase-auth.js`), import(`${SDK}/firebase-firestore.js`),
-      appCheckKey ? import(`${SDK}/firebase-app-check.js`) : null]);
+      appCheckOn ? import(`${SDK}/firebase-app-check.js`) : null]);
     A = authMod; F = fsMod;
     const app = appMod.initializeApp(config);
     // App Check: tiap permintaan ke server membawa bukti bahwa asalnya aplikasi ini (reCAPTCHA Enterprise, tanpa teka-teki)
