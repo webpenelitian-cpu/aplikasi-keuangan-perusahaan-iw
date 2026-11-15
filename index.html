@@ -246,7 +246,7 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
   .card h3::before{content:"";display:inline-block;width:4px;height:14px;border-radius:2px;background:var(--gold);margin-right:8px;vertical-align:-2px}
   .stat{border-top:3px solid var(--primary-soft)}
   .btn.primary{background:var(--brand);border-color:var(--brand)}
-  .seg button.on{color:var(--brand)}
+  .seg button.on{color:var(--primary)}
   .toast{background:var(--brand)}
   /* Layar masuk: panel merek + formulir */
   #auth{background:radial-gradient(1200px 600px at 10% -10%,var(--primary-soft),transparent 60%),var(--bg)}
@@ -264,6 +264,11 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
   .auth-foot{margin-top:auto;font-size:12px;color:rgba(255,255,255,.75);letter-spacing:.03em}
   #auth .box h2{font-size:20px;margin:0 0 4px}
   .lock-logo{width:64px;height:64px;border-radius:16px;background:#fff;display:grid;place-items:center;margin:0 auto;border:1px solid var(--line)}
+}
+/* Mode gelap: tombol utama cukup terang agar terbedakan dari latar, teks putih tetap kontras (≥ 4,5:1) */
+@media screen and (prefers-color-scheme:dark){
+  .btn.primary,#auth .btn.primary{background:#2a4aa0;border-color:#2a4aa0}
+  .seg button.on{background:var(--soft)}
 }
 @media screen and (max-width:760px){
   header{box-shadow:none}
