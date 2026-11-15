@@ -6,20 +6,22 @@
 <!-- Skrip hanya dari situs ini dan SDK resmi Firebase/Google; koneksi hanya ke layanan Google untuk login & penyimpanan -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com https://www.google.com/recaptcha/; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://www.google.com/recaptcha/; frame-src https://*.firebaseapp.com https://*.web.app https://accounts.google.com https://www.google.com/recaptcha/; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="referrer" content="no-referrer">
-<title>Aplikasi Keuangan Perusahaan (UMKM)</title>
-<meta name="description" content="Aplikasi keuangan perusahaan (UMKM): kas & bank, jual beli dengan HPP, stok, piutang & utang, penggajian, pajak, dan invoice.">
-<meta name="theme-color" content="#14304a">
+<title>PT GM Musara Jaya · Sistem Keuangan &amp; Operasional</title>
+<meta name="description" content="Sistem keuangan dan operasional PT GM Musara Jaya: kas &amp; bank, jual beli, stok, piutang &amp; utang, pajak, dan invoice.">
+<meta name="theme-color" content="#142e70">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Keuangan UMKM">
+<meta name="apple-mobile-web-app-title" content="GM Musara Jaya">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <style>
 :root{
-  --bg:#f3f5f9; --panel:#fff; --text:#16283a; --muted:#5b6b7b; --line:#e2e7ee; --soft:#f6f8fb;
-  --primary:#1a4c8b; --primary-soft:#e6eefa; --accent:#e5a100; --accent-ink:#7a5200;
+  /* Warna merek PT GM Musara Jaya: biru tua stempel #142E70 di atas kertas krem, aksen emas */
+  --brand:#142e70; --brand-2:#1d3f94; --gold:#c8962c;
+  --bg:#f6f5f0; --panel:#fff; --text:#14213d; --muted:#5a6478; --line:#e4e2d8; --soft:#f8f7f2;
+  --primary:#142e70; --primary-soft:#e7ebf6; --accent:#c8962c; --accent-ink:#6e4f10;
   --in:#1d7447; --in-soft:#e3f2ea; --out:#b3261e; --out-soft:#fbe7e5; --tr:#6a4fd6; --tr-soft:#efeafe;
   --safe-top:env(safe-area-inset-top,0px); --safe-bottom:env(safe-area-inset-bottom,0px);
   --field:#fff; --warn-bg:#fff8e1; --warn-line:#f3dd9c; --badge-warn:#fff3d6;
@@ -28,8 +30,9 @@
 /* Mode gelap mengikuti pengaturan perangkat */
 @media (prefers-color-scheme: dark){
   :root{
-    --bg:#0f1a24; --panel:#162433; --text:#e3ebf2; --muted:#9fb0bf; --line:#2b3d4e; --soft:#1b2c3c;
-    --primary:#4f8fd1; --primary-soft:#1e3550; --accent:#f0b429; --accent-ink:#f3c766;
+    --brand:#0f1f4d; --brand-2:#1a3474; --gold:#e0b04d;
+    --bg:#0b1222; --panel:#121c32; --text:#e6eaf3; --muted:#a3adc2; --line:#25324d; --soft:#17223b;
+    --primary:#8aa6ec; --primary-soft:#1d2c52; --accent:#e0b04d; --accent-ink:#f0cd84;
     --in:#5fc18f; --in-soft:#163327; --out:#ff8a80; --out-soft:#3a1c1b; --tr:#b4a2ff; --tr-soft:#2a2350;
     --field:#0f1c28; --warn-bg:#2f2610; --warn-line:#5c4a1a; --badge-warn:#3a2f12;
     color-scheme:dark;
@@ -37,7 +40,7 @@
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);font-size:14px;font-variant-numeric:tabular-nums}
+body{margin:0;font-family:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",sans-serif;background:var(--bg);color:var(--text);font-size:14px;font-variant-numeric:tabular-nums}
 body.booting > header, body.booting > main, body.locked > header, body.locked > main, body.auth > header, body.auth > main{display:none}
 #offLock{display:none;min-height:100vh;align-items:center;justify-content:center;padding:24px 16px;text-align:center}
 #offLock .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;width:min(420px,100%)}
@@ -226,8 +229,54 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
   .toast{border-radius:12px;box-shadow:0 10px 26px rgba(10,20,30,.28)}
   .dash-sec+.dash-sec{border-top-width:1px}
 }
-@media screen and (prefers-color-scheme:dark){.btn.primary{background:#2a68ad;border-color:#2a68ad}} /* teks putih tetap terbaca (kontras minimal 4,5:1) */
+@media screen and (prefers-color-scheme:dark){.btn.primary{background:#2a4aa0;border-color:#2a4aa0}} /* teks putih tetap terbaca (kontras minimal 4,5:1) */
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ---------- Identitas PT GM Musara Jaya ---------- */
+@media screen{
+  header{background:linear-gradient(100deg,var(--brand) 0%,var(--brand-2) 100%);color:#fff;box-shadow:0 2px 10px rgba(10,22,60,.18)}
+  header h1{color:#fff;font-size:16.5px;letter-spacing:.01em}
+  header .company{color:rgba(255,255,255,.72);font-style:normal;font-size:12px;letter-spacing:.02em}
+  #brandLogo{display:inline-flex;background:#fff;border-radius:12px;padding:3px;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+  nav button{color:rgba(255,255,255,.78)}
+  nav button:hover{background:rgba(255,255,255,.10);color:#fff}
+  nav button.active{background:rgba(255,255,255,.14);color:#fff;box-shadow:inset 0 -2px 0 var(--gold)}
+  header .btn.primary{background:var(--gold);border-color:var(--gold);color:#1d1400;font-weight:600}
+  header .badge.warn{background:#fff3d6;color:#6e4f10}
+  .card h3::before{content:"";display:inline-block;width:4px;height:14px;border-radius:2px;background:var(--gold);margin-right:8px;vertical-align:-2px}
+  .stat{border-top:3px solid var(--primary-soft)}
+  .btn.primary{background:var(--brand);border-color:var(--brand)}
+  .seg button.on{color:var(--brand)}
+  .toast{background:var(--brand)}
+  /* Layar masuk: panel merek + formulir */
+  #auth{background:radial-gradient(1200px 600px at 10% -10%,var(--primary-soft),transparent 60%),var(--bg)}
+  .auth-card{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);width:min(900px,100%);background:var(--panel);border:1px solid var(--line);border-radius:22px;overflow:hidden;box-shadow:0 30px 70px rgba(10,22,60,.14)}
+  #auth .auth-card > .box{border:0;border-radius:0;width:auto;padding:34px 34px 26px;align-self:center}
+  .auth-brand{background:linear-gradient(160deg,var(--brand) 0%,#0c1f52 100%);color:#fff;padding:36px 34px;display:flex;flex-direction:column;gap:18px;position:relative;overflow:hidden}
+  .auth-brand::after{content:"";position:absolute;right:-60px;bottom:-60px;width:220px;height:220px;border-radius:50%;border:28px solid rgba(255,255,255,.05)}
+  .auth-logo{width:88px;height:88px;border-radius:20px;background:#fff;display:grid;place-items:center;box-shadow:0 8px 20px rgba(0,0,0,.25)}
+  .auth-name{font-size:24px;font-weight:700;letter-spacing:.01em;line-height:1.2}
+  .auth-slogan{color:var(--gold);font-weight:600;font-size:14px}
+  .auth-slogan i{display:block;color:rgba(255,255,255,.65);font-weight:400;font-size:12.5px;margin-top:2px}
+  .auth-pillars{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:10px}
+  .auth-pillars li{display:flex;gap:10px;align-items:center;font-size:13.5px;color:rgba(255,255,255,.9)}
+  .auth-pillars li span{width:30px;height:30px;border-radius:9px;background:rgba(255,255,255,.1);display:grid;place-items:center;flex:0 0 auto}
+  .auth-foot{margin-top:auto;font-size:12px;color:rgba(255,255,255,.75);letter-spacing:.03em}
+  #auth .box h2{font-size:20px;margin:0 0 4px}
+  .lock-logo{width:64px;height:64px;border-radius:16px;background:#fff;display:grid;place-items:center;margin:0 auto;border:1px solid var(--line)}
+}
+@media screen and (max-width:760px){
+  header{box-shadow:none}
+  nav button,nav button:hover{color:var(--muted)}
+  nav button.active{background:var(--primary-soft);color:var(--primary);box-shadow:none}
+  .auth-card{grid-template-columns:1fr;border-radius:18px}
+  .auth-brand{padding:24px 22px;gap:12px}
+  .auth-logo{width:64px;height:64px;border-radius:16px}
+  .auth-name{font-size:20px}
+  .auth-pillars,.auth-foot{display:none}
+  #auth .auth-card > .box{padding:22px}
+  #btnAdd{background:var(--gold);border-color:var(--gold);color:#1d1400}
+}
 
 /* ---------- Ponsel (Android & iOS) ---------- */
 @media (max-width:760px){
@@ -283,10 +332,23 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
 
 <!-- LAYAR LOGIN -->
 <div id="auth" role="main" aria-label="Masuk akun">
+  <div class="auth-card">
+  <aside class="auth-brand" aria-label="PT GM Musara Jaya">
+    <div class="auth-logo"><img src="icons/logo-gmj.png" width="72" height="72" alt=""></div>
+    <div>
+      <div class="auth-name">PT GM Musara Jaya</div>
+      <div class="auth-slogan">Bersatu Melayani, Teguh Menjaga Amanah<i>United in Service, Steadfast in Trust</i></div>
+    </div>
+    <ul class="auth-pillars">
+      <li><span aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 16l20-6-20-6 4 6z"/></svg></span>Perjalanan: tiket pesawat, kapal, dan hotel</li>
+      <li><span aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="1"/><path d="M8 20h8M12 16v4"/></svg></span>Perlengkapan Kantor &amp; TI</li>
+      <li><span aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 4h2l3 12h11l2-8H6"/><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/></svg></span>Niaga Digital</li>
+    </ul>
+    <div class="auth-foot">Perseroan Perorangan · Banda Aceh</div>
+  </aside>
   <div class="box">
-    <svg viewBox="0 0 64 64" width="56" height="56" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#14304a"/><text x="32" y="41" text-anchor="middle" font-family="Georgia,serif" font-size="25" font-weight="700" fill="#e5a100">Rp</text></svg>
-    <h2>Aplikasi Keuangan Perusahaan (UMKM)</h2>
-    <div class="muted">Masuk agar data tersimpan aman di server dan bisa dibuka dari HP maupun komputer.</div>
+    <h2>Masuk ke Sistem Keuangan</h2>
+    <div class="muted">Data tersimpan aman di server dan bisa dibuka dari HP maupun komputer.</div>
     <div style="margin-top:16px">
       <button class="btn google" type="button" id="btnGoogle">
         <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
@@ -313,6 +375,7 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
       Anda dapat mengunduh (Backup) atau menghapus akun beserta seluruh datanya kapan saja di menu Atur → Akun.
     </details>
   </div>
+  </div>
 </div>
 
 <!-- LAYAR KUNCI -->
@@ -325,9 +388,9 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
 </div>
 <div id="lock" role="main" aria-label="Layar terkunci">
   <form class="box" id="lockForm" autocomplete="off">
-    <svg viewBox="0 0 64 64" width="56" height="56" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#14304a"/><text x="32" y="41" text-anchor="middle" font-family="Georgia,serif" font-size="25" font-weight="700" fill="#e5a100">Rp</text></svg>
+    <div class="lock-logo"><img src="icons/logo-gmj.png" width="52" height="52" alt=""></div>
     <h2>Aplikasi terkunci</h2>
-    <div class="muted" style="font-size:13px">Aplikasi Keuangan Perusahaan (UMKM)</div>
+    <div class="muted" style="font-size:13px">PT GM Musara Jaya · Sistem Keuangan</div>
     <div class="muted">Masukkan kata sandi aplikasi.</div>
     <input type="password" id="lockPw" autocomplete="current-password" aria-label="Kata sandi">
     <button class="btn primary" type="submit" style="width:100%" id="lockBtn">Buka</button>
@@ -341,7 +404,7 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
   <div class="brand">
     <span id="brandLogo"></span>
     <div>
-      <h1 id="companyName">Aplikasi Keuangan Perusahaan (UMKM)</h1>
+      <h1 id="companyName">PT GM Musara Jaya</h1>
       <div class="company" id="companyTagline"></div>
     </div>
     <span class="badge warn" id="netBadge" hidden title="Tidak ada internet. Isian tetap tersimpan di perangkat dan dikirim otomatis saat online.">Offline</span>

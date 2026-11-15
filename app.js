@@ -22,7 +22,12 @@ const TYPE_LABEL = {in:'Pemasukan', out:'Pengeluaran', transfer:'Mutasi'};
 const REF_PREFIX = {in:'BKM', out:'BKK', transfer:'BM'};
 const LOGO_MAX_PX = 256;
 const LOGO_RE = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
-const APP_NAME = 'Aplikasi Keuangan Perusahaan (UMKM)';
+// Identitas merek PT GM Musara Jaya (publik). Data legal dan kontak (NPWP, NIB, alamat, telepon, email, rekening)
+// sengaja TIDAK ditanam di kode: diisi di Atur → Profil perusahaan dan tersimpan privat di akun.
+const APP_NAME = 'PT GM Musara Jaya';
+const APP_SUB = 'Sistem Keuangan & Operasional';
+const APP_SLOGAN = 'Bersatu Melayani, Teguh Menjaga Amanah';
+const BRAND_LOGO = 'icons/logo-gmj.png';
 const DATA_VERSION = 5; // naikkan bila struktur data berubah; versi lama aplikasi tidak boleh menimpa data yang lebih baru
 const STORE_WARN = 3500000; // peringatan sebelum penyimpanan perangkat (sekitar 5 juta karakter) penuh
 
@@ -99,7 +104,7 @@ const OMZET_CAP = 4800000000; // batas peredaran bruto PPh final UMKM per tahun
 
 // Identitas perusahaan diisi sendiri lewat menu Atur dan hanya tersimpan di perangkat/akun.
 const PROFILE = {
-  name: '', tagline: '', logo: '',
+  name: APP_NAME, tagline: APP_SLOGAN, logo: '',
   address: '', npwp: '', nib: '', phone: '', email: '',
   preparedName: '', preparedTitle: 'Bagian Keuangan',
   checkedName: '', checkedTitle: 'Pimpinan',
@@ -140,9 +145,8 @@ function terbilang(n) {
 function logoHTML(size) {
   const c = state.company;
   if (LOGO_RE.test(c.logo)) return `<img src="${c.logo}" width="${size}" height="${size}" alt="Logo" style="object-fit:contain;border-radius:10px;flex:0 0 auto">`;
-  const words = c.name.replace(/^(PT|CV|UD|Koperasi|Yayasan)\.?\s+/i, '').split(/\s+/).filter(Boolean);
-  const initials = words.length ? words.slice(0, 2).map(w => w[0]).join('').toUpperCase() : 'Rp';
-  return `<svg viewBox="0 0 64 64" width="${size}" height="${size}" aria-hidden="true" style="flex:0 0 auto"><rect width="64" height="64" rx="14" fill="#14304a"/><text x="32" y="41" text-anchor="middle" font-family="Georgia,serif" font-size="25" font-weight="700" fill="#e5a100">${esc(initials)}</text></svg>`;
+  // Tanpa logo unggahan: monogram GM (potongan tengah logo, bukan stempel utuh)
+  return `<img src="${BRAND_LOGO}" width="${size}" height="${size}" alt="" style="object-fit:contain;flex:0 0 auto">`;
 }
 
 function defaultState() {
@@ -1628,7 +1632,7 @@ function signBlock() {
 const basisNote = () => state.company.basis === 'kas'
   ? 'Basis kas: pendapatan dan beban diakui saat uang diterima/dibayar.'
   : 'Basis akrual (SAK EMKM): pendapatan diakui saat faktur piutang diterbitkan atau kas diterima, beban saat tagihan utang diterima atau kas dibayar.';
-const footerNote = () => `<p class="muted" style="font-size:11px">Dicetak ${new Date().toLocaleString('id-ID')} dari ${esc(APP_NAME)}. ${state.lockedUntil ? 'Data s.d. ' + fmtDate(state.lockedUntil) + ' telah ditutup (tutup buku).' : 'Periode belum ditutup; angka masih dapat berubah.'}</p>`;
+const footerNote = () => `<p class="muted" style="font-size:11px">Dicetak ${new Date().toLocaleString('id-ID')} dari ${esc(APP_SUB + ' ' + APP_NAME)}. ${state.lockedUntil ? 'Data s.d. ' + fmtDate(state.lockedUntil) + ' telah ditutup (tutup buku).' : 'Periode belum ditutup; angka masih dapat berubah.'}</p>`;
 
 function lrTable(L) {
   const rows = list => list.map(r => `<tr><td style="padding-left:24px">${r.label}</td><td class="num">${rp(r.v)}</td></tr>`).join('')
@@ -1846,7 +1850,7 @@ function renderHeader() {
   const c = state.company;
   $('companyName').textContent = displayName();
   $('companyTagline').textContent = c.tagline;
-  document.title = c.name ? 'Keuangan UMKM · ' + c.name : APP_NAME;
+  document.title = (c.name || APP_NAME) + ' · ' + APP_SUB;
   $('brandLogo').innerHTML = logoHTML(38);
 }
 function renderSettings() {
@@ -1895,7 +1899,11 @@ function renderAccount() {
       ? 'Data dienkripsi di perangkat sebelum dikirim, sehingga server pun tidak bisa membacanya.'
       : 'Tips: pasang kata sandi di kartu Keamanan agar data dienkripsi sebelum dikirim ke server.'}</div>
     ${conflicts.length ? `<div class="notice">Salinan dari konflik sinkron (data perangkat ini yang tidak terkirim): ${conflicts.map(k => `<button class="btn sm" data-act="dlConflict" data-id="${esc(k.split('-konflik-')[1])}">${esc(new Date(+k.split('-konflik-')[1]).toLocaleString('id-ID'))}</button>`).join(' ')} <button class="btn sm danger" data-act="clearConflicts">Hapus salinan</button></div>` : ''}
-    ${companyBoxHTML()}
+    <details class="team-adv" style="margin:6px 0 12px">
+      <summary class="muted" style="cursor:pointer">Lanjutan: perusahaan bersama &amp; anggota tim${company ? ' · aktif' : ' · tidak dipakai'}</summary>
+      <p class="muted" style="font-size:12px;margin:8px 0">PT GM Musara Jaya dijalankan satu pemilik, dibantu tim AI di komputer. Bagian ini hanya perlu dibuka bila suatu saat ada karyawan atau CEO yang ikut memakai aplikasi dengan akunnya sendiri.</p>
+      ${companyBoxHTML()}
+    </details>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn" data-act="syncNow">Sinkron sekarang</button>
       <button class="btn" data-act="logout">Keluar</button>
