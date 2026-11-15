@@ -28,6 +28,9 @@ const APP_NAME = 'PT GM Musara Jaya';
 const APP_SUB = 'Sistem Keuangan & Operasional';
 const APP_SLOGAN = 'Bersatu Melayani, Teguh Menjaga Amanah';
 const BRAND_LOGO = 'icons/logo-gmj.png';
+// Titipan pelanggan untuk transaksi perantara. Kode 2-110 (bukan 2-103 seperti di dokumen B6) karena 2-101 dan 2-103..2-107
+// sudah dipakai akun sistem aplikasi (2-103 = Utang PPh 21).
+const TITIPAN = {code: '2-110', in: 'Titipan pelanggan perantara (diterima)', out: 'Titipan pelanggan perantara (diteruskan)'};
 const DATA_VERSION = 5; // naikkan bila struktur data berubah; versi lama aplikasi tidak boleh menimpa data yang lebih baru
 const STORE_WARN = 3500000; // peringatan sebelum penyimpanan perangkat (sekitar 5 juta karakter) penuh
 
@@ -109,6 +112,7 @@ const PROFILE = {
   preparedName: '', preparedTitle: 'Bagian Keuangan',
   checkedName: '', checkedTitle: 'Pimpinan',
   pphRate: 0.5, entity: 'ptp', taxYear: '', basis: 'akrual', bankInfo: '', invoiceNote: '', nitku: '',
+  revGoods: '4-101', revSvc: '4-102',
 };
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -249,6 +253,7 @@ function sanitizeState(d) {
     else if (k === 'entity') company[k] = Object.hasOwn(ENTITY, co.entity) ? co.entity : PROFILE.entity;
     else if (k === 'basis') company[k] = co.basis === 'kas' ? 'kas' : 'akrual';
     else if (k === 'taxYear') company[k] = /^(19|20)\d{2}$/.test(String(co.taxYear ?? '')) ? String(co.taxYear) : '';
+    else if (k === 'revGoods' || k === 'revSvc') company[k] = /^[45]-\d{3}$/.test(String(co[k] ?? '')) ? String(co[k]) : PROFILE[k];
     else company[k] = cleanStr(co[k] ?? PROFILE[k], 300);
   }
   const autoLock = +d.security?.autoLockMin;
@@ -337,6 +342,21 @@ function migrate() {
   state.version = DATA_VERSION;
   fillLr(state);
   ensureCats(state);
+  fixTitipan(state);
+}
+// Perbaikan Versi 35: titipan perantara sempat memakai kode 2-103 yang ternyata akun sistem Utang PPh 21.
+// Kategori titipan dipindah ke 2-110, dan transaksi "[Perantara] … diteruskan" yang masuk ke Utang PPh 21 dipindah ke titipan.
+function fixTitipan(s) {
+  const moved = [];
+  for (const c of s.categories) if (c.code === '2-103' && (c.name === TITIPAN.in || c.name === TITIPAN.out)) { c.code = TITIPAN.code; moved.push(c.name); }
+  const pph21 = s.categories.find(c => c.code === ACC_PPH21.code && c.name === ACC_PPH21.name && c.type === 'out');
+  const wrong = pph21 ? s.tx.filter(t => t.type === 'out' && t.categoryId === pph21.id && /^\[Perantara\].*· diteruskan ke /.test(t.desc || '')) : [];
+  if (wrong.length) {
+    let out = s.categories.find(c => c.code === TITIPAN.code && c.type === 'out' && c.lr === false);
+    if (!out) { out = {id: uid(), code: TITIPAN.code, name: TITIPAN.out, type: 'out', lr: false}; s.categories.push(out); }
+    wrong.forEach(t => { t.categoryId = out.id; });
+  }
+  if (moved.length || wrong.length) s.audit.push({ts: new Date().toISOString(), by: 'sistem/perbaikan', act: 'ubah', ent: 'kategori', id: '', info: `Perbaikan otomatis titipan perantara: kategori ke ${TITIPAN.code} (${moved.length}), transaksi dipindah dari Utang PPh 21 (${wrong.length})`});
 }
 
 /* ---------- Enkripsi (AES-GCM 256, kunci dari kata sandi lewat PBKDF2-SHA256) ---------- */
@@ -1379,10 +1399,9 @@ $('btnAdd').onclick = () => openTx();
 $('btnCancelTx').onclick = () => $('txDialog').close();
 
 /* ---------- Transaksi perantara (tiket, hotel, barang titipan pemasok) ----------
-   Satu isian dipecah menjadi: titipan diterima (2-103, bukan pendapatan) + komisi (pendapatan, masuk omzet PPh final)
-   + titipan diteruskan ke pemasok (2-103). Saldo bank cocok dengan rekening koran, akun 2-103 kembali nol setelah
+   Satu isian dipecah menjadi: titipan diterima (2-110, bukan pendapatan) + komisi (pendapatan, masuk omzet PPh final)
+   + titipan diteruskan ke pemasok (2-110). Saldo bank cocok dengan rekening koran, akun 2-110 kembali nol setelah
    diteruskan, dan peredaran bruto PPh final hanya memuat komisi. */
-const TITIPAN = {code: '2-103', in: 'Titipan pelanggan perantara (diterima)', out: 'Titipan pelanggan perantara (diteruskan)'};
 function titipanCat(type) {
   let c = state.categories.find(x => x.code === TITIPAN.code && x.type === type && x.lr === false);
   if (!c) {
@@ -2033,6 +2052,73 @@ $('btnAddCat').onclick = () => {
   log('tambah', 'kategori', c.id, `${c.code} ${c.name}`);
   $('newCatCode').value = $('newCatName').value = ''; save();
 };
+/* ---------- Bagan akun GMJ (dokumen B6 Pembukuan) ----------
+   Aman untuk data yang sudah ada: hanya MENAMBAH yang belum ada, dan MENGGANTI NAMA hanya akun/kategori yang belum
+   pernah dipakai. Yang sudah dipakai transaksi tidak diubah, dilaporkan sebagai bentrok. Nomor rekening tidak disimpan di kode. */
+const GMJ_ACCOUNTS = [['1-101', 'Kas kecil'], ['1-102', 'Bank Mandiri'], ['1-103', 'Bank OCBC']];
+const GMJ_CATS = [
+  ['4-101', 'Pendapatan jasa perjalanan', 'in', true], ['4-102', 'Penjualan komputer dan ATK', 'in', true],
+  ['4-103', 'Pendapatan sewa peralatan', 'in', true], ['4-104', 'Pendapatan intermediasi', 'in', true],
+  ['3-101', 'Setoran modal', 'in', false], [TITIPAN.code, TITIPAN.in, 'in', false],
+  ['5-201', 'Beban gaji dan BPJS', 'out', true],
+  ['5-301', 'Beban operasional lain', 'out', true], ['5-501', 'PPh final', 'out', true],
+  ['1-401', 'Pembelian peralatan kantor dan peralatan sewa', 'out', false], [TITIPAN.code, TITIPAN.out, 'out', false],
+  ['3-102', 'Prive / penarikan pemilik', 'out', false],
+];
+// Semua id yang dirujuk data (accountId, categoryId, toAccountId, ...), kecuali daftar akun & kategori itu sendiri
+function referencedIds() {
+  const ids = new Set();
+  const walk = (v, key) => {
+    if (Array.isArray(v)) v.forEach(x => walk(x, key));
+    else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) walk(x, k);
+    else if (typeof v === 'string' && /Id$/.test(key || '')) ids.add(v);
+  };
+  for (const [k, v] of Object.entries(state)) if (k !== 'accounts' && k !== 'categories') walk(v, k);
+  return ids;
+}
+function gmjPlan() {
+  const used = referencedIds(), plan = {addAcc: [], renAcc: [], addCat: [], renCat: [], conflict: [], revSwap: false};
+  // Penjualan dari Jual/Beli memakai kategori lewat kodenya, bukan id
+  const sold = new Set(state.trades.filter(t => t.kind !== 'purchase').map(t => tradeCat(t)?.id).filter(Boolean));
+  for (const [code, name] of GMJ_ACCOUNTS) {
+    const a = state.accounts.find(x => x.code === code);
+    if (!a) plan.addAcc.push({code, name});
+    else if (a.name !== name) {
+      if (used.has(a.id) || a.opening) plan.conflict.push(`Akun ${code} "${a.name}" sudah dipakai; tetap (B6: ${name})`);
+      else plan.renAcc.push({a, name});
+    }
+  }
+  for (const [code, name, type, lr] of GMJ_CATS) {
+    const c = state.categories.find(x => x.code === code && x.type === type && (code !== TITIPAN.code || x.lr === false));
+    if (!c) plan.addCat.push({code, name, type, lr});
+    else if (c.name !== name) {
+      if (used.has(c.id) || sold.has(c.id)) plan.conflict.push(`Kategori ${code} "${c.name}" sudah dipakai; tetap (B6: ${name})`);
+      else plan.renCat.push({c, name, lr});
+    }
+  }
+  // Arah pendapatan Jual/Beli ditukar hanya bila 4-101 dan 4-102 berakhir bernama sesuai B6
+  const finalName = code => { const r = plan.renCat.find(x => x.c.code === code && x.c.type === 'in'); if (r) return r.name; return state.categories.find(x => x.code === code && x.type === 'in')?.name; };
+  plan.revSwap = !(state.company.revGoods === '4-102' && state.company.revSvc === '4-101') && finalName('4-101') !== undefined && finalName('4-101') === GMJ_CATS[0][1] && (finalName('4-102') === GMJ_CATS[1][1] || plan.addCat.some(x => x.code === '4-102'));
+  return plan;
+}
+$('btnGmjCoa').onclick = () => {
+  const p = gmjPlan();
+  const lines = [
+    ...p.addAcc.map(x => `+ akun ${x.code} ${x.name}`), ...p.renAcc.map(x => `~ akun ${x.a.code}: "${x.a.name}" → "${x.name}"`),
+    ...p.addCat.map(x => `+ kategori ${x.code} ${x.name}${x.lr ? '' : ' (bukan L/R)'}`), ...p.renCat.map(x => `~ kategori ${x.c.code}: "${x.c.name}" → "${x.name}"`),
+    ...(p.revSwap ? ['~ Jual/Beli: penjualan barang → 4-102, jasa → 4-101'] : []),
+  ];
+  if (!lines.length) return toast(p.conflict.length ? 'Tidak ada yang bisa diterapkan. ' + p.conflict.join('; ') : 'Bagan akun GMJ sudah terpasang');
+  const msg = `Terapkan bagan akun GMJ (B6)?\n\n${lines.join('\n')}${p.conflict.length ? `\n\nTidak diubah karena sudah dipakai:\n${p.conflict.join('\n')}` : ''}\n\nTidak ada yang dihapus. Nomor rekening tidak diisi.`;
+  if (!confirm(msg)) return;
+  for (const x of p.addAcc) { const a = {id: uid(), code: x.code, name: x.name, opening: 0}; state.accounts.push(a); log('tambah', 'akun', a.id, `${a.code} ${a.name} (bagan akun GMJ)`); }
+  for (const x of p.renAcc) { log('ubah', 'akun', x.a.id, `${x.a.code}: ${x.a.name} ⇒ ${x.name} (bagan akun GMJ)`); x.a.name = x.name; }
+  for (const x of p.addCat) { const c = {id: uid(), code: x.code, name: x.name, type: x.type, lr: x.lr}; state.categories.push(c); log('tambah', 'kategori', c.id, `${c.code} ${c.name} (bagan akun GMJ)`); }
+  for (const x of p.renCat) { log('ubah', 'kategori', x.c.id, `${x.c.code}: ${x.c.name} ⇒ ${x.name} (bagan akun GMJ)`); x.c.name = x.name; if (!isSysCat(x.c)) x.c.lr = x.lr; }
+  if (p.revSwap) { state.company.revGoods = '4-102'; state.company.revSvc = '4-101'; log('ubah', 'profil', '', 'Pendapatan Jual/Beli: barang 4-102, jasa 4-101 (bagan akun GMJ)'); }
+  state.accounts.sort((a, b) => a.code.localeCompare(b.code)); state.categories.sort((a, b) => a.code.localeCompare(b.code));
+  save(); toast(`Bagan akun GMJ diterapkan: ${lines.length} perubahan${p.conflict.length ? `, ${p.conflict.length} dibiarkan (sudah dipakai)` : ''}`);
+};
 $('btnLock').onclick = () => {
   const d = $('lockDate').value;
   if (!DATE_RE.test(d)) return toast('Pilih tanggal tutup buku');
@@ -2231,7 +2317,14 @@ const pct = n => String(Math.round(n * 10) / 10).replace('.', ',') + '%';
 const tradeTotal = t => Math.max(0, Math.round(t.lines.reduce((s, l) => s + l.qty * l.price, 0)) - t.discount + t.extra);
 const tradePay = t => tradeTotal(t) + (t.wapu ? 0 : t.ppn) - t.pph;
 const retPay = r => r.dpp + (r.wapu ? 0 : r.ppn) - r.pph;
-const tradeCat = t => sysCat(t.kind === 'purchase' ? ACC_PERSEDIAAN.code : t.lines.every(l => itemOf(l.itemId)?.kind === 'jasa') ? '4-102' : '4-101');
+// Kode pendapatan penjualan barang/jasa dari menu Jual/Beli. Bawaan 4-101 barang, 4-102 jasa; bagan akun GMJ (B6)
+// memakai kebalikannya (4-102 penjualan komputer & ATK, 4-101 jasa perjalanan) setelah tombol "Terapkan bagan akun GMJ".
+const REV_CODE_RE = /^[45]-\d{3}$/;
+const revCode = kind => {
+  const c = state.company, v = kind === 'jasa' ? c.revSvc : c.revGoods;
+  return REV_CODE_RE.test(v || '') && sysCat(v) ? v : (kind === 'jasa' ? '4-102' : '4-101');
+};
+const tradeCat = t => sysCat(t.kind === 'purchase' ? ACC_PERSEDIAAN.code : revCode(t.lines.every(l => itemOf(l.itemId)?.kind === 'jasa') ? 'jasa' : 'barang'));
 const pphRateOf = code => state.tax[{22: 'pph22', 23: 'pph23', '23r': 'pph23r', '42k': 'pph42k', '42s': 'pph42s'}[code]];
 function taxCalc(d) {
   const T = state.tax, buy = d.kind === 'purchase', v = buy ? vendorOf(d.vendorId) : null, dpp = tradeTotal(d);

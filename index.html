@@ -869,6 +869,10 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] #btnPerantara,body[data-ro
       </div>
       <div class="card">
         <h3>Kategori &amp; Kode Akun</h3>
+        <div class="notice" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between">
+          <span>Pakai <b>bagan akun GMJ</b> (dokumen B6): kas kecil, Mandiri, OCBC, pendapatan per pilar usaha, titipan perantara, dan PPh final. Hanya menambah; yang sudah dipakai tidak diubah.</span>
+          <button class="btn primary" type="button" id="btnGmjCoa">Terapkan bagan akun GMJ</button>
+        </div>
         <p class="muted" style="margin-top:0;font-size:12px">Hilangkan centang <b>L/R</b> untuk kategori yang bukan pendapatan/beban, mis. setoran modal, pinjaman, atau pembelian aset.</p>
         <div style="overflow:auto"><table><thead><tr><th>Kode</th><th>Nama</th><th>Jenis</th><th>L/R</th><th></th></tr></thead><tbody id="catList"></tbody></table></div>
         <div class="form-grid" style="margin-top:10px">
@@ -919,7 +923,7 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] #btnPerantara,body[data-ro
   <form method="dialog" id="ptrForm">
     <div class="hd">Transaksi Perantara</div>
     <div class="bd">
-      <p class="muted" style="font-size:12.5px;margin-top:0">Untuk tiket, hotel, atau barang titipan pemasok. Uang yang diteruskan ke maskapai/hotel/pemasok dicatat sebagai <b>titipan pelanggan (2-103)</b>, bukan pendapatan; hanya <b>komisi</b> yang masuk omzet PPh final.</p>
+      <p class="muted" style="font-size:12.5px;margin-top:0">Untuk tiket, hotel, atau barang titipan pemasok. Uang yang diteruskan ke maskapai/hotel/pemasok dicatat sebagai <b>titipan pelanggan (2-110)</b>, bukan pendapatan; hanya <b>komisi</b> yang masuk omzet PPh final.</p>
       <div class="form-grid">
         <label class="f">Tanggal<input type="date" id="ptrDate" required></label>
         <label class="f">Pendapatan komisi<select id="ptrCat"></select></label>
