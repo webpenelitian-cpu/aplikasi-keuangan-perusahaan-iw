@@ -184,7 +184,7 @@ nav .ns{display:none}
 .dash-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.dash-head h2{font-size:18px;margin:0 0 2px}.dash-head p{margin:0}.dash-who{text-align:right;font-size:12px;white-space:nowrap}
 .seg.scroll{display:flex;overflow-x:auto;max-width:100%}.seg.scroll button{flex:0 0 auto;white-space:nowrap}
 .onlymobile{display:none}
-body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{display:none!important}
+body[data-role=viewer] #btnAdd,body[data-role=viewer] #btnPerantara,body[data-role=viewer] .toolbar .btn.primary{display:none!important}
 .privacy{font-size:11px;color:var(--muted);text-align:left;margin-top:12px;line-height:1.5}
 #printArea{display:none}
 .toast{position:fixed;bottom:20px;right:20px;left:auto;background:#14304a;color:#fff;padding:10px 16px;border-radius:8px;opacity:0;transition:.25s;pointer-events:none;z-index:50}
@@ -479,6 +479,7 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
       <label class="f">Kategori<select id="fCat"></select></label>
       <label class="f" style="flex:1;min-width:160px">Cari<input type="search" id="fSearch" placeholder="Uraian / no. bukti"></label>
       <button class="btn" id="btnResetFilter">Reset</button>
+      <button class="btn" id="btnPerantara" title="Tiket, hotel, atau barang titipan pemasok: hanya komisi yang menjadi omzet PPh final">+ Perantara</button>
       <button class="btn" id="btnCsv">Ekspor CSV</button>
     </div>
     <div class="grid cards" id="filterSummary" style="margin-bottom:12px"></div>
@@ -909,6 +910,33 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] .toolbar .btn.primary{disp
       <button type="button" class="btn" id="btnPrintTx">Cetak bukti</button>
       <button type="button" class="btn" id="btnCancelTx">Tutup</button>
       <button type="submit" class="btn primary" id="btnSaveTx">Simpan</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- DIALOG TRANSAKSI PERANTARA -->
+<dialog id="ptrDialog">
+  <form method="dialog" id="ptrForm">
+    <div class="hd">Transaksi Perantara</div>
+    <div class="bd">
+      <p class="muted" style="font-size:12.5px;margin-top:0">Untuk tiket, hotel, atau barang titipan pemasok. Uang yang diteruskan ke maskapai/hotel/pemasok dicatat sebagai <b>titipan pelanggan (2-103)</b>, bukan pendapatan; hanya <b>komisi</b> yang masuk omzet PPh final.</p>
+      <div class="form-grid">
+        <label class="f">Tanggal<input type="date" id="ptrDate" required></label>
+        <label class="f">Pendapatan komisi<select id="ptrCat"></select></label>
+        <label class="f">Pelanggan<input id="ptrCust" maxlength="120" placeholder="Nama pelanggan / instansi"></label>
+        <label class="f">Pemasok<input id="ptrVend" maxlength="120" placeholder="Maskapai, hotel, atau pemasok"></label>
+        <label class="f wide">Uraian<input id="ptrDesc" maxlength="300" placeholder="Rute & kode booking, nama hotel, atau nama barang"></label>
+        <label class="f">Harga jual ke pelanggan (Rp)<input id="ptrSell" inputmode="numeric" placeholder="0"></label>
+        <label class="f">Harga beli dari pemasok (Rp)<input id="ptrBuy" inputmode="numeric" placeholder="0"></label>
+        <label class="f">Diterima di akun<select id="ptrAcc"></select></label>
+        <label class="check wide"><input type="checkbox" id="ptrPaid" checked> Sudah dibayarkan ke pemasok</label>
+        <label class="f" id="ptrPayWrap">Dibayar dari akun<select id="ptrPayAcc"></select></label>
+      </div>
+      <div class="tsum" id="ptrSum" role="status" aria-live="polite"></div>
+    </div>
+    <div class="ft">
+      <button type="button" class="btn" id="btnCancelPtr">Tutup</button>
+      <button type="submit" class="btn primary" id="btnSavePtr">Simpan</button>
     </div>
   </form>
 </dialog>

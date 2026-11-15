@@ -1377,6 +1377,75 @@ function openTx(id) {
 }
 $('btnAdd').onclick = () => openTx();
 $('btnCancelTx').onclick = () => $('txDialog').close();
+
+/* ---------- Transaksi perantara (tiket, hotel, barang titipan pemasok) ----------
+   Satu isian dipecah menjadi: titipan diterima (2-103, bukan pendapatan) + komisi (pendapatan, masuk omzet PPh final)
+   + titipan diteruskan ke pemasok (2-103). Saldo bank cocok dengan rekening koran, akun 2-103 kembali nol setelah
+   diteruskan, dan peredaran bruto PPh final hanya memuat komisi. */
+const TITIPAN = {code: '2-103', in: 'Titipan pelanggan perantara (diterima)', out: 'Titipan pelanggan perantara (diteruskan)'};
+function titipanCat(type) {
+  let c = state.categories.find(x => x.code === TITIPAN.code && x.type === type && x.lr === false);
+  if (!c) {
+    c = {id: uid(), code: TITIPAN.code, name: TITIPAN[type], type, lr: false};
+    state.categories.push(c);
+    log('tambah', 'kategori', c.id, `${c.code} ${c.name} (otomatis untuk transaksi perantara)`);
+  }
+  return c;
+}
+const prIncomeCats = () => state.categories.filter(c => c.type === 'in' && c.lr !== false);
+function prCalc() {
+  const sell = parseMoney($('ptrSell').value), buy = parseMoney($('ptrBuy').value), fee = sell - buy;
+  const rate = (+state.company.pphRate || 0) / 100;
+  $('ptrPayWrap').style.display = $('ptrPaid').checked ? '' : 'none';
+  $('ptrSum').innerHTML = !sell ? 'Isi harga jual dan harga beli.'
+    : fee < 0 ? `<span class="out">Harga beli lebih besar dari harga jual (rugi ${rp(-fee)}). Catat selisihnya sebagai beban lewat transaksi biasa.</span>`
+    : `Komisi (omzet PPh final): <b>${rp(fee)}</b> · titipan diteruskan: ${rp(buy)}<br><span class="muted">Perkiraan PPh final ${String(state.company.pphRate).replace('.', ',')}%: ${rp(Math.floor(fee * rate))} (dihitung; disetor bersama omzet sebulan).</span>`;
+}
+function openPerantara() {
+  if (!state.accounts.length) return toast('Tambahkan akun kas/bank dulu di menu Atur');
+  const cats = prIncomeCats();
+  if (!cats.length) return toast('Tambahkan kategori pendapatan dulu di menu Atur');
+  fillSelect($('ptrCat'), cats);
+  const def = cats.find(c => c.code === '4-101') || cats[0];
+  if (!$('ptrCat').value || !cats.some(c => c.id === $('ptrCat').value)) $('ptrCat').value = def.id;
+  fillSelect($('ptrAcc'), state.accounts); fillSelect($('ptrPayAcc'), state.accounts);
+  $('ptrDate').value = today();
+  ['ptrCust', 'ptrVend', 'ptrDesc', 'ptrSell', 'ptrBuy'].forEach(id => { $(id).value = ''; });
+  $('ptrPaid').checked = true;
+  prCalc();
+  $('ptrDialog').showModal();
+}
+['ptrSell', 'ptrBuy'].forEach(id => $(id).addEventListener('input', prCalc));
+$('ptrPaid').addEventListener('change', prCalc);
+$('btnPerantara').onclick = openPerantara;
+$('btnCancelPtr').onclick = () => $('ptrDialog').close();
+$('ptrForm').onsubmit = e => {
+  const fail = msg => { e.preventDefault(); toast(msg); };
+  const date = $('ptrDate').value, sell = parseMoney($('ptrSell').value), buy = parseMoney($('ptrBuy').value), fee = sell - buy;
+  const cust = $('ptrCust').value.trim().slice(0, 120), vend = $('ptrVend').value.trim().slice(0, 120), what = $('ptrDesc').value.trim().slice(0, 300);
+  if (!DATE_RE.test(date)) return fail('Isi tanggal transaksi');
+  if (isLocked(date)) return fail(lockMsg());
+  if (sell <= 0) return fail('Isi harga jual ke pelanggan');
+  if (fee < 0) return fail('Harga beli lebih besar dari harga jual; catat selisihnya sebagai beban lewat transaksi biasa');
+  if (!what) return fail('Isi uraian (rute & kode booking, hotel, atau barang)');
+  const cat = prIncomeCats().find(c => c.id === $('ptrCat').value);
+  if (!cat) return fail('Pilih kategori pendapatan komisi');
+  const acc = $('ptrAcc').value, payAcc = $('ptrPayAcc').value, paid = $('ptrPaid').checked;
+  const who = [cust && 'pelanggan ' + cust, vend && 'pemasok ' + vend].filter(Boolean).join(', ');
+  const base = `[Perantara] ${what}${who ? ' · ' + who : ''}`.slice(0, 500);
+  const made = [];
+  const add = (type, accountId, categoryId, amount, desc) => {
+    if (amount <= 0) return;
+    const t = {id: uid(), created: Date.now() + made.length, type, date, ref: nextRef(type, date), amount, accountId, categoryId, toAccountId: null, desc: desc.slice(0, 500)};
+    state.tx.push(t); made.push(t);
+    log('tambah', 'transaksi', t.id, txSummary(t));
+  };
+  add('in', acc, buy > 0 ? titipanCat('in').id : null, buy, `${base} · titipan untuk pemasok`);
+  add('in', acc, cat.id, fee, `${base} · komisi`);
+  if (paid) add('out', payAcc, buy > 0 ? titipanCat('out').id : null, buy, `${base} · diteruskan ke ${vend || 'pemasok'}`);
+  $('ptrDialog').close(); save();
+  toast(`Tersimpan ${made.length} transaksi: komisi ${rp(fee)} masuk omzet${paid || !buy ? '' : '; titipan ' + rp(buy) + ' belum diteruskan'}`);
+};
 $('btnPrintTx').onclick = () => { if (editing) printVoucher(editing); };
 $('btnDeleteTx').onclick = () => {
   if (!editing || isLocked(editing.date) || editing.tradeId || editing.payrollId || editing.returnId || editing.kasbonId) return toast(lockMsg());
