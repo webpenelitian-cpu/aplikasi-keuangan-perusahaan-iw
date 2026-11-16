@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <!-- Skrip hanya dari situs ini dan SDK resmi Firebase/Google; koneksi hanya ke layanan Google untuk login & penyimpanan -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com https://www.google.com/recaptcha/; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://www.google.com/recaptcha/; frame-src https://*.firebaseapp.com https://*.web.app https://accounts.google.com https://www.google.com/recaptcha/; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com https://www.google.com/recaptcha/; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://www.google.com/recaptcha/; frame-src https://*.firebaseapp.com https://*.web.app https://accounts.google.com https://www.google.com/recaptcha/; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="referrer" content="no-referrer">
 <title>PT GM Musara Jaya · Sistem Keuangan &amp; Operasional</title>
 <meta name="description" content="Sistem keuangan dan operasional PT GM Musara Jaya: kas &amp; bank, jual beli, stok, piutang &amp; utang, pajak, dan invoice.">
@@ -16,7 +16,14 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preload" href="fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 <style>
+/* Font Inter (rsms/inter, SIL OFL 1.1, lihat fonts/OFL.txt) disimpan sendiri: tanpa CDN, tetap jalan offline.
+   Subset latin-ext hanya diunduh bila ada hurufnya. 'Inter Fallback' = Arial berukuran metrik Inter (diukur) agar tata letak tidak bergeser saat font tiba. */
+@font-face{font-family:'Inter Variable';font-style:normal;font-display:swap;font-weight:100 900;src:url(fonts/inter-latin-ext-wght-normal.woff2) format('woff2-variations');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:'Inter Variable';font-style:normal;font-display:swap;font-weight:100 900;src:url(fonts/inter-latin-wght-normal.woff2) format('woff2-variations');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'Inter Fallback';src:local('Arial');font-weight:100 500;size-adjust:105%;ascent-override:92.26%;descent-override:22.97%;line-gap-override:0%}
+@font-face{font-family:'Inter Fallback';src:local('Arial Bold');font-weight:600 900;size-adjust:102%;ascent-override:94.98%;descent-override:23.65%;line-gap-override:0%}
 :root{
   /* Warna merek PT GM Musara Jaya: biru tua stempel #142E70 di atas kertas krem, aksen emas */
   --brand:#142e70; --brand-2:#1d3f94; --gold:#c8962c;
@@ -43,6 +50,8 @@
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;font-family:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",sans-serif;background:var(--bg);color:var(--text);font-size:14px;font-variant-numeric:tabular-nums}
+/* Inter hanya untuk layar; cetak/PDF tetap memakai font sistem lama secara eksplisit (aturan body dasar) */
+@media screen{body{font-family:'Inter Variable','Inter Fallback',"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,Roboto,sans-serif}}
 body.booting > header, body.booting > main, body.locked > header, body.locked > main, body.auth > header, body.auth > main{display:none}
 #offLock{display:none;min-height:100vh;align-items:center;justify-content:center;padding:24px 16px;text-align:center}
 #offLock .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;width:min(420px,100%)}
@@ -83,6 +92,7 @@ table{width:100%;border-collapse:collapse}
 th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
 th{font-size:12px;color:var(--muted);font-weight:600;background:var(--soft);position:sticky;top:0}
 td.num,th.num{text-align:right;white-space:nowrap}
+#accList td:first-child,#catList td:first-child{white-space:nowrap} /* kode akun (mis. 1-101) tidak dipenggal di tanda hubung */
 .table-wrap{overflow:auto;max-height:560px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
 .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap}
 .badge.in{background:var(--in-soft)}.badge.out{background:var(--out-soft)}.badge.tr{background:var(--tr-soft);color:var(--tr)}
@@ -90,6 +100,7 @@ td.num,th.num{text-align:right;white-space:nowrap}
 .code{color:var(--muted);font-size:12px;margin-right:4px}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:12px}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+label.f>:is(input,select,textarea):last-child{margin-top:auto} /* isian sebaris tetap sejajar walau labelnya dua baris */
 input,select,textarea{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--field);color:var(--text);min-width:0}
 input:disabled,select:disabled,textarea:disabled{opacity:.75}
 input:focus,select:focus,textarea:focus{outline:2px solid var(--primary-soft);border-color:var(--primary)}
@@ -386,6 +397,12 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] #btnPerantara,body[data-ro
   .toolbar > .btn,.toolbar > label.f > select,.toolbar > label.f > input:not([type=checkbox]):not([type=file]){min-height:38px}
   /* Angka tabel: digit sama lebar, rata kanan */
   td.num,th.num,.stat .value,.inv-sum td,.cat-row span:last-child{font-variant-numeric:tabular-nums}
+}
+/* Menu atas lebih rapat agar merek + 10 menu + tombol muat satu baris di 1280 px dengan huruf Inter (lebih lebar dari Segoe UI) */
+@media screen and (min-width:761px){
+  header{padding-left:var(--s4);padding-right:var(--s4)}
+  nav{gap:2px}
+  nav button{padding:var(--s2) 10px}
 }
 /* Layar sedang: header selalu dua baris (merek + tombol di atas, menu di bawah) agar tingginya tidak berubah antarmenu */
 @media screen and (min-width:761px) and (max-width:1279px){
