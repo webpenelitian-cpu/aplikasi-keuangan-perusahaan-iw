@@ -4,6 +4,10 @@
    salah berarti tidak ada yang tersimpan, sehingga pembukuan tidak pernah terisi setengah. Berkas ini dimuat setelah erp.js. */
 
 const XL_MAX_FILE = 5 * 2 ** 20, XL_MAX_PART = 40 * 2 ** 20, XL_MAX_ROWS = 2000, XL_TEMPLATE_ROWS = 2000, BUCKET_MAX = 900000;
+// Beban PC: membaca dan memeriksa file diberi jeda setiap UG_CHUNK baris agar layar tidak membeku pada file besar
+// (2.000 baris: tugas terpanjang ~0,55 detik di PC, lebih lama di HP). Isi dan urutan hasil tidak berubah.
+// Rujukan: mdn/content "Long tasks" dan scheduler.yield(); bila belum ada, setTimeout 0.
+const UG_CHUNK = 150, ugPause = () => (globalThis.scheduler?.yield ? globalThis.scheduler.yield() : new Promise(r => setTimeout(r, 0)));
 
 /* ---------- ZIP: kerangka file .xlsx ---------- */
 const CRC_TABLE = Array.from({length: 256}, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
@@ -79,7 +83,8 @@ async function readXlsx(buf) {
   const sheet = await part(target.startsWith('/') ? target.slice(1) : 'xl/' + target); if (!sheet) throw new Error('Lembar kerja tidak terbaca.');
   const sst = await part('xl/sharedStrings.xml'), plain = si => byTag(si, 't').filter(t => t.parentNode.localName !== 'rPh').map(t => t.textContent).join('');
   const shared = sst ? byTag(xmlDoc(sst), 'si').map(plain) : [], rows = [];
-  for (const row of byTag(xmlDoc(sheet), 'row')) {
+  for (const [n, row] of byTag(xmlDoc(sheet), 'row').entries()) {
+    if (n && n % UG_CHUNK === 0) await ugPause();
     const line = +row.getAttribute('r') || rows.length + 1, cells = []; let next = 0;
     for (const c of byTag(row, 'c')) {
       const ref = c.getAttribute('r'), i = ref ? colIndex(ref) : next, t = c.getAttribute('t'), raw = byTag(c, 'v')[0]?.textContent ?? ''; next = i + 1;
@@ -421,7 +426,10 @@ function templateFiles(key) {
 const templateBytes = key => zipStore(templateFiles(key));
 
 /* ---------- Pemeriksaan isi file ---------- */
-function ugCheck(key, file, update) {
+// ugCheck (serentak) dan ugCheckAsync (memberi jeda per UG_CHUNK baris) menjalankan langkah yang sama persis
+function ugCheck(key, file, update) { const it = ugCheckSteps(key, file, update); let r; while (!(r = it.next()).done); return r.value; }
+async function ugCheckAsync(key, file, update) { const it = ugCheckSteps(key, file, update); for (;;) { const r = it.next(); if (r.done) return r.value; await ugPause(); } }
+function* ugCheckSteps(key, file, update) {
   const s = UNGGAH[key], [head, ...body] = file.rows, out = {key, items: [], fatal: ''};
   if (!head) { out.fatal = 'File kosong.'; return out; }
   const pos = new Map(); head.cells.forEach((h, i) => { if (h !== undefined) pos.set(headKey(h), i); });
@@ -429,7 +437,8 @@ function ugCheck(key, file, update) {
   if (missing.length) { out.fatal = `Kolom ${missing.map(c => c.h).join(', ')} tidak ditemukan. Pastikan memakai template ${s.title}.`; return out; }
   if (!body.length) { out.fatal = 'Belum ada baris data di bawah judul kolom.'; return out; }
   const x = {update, seen: new Map(), codes: new Map(), refs: new Map(), groups: new Map(), line: 0};
-  for (const r of body) {
+  for (const [n, r] of body.entries()) {
+    if (n && n % UG_CHUNK === 0) yield;
     x.line = r.line; let item;
     try {
       const v = {}; for (const c of s.cols) v[c.k] = pos.has(norm(c.h)) ? cellValue(c, r.cells[pos.get(norm(c.h))], file.date1904) : '';
@@ -476,20 +485,31 @@ function ugShow() {
       ${p.items.length > rows.length ? `<p class="muted" style="font-size:12px">Ditampilkan ${rows.length} dari ${p.items.length} baris; yang bermasalah tampil lebih dulu.</p>` : ''}
     </div>`;
 }
-const ugRun = () => { ugPlan = ugFile ? ugCheck(ugKey, ugFile, $('ugUpdate').checked && !!UNGGAH[ugKey].update) : null; ugShow(); };
+// ugSeq: hasil pemeriksaan lama (file/jenis yang sudah diganti) dibuang, tidak menimpa yang baru
+let ugSeq = 0;
+const ugRunSync = () => { ugSeq++; ugPlan = ugFile ? ugCheck(ugKey, ugFile, $('ugUpdate').checked && !!UNGGAH[ugKey].update) : null; ugShow(); };
+async function ugRun() {
+  const my = ++ugSeq, key = ugKey, file = ugFile, update = $('ugUpdate').checked && !!UNGGAH[ugKey].update;
+  const plan = file ? await ugCheckAsync(key, file, update) : null;
+  if (my === ugSeq) { ugPlan = plan; ugShow(); }
+}
 async function ugOpen(f) {
   if (!f) return;
+  const my = ++ugSeq;
   ugPlan = null; ugFile = null; ugName = f.name.slice(0, 80); ugShow();
-  const fail = m => { ugPlan = {fatal: m}; ugShow(); };
+  const fail = m => { if (my === ugSeq) { ugPlan = {fatal: m}; ugShow(); } };
   if (f.size > XL_MAX_FILE) return fail('File lebih dari 5 MB. Pecah menjadi beberapa file.');
   if (/\.xls$/i.test(f.name)) return fail('Format .xls lama belum didukung. Di Excel pilih Simpan Sebagai, lalu pilih format .xlsx.');
   if (!/\.(xlsx|csv)$/i.test(f.name)) return fail('Pilih file .xlsx atau .csv.');
-  try { ugFile = /\.csv$/i.test(f.name) ? readCsv(await f.text()) : await readXlsx(await f.arrayBuffer()); ugRun(); }
-  catch (e) { fail(e?.message || 'File tidak bisa dibaca.'); }
+  try {
+    const file = /\.csv$/i.test(f.name) ? readCsv(await f.text()) : await readXlsx(await f.arrayBuffer());
+    if (my !== ugSeq) return;
+    ugFile = file; await ugRun();
+  } catch (e) { fail(e?.message || 'File tidak bisa dibaca.'); }
 }
 function ugSave() {
   if (!ugPlan || !ugAllowed(ugPlan.key)) return toast('Peran Anda tidak bisa mengunggah data ini');
-  ugRun(); // diperiksa ulang karena data bisa berubah sejak pratinjau
+  ugRunSync(); // diperiksa ulang serentak tepat sebelum disimpan: data tidak bisa berubah di antara pemeriksaan dan penyimpanan
   const p = ugPlan, s = UNGGAH[p.key]; if (p.fatal || p.errors) return toast('Masih ada baris yang perlu diperbaiki');
   const go = p.items.filter(i => i.apply); if (!go.length) return toast('Tidak ada data baru untuk disimpan');
   const n = p.added + p.changed; if (!confirm(`Simpan ${n.toLocaleString('id-ID')} data ${s.title.toLowerCase()} dari ${ugName}?`)) return;
@@ -505,7 +525,7 @@ function ugSave() {
 Object.assign(ACTIONS, {
   ugTpl: async k => { if (ugAllowed(k)) await download(templateBytes(k), `template-${UNGGAH[k].title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); },
   ugSave,
-  ugReset: () => { ugFile = ugPlan = null; $('ugFileInput').value = ''; ugShow(); },
+  ugReset: () => { ugSeq++; ugFile = ugPlan = null; $('ugFileInput').value = ''; ugShow(); },
   ugErrors: () => { if (ugPlan) download(toCsv([['Baris', 'Data', 'Kesalahan'], ...ugPlan.items.filter(i => i.err).map(i => [i.line, i.label || '', i.err])]), `kesalahan-${ugKey}-${today()}.csv`, 'text/csv'); },
 });
 $('ugKind').onchange = e => { ugKey = e.target.value; renderUnggah(); ugRun(); };
