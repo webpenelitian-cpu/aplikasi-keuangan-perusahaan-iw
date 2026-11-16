@@ -346,6 +346,65 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] #btnPerantara,body[data-ro
   nav button{font-size:11px;min-height:48px} /* label navigasi bawah lebih terbaca (Material 3 navigation bar) */
   .table-wrap:has(> .rtable > tbody:empty)::after{padding:20px 12px}
 }
+/* ---------- Tata letak rapi dan proporsional 17-11-2026 (hanya layar; cetak, faktur, dan PDF tidak berubah) ----------
+   Skala jarak 4/8 px (alphagov/govuk-frontend spacing, uswds spacing units, primer/primitives space),
+   skala huruf 12/13/14/16/20/24 (material-web type scale, fluentui type ramp), WCAG 1.4.8/1.4.10/1.4.12. */
+:root{
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:32px;
+  --t-xs:12px;--t-sm:13px;--t-md:14px;--t-lg:16px;--t-xl:20px;--t-2xl:24px;
+  --r-sm:10px;--r-md:14px;--r-lg:18px;
+  --shadow-1:0 1px 2px rgba(16,32,48,.04),0 6px 16px rgba(16,32,48,.04);
+}
+@media screen{
+  /* Lebar halaman tidak melompat saat batang gulir muncul/hilang antarmenu (CLS) */
+  html{scrollbar-gutter:stable}
+  main{padding:var(--s5)}
+  .grid{gap:var(--s4)}
+  .card{padding:var(--s4) var(--s5);border-radius:var(--r-md);box-shadow:var(--shadow-1)}
+  .card h3{font-size:var(--t-lg);line-height:1.3;margin:0 0 var(--s3)}
+  .card > p,.pd-card p,.pd-steps{max-width:75ch}
+  .dash-jump{align-items:center}
+  .stat .label{font-size:var(--t-xs);line-height:1.35}
+  .stat .value{font-size:var(--t-2xl);line-height:1.2;margin-top:var(--s1)}
+  .kpi .stat .value{font-size:var(--t-xl)}
+  .dash-head h2,.pd-head h2,.report h2{font-size:var(--t-xl);line-height:1.25}
+  header h1{font-size:var(--t-lg)}
+  .badge{font-size:var(--t-xs)}
+  .bar-label,.legend{font-size:var(--t-xs)}
+  .cat-row,.ob,.notice,.tsum,.check{font-size:var(--t-sm)}
+  .toolbar{gap:var(--s2) var(--s3);margin-bottom:var(--s3)}
+  .form-grid{gap:var(--s3)}
+  label.f{gap:var(--s1);font-size:var(--t-xs);min-width:0;max-width:100%}
+  label.f > select,label.f > input{max-width:100%}
+  .btn,input,select,textarea,.table-wrap{border-radius:var(--r-sm)}
+  .table-wrap{border-radius:var(--r-md)}
+  dialog{border-radius:var(--r-lg)}
+  dialog .hd{padding:var(--s3) var(--s5);font-size:var(--t-lg)}
+  dialog .bd{padding:var(--s5)}
+  dialog .ft{padding:var(--s3) var(--s5);gap:var(--s2)}
+  /* Tombol dan isian dalam satu baris sama tinggi */
+  .toolbar > .btn,.toolbar > label.f > select,.toolbar > label.f > input:not([type=checkbox]):not([type=file]){min-height:38px}
+  /* Angka tabel: digit sama lebar, rata kanan */
+  td.num,th.num,.stat .value,.inv-sum td,.cat-row span:last-child{font-variant-numeric:tabular-nums}
+}
+/* Layar sedang: header selalu dua baris (merek + tombol di atas, menu di bawah) agar tingginya tidak berubah antarmenu */
+@media screen and (min-width:761px) and (max-width:1279px){
+  header{row-gap:var(--s2)}
+  header nav{order:3;flex:1 1 100%;margin-left:0}
+  header #btnAdd{margin-left:auto}
+}
+@media screen and (max-width:760px){
+  main{padding:var(--s3) var(--s4) calc(150px + var(--safe-bottom))}
+  .card{padding:var(--s3)}
+  .cards{gap:var(--s2)}
+  .stat .value{font-size:var(--t-lg)}
+  .kpi .stat .value{font-size:var(--t-lg)}
+  .toolbar > *{min-width:0;max-width:100%}
+  input[type=file]{width:100%}
+}
+@media screen and (max-width:359px){
+  nav button{font-size:10px;letter-spacing:-.01em}
+}
 @media print{
   :root{--bg:#fff;--panel:#fff;--text:#000;--muted:#444;--line:#bbb;--soft:#f2f2f2}
   header,nav,.toolbar,.no-print,#btnAdd{display:none!important}
@@ -887,7 +946,7 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] #btnPerantara,body[data-ro
       </div>
       <div class="card">
         <h3>Akun Kas &amp; Bank</h3>
-        <table><thead><tr><th>Kode</th><th>Nama</th><th class="num">Saldo awal</th><th></th></tr></thead><tbody id="accList"></tbody></table>
+        <div style="overflow:auto"><table><thead><tr><th>Kode</th><th>Nama</th><th class="num">Saldo awal</th><th></th></tr></thead><tbody id="accList"></tbody></table></div>
         <div class="form-grid" style="margin-top:10px">
           <input id="newAccCode" placeholder="Kode (mis. 1-104)" aria-label="Kode akun baru">
           <input id="newAccName" placeholder="Nama akun (mis. Bank BSI)" aria-label="Nama akun baru">
