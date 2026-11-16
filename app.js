@@ -116,7 +116,11 @@ const PROFILE = {
 };
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-const rp = n => (n < 0 ? '−Rp ' : 'Rp ') + Math.abs(Math.round(n)).toLocaleString('id-ID');
+// Pemformat angka dan pembanding teks dibuat sekali. Hasilnya sama persis dengan toLocaleString('id-ID') dan
+// localeCompare(), tetapi keduanya membuat objek Intl baru di setiap panggilan sehingga lambat di laporan ribuan baris.
+const NUM_ID = new Intl.NumberFormat('id-ID'), QTY_ID = new Intl.NumberFormat('id-ID', {maximumFractionDigits: 3});
+const cmpText = new Intl.Collator().compare;
+const rp = n => (n < 0 ? '−Rp ' : 'Rp ') + NUM_ID.format(Math.abs(Math.round(n)));
 const parseNum = s => Math.round(Number(String(s).replace(/[^\d,-]/g, '').replace(',', '.')) || 0);
 const parseMoney = s => Math.abs(parseNum(s));
 // Jumlah barang: koma atau titik sebagai desimal; "1.000" dibaca seribu
@@ -967,7 +971,7 @@ function balance(accId, upTo) {
   return b;
 }
 const totalBalance = upTo => state.accounts.reduce((s, a) => s + balance(a.id, upTo), 0);
-const sorted = list => [...list].sort((a, b) => b.date.localeCompare(a.date) || b.created - a.created);
+const sorted = list => [...list].sort((a, b) => cmpText(b.date, a.date) || b.created - a.created);
 
 /* ---------- Jurnal umum otomatis (double entry) ----------
    Setiap transaksi kas, faktur piutang/utang, dan pelunasannya diubah menjadi jurnal debit/kredit.
@@ -1061,7 +1065,7 @@ function buildJournal() {
     if (t.type === 'in') add(t.date, t.ref, desc, acc, c, t.amount, 'kas');
     else add(t.date, t.ref, desc, c, acc, t.amount, 'kas');
   });
-  return E.sort((a, b) => a.date.localeCompare(b.date) || String(a.ref).localeCompare(String(b.ref)));
+  return E.sort((a, b) => cmpText(a.date, b.date) || cmpText(String(a.ref), String(b.ref)));
 }
 const accKey = a => a.code + '|' + a.name;
 const accHTML = a => `<span class="code">${esc(a.code)}</span>${esc(a.name)}`;
@@ -1841,7 +1845,7 @@ function renderReport() {
     const accId = $('rAcc').value, a = state.accounts.find(x => x.id === accId);
     if (!a) { $('reportOut').innerHTML = '<div class="empty">Belum ada akun.</div>'; return; }
     let run = dayBefore ? balance(accId, dayBefore) : a.opening;
-    const list = inRangeTx.filter(t => effect(t, accId) !== 0).sort((x, y) => x.date.localeCompare(y.date) || x.created - y.created);
+    const list = inRangeTx.filter(t => effect(t, accId) !== 0).sort((x, y) => cmpText(x.date, y.date) || x.created - y.created);
     html = kop('Buku Kas & Bank — ' + (a.code ? esc(a.code) + ' ' : '') + esc(a.name), period) + `<table>
       <thead><tr><th>Tanggal</th><th>No. Bukti</th><th>Uraian</th><th>Kode</th><th class="num">Masuk</th><th class="num">Keluar</th><th class="num">Saldo</th></tr></thead>
       <tr class="sect"><td colspan="6">Saldo awal</td><td class="num">${rp(run)}</td></tr>
@@ -2311,7 +2315,7 @@ const itemOf = id => state.items.find(i => i.id === id);
 const vendorOf = id => state.vendors.find(v => v.id === id);
 const sysCat = code => state.categories.find(c => c.code === code);
 const ymLabel = ym => `${MONTHS_FULL[+ym.slice(5) - 1]} ${ym.slice(0, 4)}`;
-const fmtQty = n => (+n).toLocaleString('id-ID', {maximumFractionDigits: 3});
+const fmtQty = n => QTY_ID.format(+n);
 const pct = n => String(Math.round(n * 10) / 10).replace('.', ',') + '%';
 // tradeTotal = DPP (harga setelah diskon, sebelum PPN); tradePay = yang benar-benar berpindah tangan setelah PPN, pungutan WAPU, dan potongan PPh
 const tradeTotal = t => Math.max(0, Math.round(t.lines.reduce((s, l) => s + l.qty * l.price, 0)) - t.discount + t.extra);
