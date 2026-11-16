@@ -25,6 +25,7 @@
   --in:#1d7447; --in-soft:#e3f2ea; --out:#b3261e; --out-soft:#fbe7e5; --tr:#6a4fd6; --tr-soft:#efeafe;
   --safe-top:env(safe-area-inset-top,0px); --safe-bottom:env(safe-area-inset-bottom,0px);
   --field:#fff; --warn-bg:#fff8e1; --warn-line:#f3dd9c; --badge-warn:#fff3d6;
+  --field-line:#7c8395; /* batas isian >= 3:1 terhadap latar (WCAG 1.4.11) */
   color-scheme:light;
 }
 /* Mode gelap mengikuti pengaturan perangkat */
@@ -35,6 +36,7 @@
     --primary:#8aa6ec; --primary-soft:#1d2c52; --accent:#e0b04d; --accent-ink:#f0cd84;
     --in:#5fc18f; --in-soft:#163327; --out:#ff8a80; --out-soft:#3a1c1b; --tr:#b4a2ff; --tr-soft:#2a2350;
     --field:#0f1c28; --warn-bg:#2f2610; --warn-line:#5c4a1a; --badge-warn:#3a2f12;
+    --field-line:#5d6d8f;
     color-scheme:dark;
   }
 }
@@ -317,6 +319,32 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] #btnPerantara,body[data-ro
   .seg{display:flex}.seg button{flex:1;padding:10px 6px;font-size:13px}
   .toast{left:16px;right:16px;bottom:calc(130px + var(--safe-bottom));text-align:center}
   .sign{gap:10px}
+}
+/* ---------- Penyempurnaan UI/UX 16-11-2026 (hanya layar; cetak tidak berubah) ---------- */
+@media screen{
+  /* Batas isian terlihat jelas, kontras >= 3:1 (WCAG 2.2 SC 1.4.11; GOV.UK Design System: text input) */
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),select,textarea{border-color:var(--field-line)}
+  /* Fokus keyboard tegas, tidak hanya bayangan lembut (WCAG 2.2 SC 2.4.7; GOV.UK focus state; APG keyboard interface) */
+  input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--primary);outline-offset:1px;box-shadow:0 0 0 4px var(--primary-soft)}
+  .linkbtn:focus-visible,a:focus-visible,summary:focus-visible,input[type=checkbox]:focus-visible,input[type=radio]:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:4px}
+  /* Status hover tombol terlihat (Material 3 state layer; USWDS button states) */
+  .btn:not(.primary):not(.accent):hover:not(:disabled){background:var(--soft);border-color:var(--field-line);filter:none}
+  .btn.primary:hover:not(:disabled),.btn.accent:hover:not(:disabled){filter:brightness(1.08)}
+  /* Pilihan yang masih kosong tidak menyusut menjadi kotak sempit */
+  .toolbar select{min-width:7.5rem}
+  /* Keadaan kosong tabel: beri tahu bahwa belum ada data (USWDS/GOV.UK: jelaskan keadaan kosong) */
+  .table-wrap:has(> .rtable > tbody:empty)::after{content:"Belum ada data untuk ditampilkan.";display:block;padding:28px 16px;text-align:center;color:var(--muted)}
+  /* Elemen yang difokus tidak tertutup header lengket / navigasi bawah (WCAG 2.2 SC 2.4.11; MDN scroll-padding) */
+  html{scroll-padding-top:84px}
+}
+@media screen and (min-width:761px){
+  /* Cincin fokus putih di atas header biru merek (kontras 12,7:1) */
+  header nav button:focus-visible,header .btn:focus-visible,header .linkbtn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+}
+@media screen and (max-width:760px){
+  html{scroll-padding-bottom:150px}
+  nav button{font-size:11px;min-height:48px} /* label navigasi bawah lebih terbaca (Material 3 navigation bar) */
+  .table-wrap:has(> .rtable > tbody:empty)::after{padding:20px 12px}
 }
 @media print{
   :root{--bg:#fff;--panel:#fff;--text:#000;--muted:#444;--line:#bbb;--soft:#f2f2f2}
