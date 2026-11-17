@@ -120,6 +120,11 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 // localeCompare(), tetapi keduanya membuat objek Intl baru di setiap panggilan sehingga lambat di laporan ribuan baris.
 const NUM_ID = new Intl.NumberFormat('id-ID'), QTY_ID = new Intl.NumberFormat('id-ID', {maximumFractionDigits: 3});
 const cmpText = new Intl.Collator().compare;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+// Pembanding tanggal: bila semua tanggal di daftar berformat ISO (atau kosong), urutan Collator sama persis dengan
+// perbandingan string biasa yang jauh lebih cepat; selain itu tetap Collator (hasil urutan identik).
+const fastCmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+const dateCmpOf = list => list.every(x => x.date === '' || ISO_DATE.test(x.date)) ? fastCmp : cmpText;
 const rp = n => (n < 0 ? '−Rp ' : 'Rp ') + NUM_ID.format(Math.abs(Math.round(n)));
 const parseNum = s => Math.round(Number(String(s).replace(/[^\d,-]/g, '').replace(',', '.')) || 0);
 const parseMoney = s => Math.abs(parseNum(s));
@@ -409,8 +414,17 @@ function M() {
   }
   for (const r of state.returns) if (r.debtId) paid.set(r.debtId, (paid.get(r.debtId) || 0) + retPay(r));
   memo = {paid, bal, _journal: null, get journal() { return this._journal ||= buildJournal(); },
-    _stock: null, get stock() { return this._stock ||= stockCalc(); }};
+    _stock: null, get stock() { return this._stock ||= stockCalc(); },
+    _byDebt: null, get byDebt() { return this._byDebt ||= debtIndex(); }};
   return memo;
+}
+
+// Transaksi dan retur per faktur (urutan asli dipertahankan) untuk paidOf(d, tanggal)
+function debtIndex() {
+  const m = new Map(), of = id => m.get(id) || (m.set(id, {tx: [], ret: []}), m.get(id));
+  for (const t of state.tx) if (t.debtId) of(t.debtId).tx.push(t);
+  for (const r of state.returns) if (r.debtId) of(r.debtId).ret.push(r);
+  return m;
 }
 
 /* ---------- Jejak audit ----------
@@ -971,7 +985,7 @@ function balance(accId, upTo) {
   return b;
 }
 const totalBalance = upTo => state.accounts.reduce((s, a) => s + balance(a.id, upTo), 0);
-const sorted = list => [...list].sort((a, b) => cmpText(b.date, a.date) || b.created - a.created);
+const sorted = list => { const cmp = dateCmpOf(list); return [...list].sort((a, b) => cmp(b.date, a.date) || b.created - a.created); };
 
 /* ---------- Jurnal umum otomatis (double entry) ----------
    Setiap transaksi kas, faktur piutang/utang, dan pelunasannya diubah menjadi jurnal debit/kredit.
@@ -1065,7 +1079,10 @@ function buildJournal() {
     if (t.type === 'in') add(t.date, t.ref, desc, acc, c, t.amount, 'kas');
     else add(t.date, t.ref, desc, c, acc, t.amount, 'kas');
   });
-  return E.sort((a, b) => cmpText(a.date, b.date) || cmpText(String(a.ref), String(b.ref)));
+  // Tanggal ISO (YYYY-MM-DD) atau kosong: urutan Collator sama persis dengan perbandingan string biasa, jadi
+  // pakai jalur cepat; nomor bukti tetap dibandingkan dengan Collator (hasil urutan identik, lihat uji-pelengkap).
+  const cmpDate = dateCmpOf(E);
+  return E.sort((a, b) => cmpDate(a.date, b.date) || cmpText(String(a.ref), String(b.ref)));
 }
 const accKey = a => a.code + '|' + a.name;
 const accHTML = a => `<span class="code">${esc(a.code)}</span>${esc(a.name)}`;
@@ -1542,7 +1559,15 @@ addEventListener('afterprint', () => document.body.classList.remove('print-vouch
 // Faktur piutang/utang diakui saat terjadi (akrual); pelunasannya = transaksi kas yang membawa debtId.
 const KIND_LABEL = {piutang: 'Piutang', utang: 'Utang'};
 const debtTx = (d, upTo) => state.tx.filter(t => t.debtId === d.id && (!upTo || t.date <= upTo));
-const paidOf = (d, upTo) => upTo ? debtTx(d, upTo).reduce((s, t) => s + t.amount, 0) + state.returns.reduce((s, r) => r.debtId === d.id && r.date <= upTo ? s + retPay(r) : s, 0) : (M().paid.get(d.id) || 0);
+// Dibayar s.d. tanggal: pakai indeks per faktur di memo (sebelumnya menyisir semua transaksi untuk tiap faktur,
+// O(faktur x transaksi) di laporan umur/neraca). Urutan penjumlahan sama: transaksi dulu, lalu retur.
+const paidOf = (d, upTo) => {
+  if (!upTo) return M().paid.get(d.id) || 0;
+  const x = M().byDebt.get(d.id); if (!x) return 0;
+  let s = 0; for (const t of x.tx) if (t.date <= upTo) s += t.amount;
+  let r = 0; for (const q of x.ret) if (q.date <= upTo) r += retPay(q);
+  return s + r;
+};
 const remainOf = (d, upTo) => d.amount - paidOf(d, upTo);
 function debtStatus(d) {
   if (remainOf(d) <= 0) return {key: 'paid', label: 'Lunas', cls: 'in'};
