@@ -32,7 +32,7 @@ export async function init() {
     // Salinan data di perangkat: aplikasi tetap bisa dipakai offline dan kuota baca server lebih hemat
     try { db = F.initializeFirestore(app, {localCache: F.persistentLocalCache({tabManager: F.persistentMultipleTabManager()})}); }
     catch { db = F.getFirestore(app); }
-    try { await A.getRedirectResult(auth); } catch {}
+    try { await A.getRedirectResult(auth); } catch { /* hasil login alihan tidak ada/gagal: tombol masuk tetap tersedia */ }
     user = await new Promise(res => { const off = A.onAuthStateChanged(auth, u => { off(); res(u); }); });
     return {enabled: true, online: true, user};
   } catch (error) {
@@ -140,7 +140,7 @@ export function flush() {
 export async function signOut() {
   await A.signOut(auth); user = null;
   // Salinan data perusahaan di perangkat ikut dihapus saat keluar
-  try { await F.terminate(db); await F.clearIndexedDbPersistence(db); } catch {}
+  try { await F.terminate(db); await F.clearIndexedDbPersistence(db); } catch { /* pembersihan cache lokal sebisanya saat keluar */ }
 }
 
 /* ---------- Perusahaan bersama: anggota, peran, undangan, data per kelompok ---------- */

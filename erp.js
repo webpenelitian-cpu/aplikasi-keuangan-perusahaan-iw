@@ -1,8 +1,9 @@
+/* global cloudInfo, tradeSrc, editingTrade */ // didefinisikan dengan let di app.js (dimuat lebih dulu, lingkup skrip bersama)
 'use strict';
 /* Modul ERP: perusahaan bersama (banyak pengguna), penjualan & CRM, pembelian & gudang, akuntansi lanjutan, dan SDM lanjutan.
    Berkas ini dimuat setelah app.js dan memakai fungsi serta data yang sama. */
 
-const APP_VERSION = '44'; // samakan dengan versi CACHE di sw.js
+const APP_VERSION = '45'; // samakan dengan versi CACHE di sw.js
 const ROLES = {owner: 'Pimpinan', finance: 'Keuangan', sales: 'Penjualan', warehouse: 'Gudang & pembelian', hr: 'SDM', viewer: 'Hanya lihat'};
 const ROLE_VIEWS = {sales: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'], warehouse: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'],
   hr: ['dashboard', 'karyawan', 'unggah', 'laporan', 'panduan', 'pengaturan'], viewer: ['dashboard', 'laporan', 'panduan', 'pengaturan']};
@@ -113,7 +114,7 @@ function companyData() {
     const [sub, bid] = key.split('/'), parts = bid.split('~'), col = parts[0];
     if (col === 'settings') { if (bid === 'settings~~0' && sub === 'buckets') for (const k of SETTING_KEYS) if (r[k]) d[k] = r[k].v; continue; }
     // Identitas diambil dari nama kelompok yang dijaga server, bukan dari isi catatan yang ditulis peramban
-    if (col === 'audit') { const owner = parts[3] === undefined ? undefined : parts[2]; for (const a of Object.values(r)) { const {u, ...rest} = a; d.audit.push(owner ? {...rest, u: owner} : rest); } continue; }
+    if (col === 'audit') { const owner = parts[3] === undefined ? undefined : parts[2]; for (const a of Object.values(r)) { const rest = {...a}; delete rest.u; d.audit.push(owner ? {...rest, u: owner} : rest); } continue; }
     // Data karyawan hanya sah dari hrdata, data keuangan internal dari fin (atau tempat lamanya sebelum dipindah)
     if ((SYNC_COLS[col] >= 2) !== (sub === 'hrdata') || (sub === 'fin' && !FIN_COLS.has(col))) continue;
     const by = sub === 'buckets' && parts.length === 4 ? parts[2] : '';
@@ -196,16 +197,16 @@ function companyWatch() {
 // Perusahaan terakhir yang dibuka di perangkat ini, agar tetap bisa dibuka saat offline. Hanya penanda; hak akses tetap diperiksa server.
 const coMemoKey = () => KEY + ':co-of:' + cloudUser.uid;
 async function openCompany() {
-  let cid = null, member = null, co = null;
+  let cid, member = null, co = null;
   try { cid = await Cloud.getCompanyId(); if (cid) { member = await Cloud.getMember(cid); co = await Cloud.getCompany(cid); } }
   catch {
     // Server tidak terjangkau dan salinan perangkat belum lengkap: pakai perusahaan terakhir yang dibuka di perangkat ini
-    let m = null; try { m = JSON.parse(localStorage.getItem(coMemoKey())); } catch {}
+    let m = null; try { m = JSON.parse(localStorage.getItem(coMemoKey())); } catch { /* penyimpanan peramban tidak tersedia (mode privat/kuota penuh): lanjut tanpa menyimpan */ }
     if (!m?.id || !ROLES[m.role]) return false;
     cid = m.id; member = {active: true, role: m.role}; co = {name: m.name};
   }
   if (!cid || !member?.active) { localStorage.removeItem(coMemoKey()); return false; }
-  try { localStorage.setItem(coMemoKey(), JSON.stringify({id: cid, role: member.role, name: co?.name || ''})); } catch {}
+  try { localStorage.setItem(coMemoKey(), JSON.stringify({id: cid, role: member.role, name: co?.name || ''})); } catch { /* penyimpanan peramban tidak tersedia (mode privat/kuota penuh): lanjut tanpa menyimpan */ }
   company = {id: cid, name: co?.name || '', role: member.role};
   storeKey = KEY + ':co:' + cid;
   localStorage.removeItem(storeKey); // versi lama menyimpan salinan tanpa enkripsi di sini
@@ -232,11 +233,11 @@ async function moveFinData() {
   for (const [key, r] of [...remote]) {
     const [sub, bid] = key.split('/'), ids = Object.keys(r || {});
     if (sub !== 'buckets' || !FIN_COLS.has(bid.split('~')[0]) || !ids.length) continue;
-    try { await Cloud.writeBucket(company.id, 'fin', bid, r, []); await Cloud.writeBucket(company.id, 'buckets', bid, {}, ids); } catch {}
+    try { await Cloud.writeBucket(company.id, 'fin', bid, r, []); await Cloud.writeBucket(company.id, 'buckets', bid, {}, ids); } catch { /* pindahan diulang otomatis saat dibuka lagi; tulis fin dulu, baru hapus yang lama */ }
   }
 }
 async function personalData() {
-  let r = null; try { r = await Cloud.pull(); } catch {}
+  let r = null; try { r = await Cloud.pull(); } catch { /* data pribadi tidak terbaca (offline): mulai dari data kosong */ }
   if (!r?.payload) return defaultState();
   let d = JSON.parse(r.payload);
   while (isEnvelope(d)) {

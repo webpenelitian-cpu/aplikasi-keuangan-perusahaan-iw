@@ -467,7 +467,7 @@ function keepCopy(prefix, value) {
     const old = Object.keys(localStorage).filter(k => k.startsWith(prefix)).sort((a, b) => +a.slice(prefix.length) - +b.slice(prefix.length));
     old.slice(0, Math.max(0, old.length - COPY_KEEP + 1)).forEach(k => localStorage.removeItem(k));
     localStorage.setItem(prefix + Date.now(), value);
-  } catch {}
+  } catch { /* penyimpanan peramban tidak tersedia (mode privat/kuota penuh): lanjut tanpa menyimpan */ }
 }
 const conflictKeys = () => Object.keys(localStorage).filter(k => k.startsWith(storeKey + '-konflik-')).sort();
 
@@ -771,7 +771,7 @@ function askPassword({title, hint = '', confirm = false}) {
 
 /* ---------- Layar kunci & pembatasan percobaan ---------- */
 function lockInfo() { try { return JSON.parse(localStorage.getItem(LOCK_KEY)) || {fails: 0, until: 0}; } catch { return {fails: 0, until: 0}; } }
-function setLockInfo(x) { try { localStorage.setItem(LOCK_KEY, JSON.stringify(x)); } catch {} }
+function setLockInfo(x) { try { localStorage.setItem(LOCK_KEY, JSON.stringify(x)); } catch { /* penyimpanan peramban tidak tersedia (mode privat/kuota penuh): lanjut tanpa menyimpan */ } }
 
 function showLock(env) {
   document.body.className = 'locked';
@@ -846,13 +846,13 @@ function markActive(force) {
   idleWarned = false;
   if (!force && now - lastMark < 30000) return;
   lastMark = now;
-  try { localStorage.setItem(ACTIVE_KEY, String(now)); } catch {}
+  try { localStorage.setItem(ACTIVE_KEY, String(now)); } catch { /* penyimpanan peramban tidak tersedia (mode privat/kuota penuh): lanjut tanpa menyimpan */ }
 }
 // Salinan dan penanda yang tertinggal di perangkat: ikut dihapus saat keluar agar perangkat bersama tidak menyimpan jejak akun
 const companyCopies = () => Object.keys(localStorage).filter(k => [':co:', ':co-of:', ':uname:'].some(p => k.startsWith(KEY + p)));
 function leaveDevice() {
   [storeKey, metaKey(), LAST_UID_KEY, ACTIVE_KEY, ...conflictKeys(), ...companyCopies()].forEach(k => localStorage.removeItem(k));
-  try { sessionStorage.setItem(IDLE_NOTE_KEY, '1'); } catch {}
+  try { sessionStorage.setItem(IDLE_NOTE_KEY, '1'); } catch { /* penyimpanan peramban tidak tersedia (mode privat/kuota penuh): lanjut tanpa menyimpan */ }
   location.reload();
 }
 async function idleLogout() {
@@ -863,7 +863,7 @@ async function idleLogout() {
     if (dirty || !await Cloud.flush()) return; // dicoba lagi pada pemeriksaan berikutnya
     await Cloud.signOut();
     leaveDevice();
-  } catch {} finally { idleBusy = false; }
+  } catch { /* gagal (jaringan/server): dicoba lagi pada pemeriksaan diam berikutnya */ } finally { idleBusy = false; }
 }
 // Offline tidak bisa keluar tanpa membuang isian yang belum terkirim, jadi layar dikunci; begitu online, akun dikeluarkan
 // setelah semua isian terkirim (lewat idleLogoutAtStart saat aplikasi dimuat ulang).
@@ -1168,11 +1168,11 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
 });
 // Halaman dan tab yang terbuka diingat selama sesi, sehingga refresh kembali ke tempat yang sama
 function rememberView() {
-  try { sessionStorage.setItem(VIEW_KEY, JSON.stringify({view: currentView, trade: tradeTab, hr: hrTab, report: $('rType').value})); } catch {}
+  try { sessionStorage.setItem(VIEW_KEY, JSON.stringify({view: currentView, trade: tradeTab, hr: hrTab, report: $('rType').value})); } catch { /* penyimpanan peramban tidak tersedia (mode privat/kuota penuh): lanjut tanpa menyimpan */ }
 }
 function restoreView() {
   let s = null;
-  try { s = JSON.parse(sessionStorage.getItem(VIEW_KEY)); } catch {}
+  try { s = JSON.parse(sessionStorage.getItem(VIEW_KEY)); } catch { /* menu terakhir tidak terbaca: buka dasbor */ }
   if (['trades', 'items', 'vendors', 'tax'].includes(s?.trade)) tradeTab = s.trade;
   if (['emp', 'pay', 'rules', 'att', 'leave', 'kas', 'doc', 'rev', 'shift'].includes(s?.hr)) hrTab = s.hr;
   if ([...$('rType').options].some(o => o.value === s?.report)) $('rType').value = s.report;
@@ -3618,8 +3618,8 @@ function start(data) {
 // Buka data dari penyimpanan perangkat (key = mode tanpa akun atau salinan akun)
 function openStore(key) {
   storeKey = key;
-  let raw = null, parsed = null;
-  try { raw = localStorage.getItem(key); } catch {}
+  let raw = null, parsed;
+  try { raw = localStorage.getItem(key); } catch { /* penyimpanan peramban tidak tersedia (mode privat/kuota penuh): lanjut tanpa menyimpan */ }
   try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = {broken: true}; }
   if (isEnvelope(parsed)) {
     if (!hasCrypto) { document.body.className = ''; document.body.innerHTML = '<p style="padding:20px">Data terenkripsi hanya bisa dibuka lewat alamat https.</p>'; return; }
@@ -3707,14 +3707,15 @@ async function openAccount(user) {
   localStorage.setItem(LAST_UID_KEY, user.uid);
   localStorage.removeItem(MODE_KEY);
   $('authMsg').textContent = 'Memuat data akun…';
-  let username = null, unameKey = KEY + ':uname:' + user.uid;
+  let username;
+  const unameKey = KEY + ':uname:' + user.uid;
   try { username = await Cloud.getUsername(); } catch { username = localStorage.getItem(unameKey); } // offline: pakai username yang tersimpan
   if (!username && user.email?.endsWith('@pengguna.invalid')) username = user.email.split('@')[0];
   if (!username) {
     username = await askUsername();
     if (username === null) { await Cloud.signOut(); cloudUser = null; return showAuth(); }
   }
-  try { localStorage.setItem(unameKey, username); } catch {}
+  try { localStorage.setItem(unameKey, username); } catch { /* penyimpanan peramban tidak tersedia (mode privat/kuota penuh): lanjut tanpa menyimpan */ }
   cloudInfo = {username, email: user.email, google: user.providerData.some(p => p.providerId === 'google.com')};
   const co = await openCompany();
   if (co === 'offline-kosong') return showAuth('Data perusahaan belum tersimpan di perangkat ini. Sambungkan internet, lalu buka aplikasi sekali agar datanya tersalin; setelah itu aplikasi bisa dipakai offline.');
@@ -3771,7 +3772,7 @@ async function boot() {
     return showAuth('Tidak bisa terhubung ke server. Periksa internet, atau pakai tanpa akun.');
   }
   let note = '';
-  try { if (sessionStorage.getItem(IDLE_NOTE_KEY)) { note = 'Anda keluar otomatis karena 1 jam tidak ada aktivitas. Silakan masuk kembali.'; sessionStorage.removeItem(IDLE_NOTE_KEY); } } catch {}
+  try { if (sessionStorage.getItem(IDLE_NOTE_KEY)) { note = 'Anda keluar otomatis karena 1 jam tidak ada aktivitas. Silakan masuk kembali.'; sessionStorage.removeItem(IDLE_NOTE_KEY); } } catch { /* catatan keluar otomatis tidak terbaca: lewati */ }
   showAuth(note);
 }
 // Menunggu erp.js selesai dimuat

@@ -381,7 +381,7 @@ const ugAllowed = key => { const r = company?.role || 'owner'; return ['owner', 
 const ugKinds = () => Object.keys(UNGGAH).filter(ugAllowed);
 
 /* ---------- Menyusun file template ---------- */
-const xe = s => String(s ?? '').replace(/[^\x09\x0A\x0D\x20-퟿-�]/g, '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const xe = s => String(s ?? '').replace(/[^\t\n\r\x20-퟿-�]/g, '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
 const colName = i => { let s = ''; for (i++; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + (i - 1) % 26) + s; return s; };
 const xCell = (ref_, v, s = 0) => typeof v === 'number' ? `<c r="${ref_}" s="${s}"><v>${v}</v></c>` : v === '' || v === undefined ? `<c r="${ref_}" s="${s}"/>` : `<c r="${ref_}" s="${s}" t="inlineStr"><is><t xml:space="preserve">${xe(v)}</t></is></c>`;
 const xRow = (n, cells, s) => `<row r="${n}">${cells.map((v, i) => xCell(colName(i) + n, v, typeof s === 'function' ? s(i) : s)).join('')}</row>`;
