@@ -1,10 +1,9 @@
 // Service worker: aplikasi tetap terbuka tanpa internet.
 // Naikkan versi CACHE setiap kali file aplikasi diperbarui.
-const CACHE = 'keuangan-umkm-v43';
+const CACHE = 'keuangan-umkm-v44';
 const ASSETS = [
   './', './index.html', './app.js', './erp.js', './unggah.js', './panduan.js', './cloud.js', './firebase-config.js', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png', './icons/logo-gmj.png',
-  './fonts/inter-latin-wght-normal.woff2', // subset latin-ext disimpan otomatis saat pertama dipakai
 ];
 
 // Program Firebase (login dan database) ikut disimpan, agar akun dan data perusahaan tetap terbuka tanpa internet.
