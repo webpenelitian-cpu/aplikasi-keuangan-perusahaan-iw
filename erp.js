@@ -3,7 +3,7 @@
 /* Modul ERP: perusahaan bersama (banyak pengguna), penjualan & CRM, pembelian & gudang, akuntansi lanjutan, dan SDM lanjutan.
    Berkas ini dimuat setelah app.js dan memakai fungsi serta data yang sama. */
 
-const APP_VERSION = '49'; // samakan dengan versi CACHE di sw.js
+const APP_VERSION = '50'; // samakan dengan versi CACHE di sw.js
 const ROLES = {owner: 'Pimpinan', finance: 'Keuangan', sales: 'Penjualan', warehouse: 'Gudang & pembelian', hr: 'SDM', viewer: 'Hanya lihat'};
 const ROLE_VIEWS = {sales: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'], warehouse: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'],
   hr: ['dashboard', 'karyawan', 'unggah', 'laporan', 'panduan', 'pengaturan'], viewer: ['dashboard', 'laporan', 'panduan', 'pengaturan']};
@@ -518,14 +518,15 @@ $('btnOInv').onclick = () => {
 };
 function printOrder(o, delivery) {
   const k = ORDER_KINDS[o.kind], c = state.company, p = k.side === 'sale' ? custOf(o.partyId) : vendorOf(o.partyId), lines = delivery ? orderRemain(o).length ? orderRemain(o) : o.lines : o.lines;
-  $('printArea').innerHTML = `<div class="inv"><div class="inv-top"><div class="inv-co">${logoHTML(56)}<div><b>${esc(c.name || 'Nama Perusahaan')}</b>${esc(c.address)}</div></div>
-    <div class="inv-title"><h1 style="font-size:22px">${delivery ? 'SURAT JALAN' : k.title}</h1><div><b>${esc(o.ref)}</b></div></div></div>
-    <div class="inv-meta"><div><div class="inv-lbl">${k.side === 'sale' ? 'Kepada' : 'Vendor'}</div><b>${esc(p?.name || '—')}</b>${p?.address ? '<br>' + esc(p.address) : ''}</div>
-    <table class="inv-kv"><tr><td>Tanggal</td><td>${fmtDate(o.date)}</td></tr>${o.due ? `<tr><td>${o.kind === 'quote' ? 'Berlaku s.d.' : 'Tanggal diperlukan'}</td><td>${fmtDate(o.due)}</td></tr>` : ''}${o.approvedBy ? `<tr><td>Disetujui</td><td>${esc(o.approvedBy)}</td></tr>` : ''}</table></div>
-    <table class="lines"><thead><tr><th>No</th><th>Deskripsi</th><th class="num">Jumlah</th>${delivery ? '' : '<th class="num">Harga</th><th class="num">Subtotal</th>'}</tr></thead><tbody>
-    ${lines.map((l, n) => `<tr><td>${n + 1}</td><td>${esc(itemOf(l.itemId)?.name)}</td><td class="num">${fmtQty(l.qty)} ${esc(itemOf(l.itemId)?.unit)}</td>${delivery ? '' : `<td class="num">${rp(l.price)}</td><td class="num">${rp(l.qty * l.price)}</td>`}</tr>`).join('')}</tbody></table>
-    ${delivery ? '' : `<div class="inv-bottom"><div></div><table class="inv-sum"><tr class="grand"><td>Total</td><td>${rp(orderTotal(o))}</td></tr></table></div>`}
-    ${o.note ? `<p>${esc(o.note)}</p>` : ''}<div class="sign three"><div>Dibuat<div class="sp"></div>(..............)</div><div>${delivery ? 'Pengirim' : 'Disetujui'}<div class="sp"></div>(..............)</div><div>${delivery ? 'Penerima' : 'Mengetahui'}<div class="sp"></div>(..............)</div></div></div>`;
+  const kvRow = (a, b) => el('tr', null, el('td', null, a), el('td', null, b)), ttd = t => el('div', null, t, el('div', {class: 'sp'}), '(..............)');
+  $('printArea').replaceChildren(el('div', {class: 'inv'}, el('div', {class: 'inv-top'}, el('div', {class: 'inv-co'}, logoEl(56), el('div', null, el('b', null, c.name || 'Nama Perusahaan'), c.address)),
+    el('div', {class: 'inv-title'}, el('h1', {style: 'font-size:22px'}, delivery ? 'SURAT JALAN' : k.title), el('div', null, el('b', null, o.ref)))),
+    el('div', {class: 'inv-meta'}, el('div', null, el('div', {class: 'inv-lbl'}, k.side === 'sale' ? 'Kepada' : 'Vendor'), el('b', null, p?.name || '—'), p?.address ? [el('br'), p.address] : null),
+      tblC('inv-kv', kvRow('Tanggal', fmtDate(o.date)), o.due ? kvRow(o.kind === 'quote' ? 'Berlaku s.d.' : 'Tanggal diperlukan', fmtDate(o.due)) : null, o.approvedBy ? kvRow('Disetujui', o.approvedBy) : null)),
+    el('table', {class: 'lines'}, el('thead', null, el('tr', null, el('th', null, 'No'), el('th', null, 'Deskripsi'), el('th', {class: 'num'}, 'Jumlah'), delivery ? null : [el('th', {class: 'num'}, 'Harga'), el('th', {class: 'num'}, 'Subtotal')])),
+      el('tbody', null, lines.map((l, n) => el('tr', null, el('td', null, n + 1), el('td', null, itemOf(l.itemId)?.name), el('td', {class: 'num'}, `${fmtQty(l.qty)} ${itemOf(l.itemId)?.unit ?? ''}`), delivery ? null : [el('td', {class: 'num'}, rp(l.price)), el('td', {class: 'num'}, rp(l.qty * l.price))])))),
+    delivery ? null : el('div', {class: 'inv-bottom'}, el('div'), tblC('inv-sum', el('tr', {class: 'grand'}, el('td', null, 'Total'), el('td', null, rp(orderTotal(o)))))),
+    o.note ? el('p', null, o.note) : null, el('div', {class: 'sign three'}, ttd('Dibuat'), ttd(delivery ? 'Pengirim' : 'Disetujui'), ttd(delivery ? 'Penerima' : 'Mengetahui'))));
   document.body.classList.add('print-voucher'); window.print();
 }
 $('btnOPrint').onclick = () => { if (ordEditing) printOrder(ordEditing); };
@@ -620,7 +621,7 @@ function erpRunPrefill(ym) {
 function erpObligations() {
   const out = [], now = today(), mine = canApprove();
   const wait = state.orders.filter(o => o.status === 'draft' && ORDER_KINDS[o.kind].approval);
-  if (wait.length && mine) out.push(['warn', `${wait.length} permintaan/PO menunggu persetujuan: ${wait.slice(0, 4).map(o => esc(o.ref)).join(', ')}.`]);
+  if (wait.length && mine) out.push(['warn', `${wait.length} permintaan/PO menunggu persetujuan: ${wait.slice(0, 4).map(o => txt(o.ref)).join(', ')}.`]);
   const lv = state.leaves.filter(l => l.status === 'draft');
   if (lv.length) out.push(['warn', `${lv.length} pengajuan cuti menunggu persetujuan.`]);
   const old = state.orders.filter(o => o.kind === 'quote' && o.status !== 'cancelled' && o.due && o.due < now && !orderNext(o));
@@ -629,30 +630,34 @@ function erpObligations() {
   return out;
 }
 function erpReport(type, from, to, period) {
-  const asOf = to || today();
+  const asOf = to || today(), td = v => el('td', null, v), n = v => el('td', {class: 'num'}, v);
   if (type === 'aset') {
     const last = lastDayOf(addMonths(today().slice(0, 7), -1)), end = asOf < last ? asOf : last; let c = 0, d = 0;
-    const rows = state.assets.filter(a => a.date <= asOf).map(a => { const x = depTo(a, end); c += a.cost; d += x; return `<tr><td>${esc(a.code)}</td><td>${esc(a.name)}</td><td>${fmtDate(a.date)}</td><td class="num">${a.life}</td><td class="num">${rp(a.cost)}</td><td class="num">${rp(x)}</td><td class="num">${rp(a.cost - x)}</td></tr>`; }).join('');
-    return kop('Daftar Aset Tetap', 'Per ' + fmtDate(asOf)) + `<table><thead><tr><th>Kode</th><th>Aset</th><th>Perolehan</th><th class="num">Bulan</th><th class="num">Harga</th><th class="num">Akum. susut</th><th class="num">Nilai buku</th></tr></thead>${rows}<tr class="total"><td colspan="4">Total</td><td class="num">${rp(c)}</td><td class="num">${rp(d)}</td><td class="num">${rp(c - d)}</td></tr></table><p class="muted" style="font-size:12px">Metode garis lurus, mulai bulan perolehan. Penyusutan fiskal dapat berbeda; sesuaikan saat SPT Tahunan.</p>` + signBlock();
+    const rows = state.assets.filter(a => a.date <= asOf).map(a => { const x = depTo(a, end); c += a.cost; d += x; return el('tr', null, td(a.code), td(a.name), td(fmtDate(a.date)), n(a.life), n(rp(a.cost)), n(rp(x)), n(rp(a.cost - x))); });
+    return [kopEl('Daftar Aset Tetap', 'Per ' + fmtDate(asOf)), tbl(thead(th('Kode'), th('Aset'), th('Perolehan'), th('Bulan', 1), th('Harga', 1), th('Akum. susut', 1), th('Nilai buku', 1)), rows,
+      el('tr', {class: 'total'}, el('td', {colspan: 4}, 'Total'), n(rp(c)), n(rp(d)), n(rp(c - d)))), pMuted('Metode garis lurus, mulai bulan perolehan. Penyusutan fiskal dapat berbeda; sesuaikan saat SPT Tahunan.'), signEl()];
   }
   if (type === 'anggaran') {
     const y = asOf.slice(0, 4), list_ = state.budgets.filter(b => b.year === y);
-    return kop('Anggaran dan Realisasi', 'Tahun ' + esc(y)) + `<table><thead><tr><th>Kategori</th><th class="num">Anggaran</th><th class="num">Realisasi</th><th class="num">Selisih</th><th class="num">%</th></tr></thead>${list_.map(b => { const a = actualOf(b); return `<tr><td>${catLabel(b.categoryId)}</td><td class="num">${rp(b.amount)}</td><td class="num">${rp(a)}</td><td class="num">${rp(b.amount - a)}</td><td class="num">${b.amount ? pct(a / b.amount * 100) : '—'}</td></tr>`; }).join('') || '<tr><td colspan="5" class="muted">Belum ada anggaran tahun ini.</td></tr>'}</table>` + signBlock();
+    return [kopEl('Anggaran dan Realisasi', 'Tahun ' + y), tbl(thead(th('Kategori'), th('Anggaran', 1), th('Realisasi', 1), th('Selisih', 1), th('%', 1)),
+      list_.length ? list_.map(b => { const a = actualOf(b); return el('tr', null, td(catLabelEl(b.categoryId)), n(rp(b.amount)), n(rp(a)), n(rp(b.amount - a)), n(b.amount ? pct(a / b.amount * 100) : '—')); }) : el('tr', null, el('td', {colspan: 5, class: 'muted'}, 'Belum ada anggaran tahun ini.'))), signEl()];
   }
   if (type === 'aruskas') {
     const G = {op: ['Aktivitas operasi', 0, 0], inv: ['Aktivitas investasi', 0, 0], fin: ['Aktivitas pendanaan', 0, 0]};
     const grp = t => { const code = (t.debtId ? '' : catOf(t.categoryId)?.code) || ''; return /^1-4/.test(code) ? 'inv' : /^(3-|2-20)/.test(code) ? 'fin' : 'op'; };
     for (const t of state.tx) if (t.type !== 'transfer' && inRange(t.date, from, to)) G[grp(t)][t.type === 'in' ? 1 : 2] += t.amount;
     const net = Object.values(G).reduce((s, g) => s + g[1] - g[2], 0);
-    return kop('Laporan Arus Kas', period) + `<table><thead><tr><th></th><th class="num">Masuk</th><th class="num">Keluar</th><th class="num">Bersih</th></tr></thead>${Object.values(G).map(g => `<tr><td>${g[0]}</td><td class="num">${rp(g[1])}</td><td class="num">${rp(g[2])}</td><td class="num">${rp(g[1] - g[2])}</td></tr>`).join('')}<tr class="total"><td colspan="3">Kenaikan (penurunan) kas</td><td class="num">${rp(net)}</td></tr></table>` + signBlock();
+    return [kopEl('Laporan Arus Kas', period), tbl(thead(th(''), th('Masuk', 1), th('Keluar', 1), th('Bersih', 1)), Object.values(G).map(g => el('tr', null, td(g[0]), n(rp(g[1])), n(rp(g[2])), n(rp(g[1] - g[2])))),
+      el('tr', {class: 'total'}, el('td', {colspan: 3}, 'Kenaikan (penurunan) kas'), n(rp(net)))), signEl()];
   }
   if (type === 'pusat') {
     const m = new Map();
     for (const t of state.tx) if (t.type !== 'transfer' && inRange(t.date, from, to)) { const r = m.get(t.centerId || '') || [0, 0]; r[t.type === 'in' ? 0 : 1] += t.amount; m.set(t.centerId || '', r); }
-    return kop('Kas per Cabang/Proyek', period) + `<table><thead><tr><th>Pusat biaya</th><th class="num">Masuk</th><th class="num">Keluar</th><th class="num">Bersih</th></tr></thead>${[...m.entries()].map(([id, r]) => `<tr><td>${esc(state.centers.find(c => c.id === id)?.name || 'Tanpa pusat biaya')}</td><td class="num">${rp(r[0])}</td><td class="num">${rp(r[1])}</td><td class="num">${rp(r[0] - r[1])}</td></tr>`).join('')}</table>` + signBlock();
+    return [kopEl('Kas per Cabang/Proyek', period), tbl(thead(th('Pusat biaya'), th('Masuk', 1), th('Keluar', 1), th('Bersih', 1)), [...m.entries()].map(([id, r]) => el('tr', null, td(state.centers.find(c => c.id === id)?.name || 'Tanpa pusat biaya'), n(rp(r[0])), n(rp(r[1])), n(rp(r[0] - r[1]))))), signEl()];
   }
   if (type === 'absensi') {
-    return kop('Rekap Kehadiran', period) + `<table><thead><tr><th>Nama</th>${Object.values(ATT_STATUS).map(v => `<th class="num">${v}</th>`).join('')}<th class="num">Cuti terpakai ${esc(asOf.slice(0, 4))}</th></tr></thead>${state.employees.map(e => `<tr><td>${esc(e.name)}</td>${Object.keys(ATT_STATUS).map(k => `<td class="num">${state.attendance.filter(a => a.empId === e.id && a.status === k && inRange(a.date, from, to)).length}</td>`).join('')}<td class="num">${leaveUsed(e.id, asOf.slice(0, 4))}</td></tr>`).join('')}</table>` + signBlock();
+    return [kopEl('Rekap Kehadiran', period), tbl(thead(th('Nama'), Object.values(ATT_STATUS).map(v => th(v, 1)), th('Cuti terpakai ' + asOf.slice(0, 4), 1)),
+      state.employees.map(e => el('tr', null, td(e.name), Object.keys(ATT_STATUS).map(k => n(state.attendance.filter(a => a.empId === e.id && a.status === k && inRange(a.date, from, to)).length)), n(leaveUsed(e.id, asOf.slice(0, 4)))))), signEl()];
   }
   return '';
 }
@@ -684,9 +689,11 @@ const REPORT_ROLES = {sales: ['jual', 'umur', 'komisi'], warehouse: ['stok', 'be
 const longDate = () => new Date().toLocaleDateString('id-ID', {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'});
 const num1 = n => String(Math.round(n * 10) / 10).replace('.', ',');
 const shortRp = n => { const a = Math.abs(n); return (n < 0 ? '−' : '') + (a >= 1e9 ? num1(a / 1e9) + ' M' : a >= 1e6 ? num1(a / 1e6) + ' jt' : a >= 1e3 ? Math.round(a / 1e3) + ' rb' : String(Math.round(a))); };
-const panel = (title, rows, empty) => `<div class="card"><h3>${title}</h3>${rows.length ? `<table class="dt"><tbody>${rows.join('')}</tbody></table>` : `<div class="muted">${empty}</div>`}</div>`;
-const tr = (...c) => `<tr>${c.map((x, i) => `<td${i && i === c.length - 1 ? ' class="num"' : ''}>${x}</td>`).join('')}</tr>`;
-const pill = (t, cls) => `<span class="badge ${cls}">${t}</span>`;
+const B = t => el('b', null, t), I_ = t => el('i', null, t);
+const panel = (title, rows, empty) => el('div', {class: 'card'}, el('h3', null, title), rows.length ? el('table', {class: 'dt'}, el('tbody', null, rows)) : el('div', {class: 'muted'}, empty));
+const tr = (...c) => el('tr', null, c.map((x, i) => el('td', i && i === c.length - 1 ? {class: 'num'} : null, x)));
+const pill = (t, cls) => el('span', {class: 'badge ' + cls}, t);
+const txt = v => String(v ?? ''); // teks polos (pengganti esc() di pesan dasbor yang kini simpul teks)
 const days = (date, n) => { const d = new Date(date + 'T00:00:00'); d.setDate(d.getDate() + n); return new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); };
 const last6 = () => Array.from({length: 6}, (_, i) => addMonths(today().slice(0, 7), i - 5));
 const sameDayPrev = () => { const now = today(), ym = addMonths(now.slice(0, 7), -1), end = lastDayOf(ym), d = ym + now.slice(7); return d > end ? end : d; };
@@ -702,7 +709,7 @@ function delta(now, prev) {
 }
 const openOrders = kind => state.orders.filter(o => o.kind === kind && o.status === 'approved' && orderRemain(o).length);
 const dueSoon = (kind, n) => state.debts.filter(d => d.kind === kind && remainOf(d) > 0 && d.due && daysBetween(today(), d.due) <= n).sort((a, b) => a.due.localeCompare(b.due));
-const debtRow = d => tr(esc(d.party), d.due < today() ? pill(`Telat ${daysBetween(d.due, today())} hari`, 'out') : fmtDate(d.due), rp(remainOf(d)));
+const debtRow = d => tr(txt(d.party), d.due < today() ? pill(`Telat ${daysBetween(d.due, today())} hari`, 'out') : fmtDate(d.due), rp(remainOf(d)));
 function aging(kind) {
   const b = [['Belum jatuh tempo', 0], ['1–30 hari', 0], ['31–60 hari', 0], ['61–90 hari', 0], ['Lebih 90 hari', 0]], now = today();
   for (const d of state.debts) {
@@ -712,22 +719,23 @@ function aging(kind) {
   }
   return b;
 }
-const meterRows = (rows, fmt = rp) => { const max = Math.max(1, ...rows.map(r => r[1])); return rows.map(([l, v]) => `<tr><td colspan="2"><div class="cat-row"><span>${l}</span><span>${fmt(v)}</span></div><div class="meter"><span class="m1" style="width:${Math.max(0, v / max * 100)}%"></span></div></td></tr>`); };
+const meterRows = (rows, fmt = rp) => { const max = Math.max(1, ...rows.map(r => r[1])); return rows.map(([l, v]) => el('tr', null, el('td', {colspan: 2}, el('div', {class: 'cat-row'}, el('span', null, l), el('span', null, fmt(v))), el('div', {class: 'meter'}, el('span', {class: 'm1', style: `width:${Math.max(0, v / max * 100)}%`}))))); };
 function trend(title, series, fmt = shortRp) {
   const months = last6(), max = Math.max(1, ...series.flatMap(s => s.vals));
-  const legend = series.length > 1 ? `<div class="legend">${series.map((s, i) => `<span><i class="k${i + 1}"></i>${s.name}</span>`).join('')}</div>` : '';
-  const now = series.map(s => `${s.name}: <b>${fmt(s.vals[5])}</b>`).join(' · ');
-  return `<div class="card"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><h3>${title}</h3>${legend}</div>
-    <div class="bars" style="height:150px">${months.map((ym, i) => `<div class="bar-group" title="${ymLabel(ym)}: ${series.map(s => `${s.name} ${rp(s.vals[i])}`).join(', ')}"><div class="bar-pair">${series.map((s, k) => `<div class="bar k${k + 1}" style="height:${Math.max(0, s.vals[i]) / max * 100}%"></div>`).join('')}</div><div class="bar-label">${MONTHS[+ym.slice(5) - 1]}</div></div>`).join('')}</div>
-    <div class="muted" style="font-size:12px;margin-top:6px">Bulan ini · ${now}</div></div>`;
+  const legend = series.length > 1 ? el('div', {class: 'legend'}, series.map((s, i) => el('span', null, el('i', {class: 'k' + (i + 1)}), s.name))) : null;
+  const now = series.flatMap((s, i) => [i ? ' · ' : '', `${s.name}: `, el('b', null, fmt(s.vals[5]))]);
+  return el('div', {class: 'card'}, el('div', {style: 'display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap'}, el('h3', null, title), legend),
+    el('div', {class: 'bars', style: 'height:150px'}, months.map((ym, i) => el('div', {class: 'bar-group', title: `${ymLabel(ym)}: ${series.map(s => `${s.name} ${rp(s.vals[i])}`).join(', ')}`},
+      el('div', {class: 'bar-pair'}, series.map((s, k) => el('div', {class: 'bar k' + (k + 1), style: `height:${Math.max(0, s.vals[i]) / max * 100}%`}))), el('div', {class: 'bar-label'}, MONTHS[+ym.slice(5) - 1])))),
+    el('div', {class: 'muted', style: 'font-size:12px;margin-top:6px'}, 'Bulan ini · ', now));
 }
 function dashPage({title, sub, alerts = [], kpis, chart, side, panels = []}) {
-  const who = `${cloudInfo?.username ? '@' + esc(cloudInfo.username) + ' · ' : ''}${esc(ROLES[company?.role || 'owner'])}`;
-  return `<div class="dash-head"><div><h2>${title}</h2><p class="muted">${sub}</p></div><div class="muted dash-who">${who}<br>${esc(longDate())}</div></div>
-    <div class="grid cards kpi">${kpis.map(statCard).join('')}</div>
-    <div class="card" style="margin-top:16px"><h3>Perlu tindakan</h3>${alerts.length ? alerts.map(([lvl, html]) => `<div class="ob ${lvl}"><span class="dot"></span><div>${html.replace(/<button[^>]*>.*?<\/button>/g, '')}</div></div>`).join('') : '<div class="muted">Tidak ada yang perlu ditindaklanjuti saat ini.</div>'}</div>
-    <div class="grid two" style="margin-top:16px">${chart}${side}</div>
-    ${panels.length ? `<div class="grid dash-panels">${panels.join('')}</div>` : ''}`;
+  const who = `${cloudInfo?.username ? '@' + cloudInfo.username + ' · ' : ''}${ROLES[company?.role || 'owner'] ?? ''}`;
+  return frag(el('div', {class: 'dash-head'}, el('div', null, el('h2', null, title), el('p', {class: 'muted'}, sub)), el('div', {class: 'muted dash-who'}, who, el('br'), longDate())),
+    el('div', {class: 'grid cards kpi'}, kpis.map(statCardEl)),
+    el('div', {class: 'card', style: 'margin-top:16px'}, el('h3', null, 'Perlu tindakan'), alerts.length ? alerts.map(([lvl, msg]) => el('div', {class: 'ob ' + lvl}, el('span', {class: 'dot'}), el('div', null, msg))) : el('div', {class: 'muted'}, 'Tidak ada yang perlu ditindaklanjuti saat ini.')),
+    el('div', {class: 'grid two', style: 'margin-top:16px'}, chart, side),
+    panels.length ? el('div', {class: 'grid dash-panels'}, panels) : null);
 }
 
 function salesDash() {
@@ -747,11 +755,11 @@ function salesDash() {
   const followUp = state.contacts.filter(c => c.next && c.next <= now && !state.contacts.some(x => x.customerId === c.customerId && x.date > c.date));
   const overLimit = state.customers.filter(c => c.limit && custOpen(c.name) > c.limit);
   const alerts = [
-    ...(ar.no ? [['bad', `${ar.no} tagihan lewat jatuh tempo senilai <b>${rp(ar.overdue)}</b>. Lakukan penagihan.`]] : []),
+    ...(ar.no ? [['bad', [`${ar.no} tagihan lewat jatuh tempo senilai `, B(rp(ar.overdue)), '. Lakukan penagihan.']]] : []),
     ...(so.length ? [['warn', `${so.length} pesanan belum selesai dikirim atau ditagih, senilai ${rp(backlog)}.`]] : []),
-    ...(expiring.length ? [['warn', `${expiring.length} penawaran berakhir dalam 7 hari: ${expiring.slice(0, 3).map(o => esc(o.ref)).join(', ')}. Tindak lanjuti ke pelanggan.`]] : []),
+    ...(expiring.length ? [['warn', `${expiring.length} penawaran berakhir dalam 7 hari: ${expiring.slice(0, 3).map(o => txt(o.ref)).join(', ')}. Tindak lanjuti ke pelanggan.`]] : []),
     ...(followUp.length ? [['warn', `${followUp.length} pelanggan perlu ditindaklanjuti hari ini.`]] : []),
-    ...(overLimit.length ? [['bad', `Piutang melebihi batas kredit: ${overLimit.slice(0, 3).map(c => esc(c.name)).join(', ')}.`]] : []),
+    ...(overLimit.length ? [['bad', `Piutang melebihi batas kredit: ${overLimit.slice(0, 3).map(c => txt(c.name)).join(', ')}.`]] : []),
   ];
   return dashPage({title: 'Dasbor Penjualan', sub: 'Pencapaian penjualan, peluang, dan penagihan.', alerts,
     kpis: [[`Penjualan ${MONTHS[+ym.slice(5) - 1]}`, rp(m.rev), '', delta(m.rev, p.rev)], ['Pencapaian target', target ? pct(m.rev / target * 100) : '—', '', target ? `Target ${rp(target)} sebulan` : 'Isi anggaran pendapatan di ERP'],
@@ -759,10 +767,10 @@ function salesDash() {
       ['Pesanan belum selesai', rp(backlog), '', `${so.length} pesanan`], ['Umur piutang rata-rata', rev90 > 0 ? Math.round(dso) + ' hari' : '—', '', `Piutang ${rp(ar.open)}`]],
     chart: trend('Tren penjualan 6 bulan', [{name: 'Penjualan', vals: last6().map(x => salesIn(x + '-01', lastDayOf(x)).rev)}]),
     side: panel('Umur piutang', meterRows(aging('piutang')), ''),
-    panels: [panel('Produk terlaris bulan ini', top(prod).map(([id, v]) => tr(esc(itemOf(id)?.name), rp(v))), 'Belum ada penjualan.'), panel('Pelanggan terbesar bulan ini', top(cust).map(([c, v]) => tr(esc(c), rp(v))), 'Belum ada penjualan.'),
-      panel('Pesanan perlu diproses', so.slice(0, 6).map(o => tr(esc(o.ref), esc(partyName(o)))), 'Semua pesanan selesai.'), panel('Tagihan perlu diikuti', dueSoon('piutang', 7).slice(0, 6).map(debtRow), 'Tidak ada tagihan mendesak.'),
-      panel('Kinerja tenaga penjual', state.salespeople.slice(0, 6).map(s => { const v = salesBy(s.id, ym); return tr(esc(s.name), s.target ? pct(v / s.target * 100) + ' dari target' : '—', rp(v)); }), 'Isi tenaga penjual di ERP.'),
-      panel('Tindak lanjut pelanggan', followUp.slice(0, 6).map(c => tr(esc(custOf(c.customerId)?.name), fmtDate(c.next), esc(c.channel))), 'Tidak ada tindak lanjut jatuh tempo.')]});
+    panels: [panel('Produk terlaris bulan ini', top(prod).map(([id, v]) => tr(txt(itemOf(id)?.name), rp(v))), 'Belum ada penjualan.'), panel('Pelanggan terbesar bulan ini', top(cust).map(([c, v]) => tr(txt(c), rp(v))), 'Belum ada penjualan.'),
+      panel('Pesanan perlu diproses', so.slice(0, 6).map(o => tr(txt(o.ref), txt(partyName(o)))), 'Semua pesanan selesai.'), panel('Tagihan perlu diikuti', dueSoon('piutang', 7).slice(0, 6).map(debtRow), 'Tidak ada tagihan mendesak.'),
+      panel('Kinerja tenaga penjual', state.salespeople.slice(0, 6).map(s => { const v = salesBy(s.id, ym); return tr(txt(s.name), s.target ? pct(v / s.target * 100) + ' dari target' : '—', rp(v)); }), 'Isi tenaga penjual di ERP.'),
+      panel('Tindak lanjut pelanggan', followUp.slice(0, 6).map(c => tr(txt(custOf(c.customerId)?.name), fmtDate(c.next), txt(c.channel))), 'Tidak ada tindak lanjut jatuh tempo.')]});
 }
 
 function warehouseDash() {
@@ -782,11 +790,11 @@ function warehouseDash() {
   const dead = goods.filter(i => (st.get(i.id)?.qty || 0) > 0 && (lastSale.get(i.id) || '') < days(now, -90));
   const po = openOrders('po'), draft = state.orders.filter(o => ['pr', 'po'].includes(o.kind) && o.status === 'draft');
   const expired = state.batches.filter(b => b.exp && b.exp < now), soon = state.batches.filter(b => b.exp && b.exp >= now && b.exp <= days(now, 60));
-  const label = [pill('Habis', 'out'), pill('Menipis', 'warn'), pill('Aman', 'in')];
-  const stockRows = goods.slice().sort((a, b) => status(a) - status(b) || a.name.localeCompare(b.name)).slice(0, 8).map(i => tr(esc(i.name), `${fmtQty(st.get(i.id)?.qty || 0)} ${esc(i.unit)}`, label[status(i)]));
+  const label = st_ => [() => pill('Habis', 'out'), () => pill('Menipis', 'warn'), () => pill('Aman', 'in')][st_](); // simpul baru per baris
+  const stockRows = goods.slice().sort((a, b) => status(a) - status(b) || a.name.localeCompare(b.name)).slice(0, 8).map(i => tr(txt(i.name), `${fmtQty(st.get(i.id)?.qty || 0)} ${txt(i.unit)}`, label(status(i))));
   const alerts = [
-    ...(out.length ? [['bad', `${out.length} barang habis: ${out.slice(0, 4).map(i => esc(i.name)).join(', ')}.`]] : []),
-    ...(low.length ? [['warn', `${low.length} barang di bawah batas minimum: ${low.slice(0, 4).map(i => esc(i.name)).join(', ')}. Ajukan pembelian.`]] : []),
+    ...(out.length ? [['bad', `${out.length} barang habis: ${out.slice(0, 4).map(i => txt(i.name)).join(', ')}.`]] : []),
+    ...(low.length ? [['warn', `${low.length} barang di bawah batas minimum: ${low.slice(0, 4).map(i => txt(i.name)).join(', ')}. Ajukan pembelian.`]] : []),
     ...(uncounted.length ? [['warn', `${uncounted.length} barang belum diopname 30 hari terakhir.`]] : []),
     ...(draft.length ? [['warn', `${draft.length} permintaan/PO menunggu persetujuan.`]] : []),
     ...(expired.length ? [['bad', `${expired.length} batch sudah kedaluwarsa.`]] : []),
@@ -799,11 +807,11 @@ function warehouseDash() {
     chart: trend('Barang masuk dan keluar 6 bulan', [{name: 'Masuk', vals: moved('purchase')}, {name: 'Keluar', vals: moved('sale')}], fmtQty),
     side: panel('Stok barang', stockRows, 'Belum ada barang.'),
     panels: [panel('Riwayat stok opname', sorted(state.adjusts).slice(0, 6).map(a => tr(fmtDate(a.date), `${a.lines.length} barang, ${a.lines.filter(l => l.diff).length} selisih`, rp(M().stock.adj.get(a.id) || 0))), 'Belum ada stok opname.'),
-      panel('Jadwal opname berikutnya', uncounted.sort((a, b) => (lastCount.get(a.id) || '').localeCompare(lastCount.get(b.id) || '')).slice(0, 6).map(i => tr(esc(i.name), lastCount.has(i.id) ? 'Terakhir ' + fmtDate(lastCount.get(i.id)) : 'Belum pernah')), 'Semua barang sudah dihitung 30 hari terakhir.'),
-      panel('Stok lambat bergerak', dead.slice(0, 6).map(i => tr(esc(i.name), `${fmtQty(st.get(i.id).qty)} ${esc(i.unit)}`, lastSale.has(i.id) ? fmtDate(lastSale.get(i.id)) : 'Belum terjual')), 'Tidak ada barang tanpa penjualan 90 hari.'),
-      panel('Barang akan datang', po.slice(0, 6).map(o => tr(esc(o.ref), esc(partyName(o)))), 'Tidak ada PO terbuka.'),
-      panel('Saran pesan ulang', reorderList().slice(0, 6).map(r => tr(esc(r.i.name), `tersedia ${fmtQty(r.have)}, titik ${fmtQty(r.point)}`, `pesan ${fmtQty(r.qty)}`)), 'Stok masih di atas titik pesan ulang.'),
-      panel('Segera kedaluwarsa', [...expired, ...soon].slice(0, 6).map(b => tr(esc(itemOf(b.itemId)?.name), esc(b.batch), fmtDate(b.exp))), 'Tidak ada batch mendekati kedaluwarsa.')]});
+      panel('Jadwal opname berikutnya', uncounted.sort((a, b) => (lastCount.get(a.id) || '').localeCompare(lastCount.get(b.id) || '')).slice(0, 6).map(i => tr(txt(i.name), lastCount.has(i.id) ? 'Terakhir ' + fmtDate(lastCount.get(i.id)) : 'Belum pernah')), 'Semua barang sudah dihitung 30 hari terakhir.'),
+      panel('Stok lambat bergerak', dead.slice(0, 6).map(i => tr(txt(i.name), `${fmtQty(st.get(i.id).qty)} ${txt(i.unit)}`, lastSale.has(i.id) ? fmtDate(lastSale.get(i.id)) : 'Belum terjual')), 'Tidak ada barang tanpa penjualan 90 hari.'),
+      panel('Barang akan datang', po.slice(0, 6).map(o => tr(txt(o.ref), txt(partyName(o)))), 'Tidak ada PO terbuka.'),
+      panel('Saran pesan ulang', reorderList().slice(0, 6).map(r => tr(txt(r.i.name), `tersedia ${fmtQty(r.have)}, titik ${fmtQty(r.point)}`, `pesan ${fmtQty(r.qty)}`)), 'Stok masih di atas titik pesan ulang.'),
+      panel('Segera kedaluwarsa', [...expired, ...soon].slice(0, 6).map(b => tr(txt(itemOf(b.itemId)?.name), txt(b.batch), fmtDate(b.exp))), 'Tidak ada batch mendekati kedaluwarsa.')]});
 }
 
 function hrDash() {
@@ -831,19 +839,19 @@ function hrDash() {
       ['Tingkat absen', monthAtt.length ? pct(absent / monthAtt.length * 100) : '—', absent ? 'out' : '', 'Sakit, izin, tanpa keterangan'], ['Turnover 12 bulan', pct(turnover), '', `${exits} karyawan keluar`], [`Biaya gaji ${MONTHS[+prev.slice(5) - 1]}`, rp(cost(prev)), '', 'Termasuk BPJS perusahaan'], ['Kontrak berakhir', String(ending.length), ending.length ? 'out' : '', 'Dalam 30 hari']],
     chart: trend('Biaya gaji 6 bulan', [{name: 'Biaya gaji', vals: last6().map(cost)}]),
     side: panel('Komposisi karyawan', meterRows([['Tetap (PKWTT)', n(e => e.status === 'pkwtt')], ['Kontrak (PKWT)', n(e => e.status === 'pkwt')], ['Harian lepas', n(e => e.status === 'harian')], ['Laki-laki', n(e => e.gender === 'L')], ['Perempuan', n(e => e.gender === 'P')]], String), 'Belum ada karyawan.'),
-    panels: [panel('Pengajuan cuti', wait.slice(0, 6).map(l => tr(esc(empOf(l.empId)?.name), `${fmtDate(l.date)} · ${l.days} hari`)), 'Tidak ada pengajuan.'),
-      panel('Kontrak akan berakhir', ending.slice(0, 6).map(e => tr(esc(e.name), fmtDate(e.endDate), `${daysBetween(now, e.endDate)} hari`)), 'Tidak ada kontrak yang segera berakhir.'),
-      panel('Tidak masuk hari ini', todayAtt.filter(a => a.status !== 'hadir').slice(0, 6).map(a => tr(esc(empOf(a.empId)?.name), ATT_STATUS[a.status])), 'Belum ada catatan.'),
-      panel('Jadwal hari ini', shiftNow.slice(0, 8).map(s => tr(esc(empOf(s.empId)?.name), SHIFTS[s.shift])), 'Belum ada jadwal shift.'),
-      panel('Dokumen akan berakhir', docs.slice(0, 6).map(x => tr(esc(empOf(x.empId)?.name), DOC_TYPES[x.type], fmtDate(x.exp))), 'Tidak ada dokumen yang segera berakhir.'),
-      panel('Penilaian terakhir', lastScore.slice(0, 6).map(([e, r]) => tr(esc(e.name), fmtDate(r.date), r.score + '/5')), 'Belum ada penilaian kinerja.')]});
+    panels: [panel('Pengajuan cuti', wait.slice(0, 6).map(l => tr(txt(empOf(l.empId)?.name), `${fmtDate(l.date)} · ${l.days} hari`)), 'Tidak ada pengajuan.'),
+      panel('Kontrak akan berakhir', ending.slice(0, 6).map(e => tr(txt(e.name), fmtDate(e.endDate), `${daysBetween(now, e.endDate)} hari`)), 'Tidak ada kontrak yang segera berakhir.'),
+      panel('Tidak masuk hari ini', todayAtt.filter(a => a.status !== 'hadir').slice(0, 6).map(a => tr(txt(empOf(a.empId)?.name), ATT_STATUS[a.status])), 'Belum ada catatan.'),
+      panel('Jadwal hari ini', shiftNow.slice(0, 8).map(s => tr(txt(empOf(s.empId)?.name), SHIFTS[s.shift])), 'Belum ada jadwal shift.'),
+      panel('Dokumen akan berakhir', docs.slice(0, 6).map(x => tr(txt(empOf(x.empId)?.name), DOC_TYPES[x.type], fmtDate(x.exp))), 'Tidak ada dokumen yang segera berakhir.'),
+      panel('Penilaian terakhir', lastScore.slice(0, 6).map(([e, r]) => tr(txt(e.name), fmtDate(r.date), r.score + '/5')), 'Belum ada penilaian kinerja.')]});
 }
 
 // Kas masuk dan keluar per bulan, serta daya tahan kas dari rata-rata pengeluaran 3 bulan terakhir
 const cashOf = (ym, type) => state.tx.reduce((s, t) => t.type === type && t.date.startsWith(ym) ? s + t.amount : s, 0);
 const runway = () => { const ym = today().slice(0, 7), out = [1, 2, 3].reduce((s, i) => s + cashOf(addMonths(ym, -i), 'out'), 0) / 3; return out > 0 ? totalBalance() / out : 0; };
-const expenses = () => lrData(today().slice(0, 4) + '-01-01', today().slice(0, 4) + '-12-31').opex.slice().sort((a, b) => b.v - a.v).slice(0, 5).map(r => tr(r.label, rp(r.v)));
-const balances = () => [...state.accounts.map(a => tr(accLabel(a), rp(balance(a.id)))), tr('<b>Total</b>', `<b>${rp(totalBalance())}</b>`)];
+const expenses = () => lrData(today().slice(0, 4) + '-01-01', today().slice(0, 4) + '-12-31').opex.slice().sort((a, b) => b.v - a.v).slice(0, 5).map(r => tr(r.mk(), rp(r.v)));
+const balances = () => [...state.accounts.map(a => tr(accLabelEl(a), rp(balance(a.id)))), tr(B('Total'), B(rp(totalBalance())))];
 function financeDash() {
   const now = today(), ym = now.slice(0, 7), ar = debtTotals('piutang'), ap = debtTotals('utang');
   const tax = [ACC_PPH21, ACC_BPJS, ACC_PPN, ACC_PPN_WAPU, ACC_PPH_POT].reduce((s, a) => s + Math.max(0, journalBal(a)), 0);
@@ -855,8 +863,8 @@ function financeDash() {
     chart: trend('Kas masuk dan keluar 6 bulan', [{name: 'Masuk', vals: last6().map(x => cashOf(x, 'in'))}, {name: 'Keluar', vals: last6().map(x => cashOf(x, 'out'))}]),
     side: panel('Saldo per akun', balances(), 'Belum ada akun.'),
     panels: [panel('Umur piutang', meterRows(aging('piutang')), ''), panel('Umur utang', meterRows(aging('utang')), ''), panel('Beban terbesar tahun ini', expenses(), 'Belum ada beban.'), panel('Utang jatuh tempo 7 hari', dueSoon('utang', 7).slice(0, 6).map(debtRow), 'Tidak ada utang mendesak.'),
-      panel('Kalender pajak', taxCalendar().map(([n, d, v]) => tr(esc(n), fmtDate(d), v ? rp(v) : '')), ''),
-      panel('Rekonsiliasi terakhir', sorted(state.recons).slice(0, 4).map(r => tr(esc(accName(r.accountId)), fmtDate(r.date), r.diff ? pill('Selisih ' + rp(r.diff), 'out') : pill('Cocok', 'in'))), 'Belum ada rekonsiliasi bank.')]});
+      panel('Kalender pajak', taxCalendar().map(([n, d, v]) => tr(txt(n), fmtDate(d), v ? rp(v) : '')), ''),
+      panel('Rekonsiliasi terakhir', sorted(state.recons).slice(0, 4).map(r => tr(txt(accName(r.accountId)), fmtDate(r.date), r.diff ? pill('Selisih ' + rp(r.diff), 'out') : pill('Cocok', 'in'))), 'Belum ada rekonsiliasi bank.')]});
 }
 // Pemeriksaan kesehatan data: tanpa kode server, dua pengguna bersamaan bisa menghasilkan nomor ganda atau stok minus
 function integrityIssues() {
@@ -869,13 +877,13 @@ function integrityIssues() {
   const diff = neracaData('2100-12-31').diff;
   if (diff) out.push(['bad', `Neraca tidak seimbang sebesar ${rp(diff)}. Periksa kode akun kategori.`]);
   const linked = new Set([...state.tx.map(t => t.tradeId), ...state.debts.map(d => d.tradeId)]), lost = state.trades.filter(t => !linked.has(t.id));
-  if (lost.length) out.push(['bad', `${lost.length} jual/beli tidak punya catatan kas atau piutang/utang: ${lost.slice(0, 3).map(t => esc(t.ref)).join(', ')}.`]);
+  if (lost.length) out.push(['bad', `${lost.length} jual/beli tidak punya catatan kas atau piutang/utang: ${lost.slice(0, 3).map(t => txt(t.ref)).join(', ')}.`]);
   return out;
 }
 function ownerDash() {
   const now = today(), ym = now.slice(0, 7), y = now.slice(0, 4), m = salesIn(ym + '-01', now), p = salesIn(addMonths(ym, -1) + '-01', sameDayPrev()), L = lrData(y + '-01-01', y + '-12-31'), ar = debtTotals('piutang'), rv = runway();
   const waitPO = state.orders.filter(o => o.status === 'draft' && ORDER_KINDS[o.kind].approval), waitLv = state.leaves.filter(l => l.status === 'draft');
-  const decide = [...waitPO.slice(0, 5).map(o => tr(esc(o.ref), esc(ORDER_KINDS[o.kind].label))), ...waitLv.slice(0, 5).map(l => tr(esc(empOf(l.empId)?.name), `Cuti ${l.days} hari`))];
+  const decide = [...waitPO.slice(0, 5).map(o => tr(txt(o.ref), txt(ORDER_KINDS[o.kind].label))), ...waitLv.slice(0, 5).map(l => tr(txt(empOf(l.empId)?.name), `Cuti ${l.days} hari`))];
   const lrMonth = last6().map(x => lrData(x + '-01', lastDayOf(x))), target = targetYear(), ly = String(+y - 1);
   const ytd = lrData(y + '-01-01', now), lastYtd = lrData(ly + '-01-01', ly + now.slice(4));
   const act = state.employees.filter(e => empActive(e, ym)).length;
@@ -933,37 +941,36 @@ function logRender() {
 }
 function logDash() {
   const now = today(), wk = days(now, -7), todays = state.audit.filter(a => a.ts.startsWith(now)), week = state.audit.filter(a => a.ts.slice(0, 10) >= wk);
-  const opt = (vals, cur, label) => `<option value="">${label}</option>` + vals.map(([v, t]) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(t)}</option>`).join('');
+  const opt = (vals, cur, label) => [el('option', {value: ''}, label), ...vals.map(([v, t]) => el('option', {value: v, selected: v === cur}, t))];
   const uniq = f => [...new Set(state.audit.map(f))].sort();
   queueMicrotask(() => { if ($('logBody')) { logRender(); logLoadMembers(); } });
-  return `<div class="dash-head"><div><h2>Log Aktivitas Server</h2><p class="muted">Riwayat input semua akun. Catatan tersimpan di server dan tidak bisa diubah atau dihapus.</p></div></div>
-    <div class="grid cards">${[['Aktivitas hari ini', todays.length.toLocaleString('id-ID'), '', `${new Set(todays.map(logAcc)).size} akun aktif`], ['Aktivitas 7 hari', week.length.toLocaleString('id-ID'), '', `${new Set(week.map(logAcc)).size} akun aktif`], ['Perubahan dan hapus 7 hari', String(week.filter(a => ['ubah', 'hapus', 'buka'].includes(a.act)).length), '', 'Perlu dicermati'], ['Total catatan', state.audit.length.toLocaleString('id-ID'), '', state.audit[0] ? 'Sejak ' + fmtDate(state.audit[0].ts.slice(0, 10)) : '']].map(statCard).join('')}</div>
-    <div class="card" style="margin-top:16px"><h3>Ringkasan per akun</h3><div class="table-wrap" id="logAccounts"></div></div>
-    <div class="card" style="margin-top:16px"><h3>Riwayat input</h3>
-      <div class="toolbar" id="logFilter">
-        <label class="f">Akun<select data-log="who">${opt(uniq(logAcc).map(v => [v, v]), logF.who, 'Semua akun')}</select></label>
-        <label class="f">Aksi<select data-log="act">${opt(uniq(a => a.act).map(v => [v, LOG_ACTS[v]?.[0] || v]), logF.act, 'Semua aksi')}</select></label>
-        <label class="f">Data<select data-log="ent">${opt(uniq(a => a.ent).map(v => [v, logEnt(v)]), logF.ent, 'Semua data')}</select></label>
-        <label class="f">Dari<input type="date" data-log="from" value="${esc(logF.from)}"></label>
-        <label class="f">Sampai<input type="date" data-log="to" value="${esc(logF.to)}"></label>
-        <label class="f" style="flex:1;min-width:160px">Cari<input type="search" data-log="q" value="${esc(logF.q)}" placeholder="No. bukti, nama, nilai"></label>
-      </div>
-      <p class="muted" id="logCount" style="font-size:12px;margin:0 0 8px"></p>
-      <div class="table-wrap"><table class="rtable"><thead><tr><th>Waktu</th><th>Akun</th><th>Aksi</th><th>Data</th><th>Rincian</th><th>Perangkat</th></tr></thead><tbody id="logBody"></tbody></table></div>
-      <div style="text-align:center;margin-top:10px"><button type="button" class="btn sm" id="logMore" data-act="logMore" hidden>Tampilkan lebih banyak</button></div>
-    </div>`;
+  const pilih = (k, label, vals, all) => el('label', {class: 'f'}, label, el('select', {'data-log': k}, opt(vals, logF[k], all)));
+  return frag(el('div', {class: 'dash-head'}, el('div', null, el('h2', null, 'Log Aktivitas Server'), el('p', {class: 'muted'}, 'Riwayat input semua akun. Catatan tersimpan di server dan tidak bisa diubah atau dihapus.'))),
+    el('div', {class: 'grid cards'}, [['Aktivitas hari ini', todays.length.toLocaleString('id-ID'), '', `${new Set(todays.map(logAcc)).size} akun aktif`], ['Aktivitas 7 hari', week.length.toLocaleString('id-ID'), '', `${new Set(week.map(logAcc)).size} akun aktif`], ['Perubahan dan hapus 7 hari', String(week.filter(a => ['ubah', 'hapus', 'buka'].includes(a.act)).length), '', 'Perlu dicermati'], ['Total catatan', state.audit.length.toLocaleString('id-ID'), '', state.audit[0] ? 'Sejak ' + fmtDate(state.audit[0].ts.slice(0, 10)) : '']].map(statCardEl)),
+    el('div', {class: 'card', style: 'margin-top:16px'}, el('h3', null, 'Ringkasan per akun'), el('div', {class: 'table-wrap', id: 'logAccounts'})),
+    el('div', {class: 'card', style: 'margin-top:16px'}, el('h3', null, 'Riwayat input'),
+      el('div', {class: 'toolbar', id: 'logFilter'},
+        pilih('who', 'Akun', uniq(logAcc).map(v => [v, v]), 'Semua akun'),
+        pilih('act', 'Aksi', uniq(a => a.act).map(v => [v, LOG_ACTS[v]?.[0] || v]), 'Semua aksi'),
+        pilih('ent', 'Data', uniq(a => a.ent).map(v => [v, logEnt(v)]), 'Semua data'),
+        el('label', {class: 'f'}, 'Dari', el('input', {type: 'date', 'data-log': 'from', value: logF.from})),
+        el('label', {class: 'f'}, 'Sampai', el('input', {type: 'date', 'data-log': 'to', value: logF.to})),
+        el('label', {class: 'f', style: 'flex:1;min-width:160px'}, 'Cari', el('input', {type: 'search', 'data-log': 'q', value: logF.q, placeholder: 'No. bukti, nama, nilai'}))),
+      el('p', {class: 'muted', id: 'logCount', style: 'font-size:12px;margin:0 0 8px'}),
+      el('div', {class: 'table-wrap'}, el('table', {class: 'rtable'}, el('thead', null, el('tr', null, ['Waktu', 'Akun', 'Aksi', 'Data', 'Rincian', 'Perangkat'].map(h => el('th', null, h)))), el('tbody', {id: 'logBody'}))),
+      el('div', {style: 'text-align:center;margin-top:10px'}, el('button', {type: 'button', class: 'btn sm', id: 'logMore', 'data-act': 'logMore', hidden: true}, 'Tampilkan lebih banyak'))));
 }
 document.addEventListener('input', e => { const k = e.target.dataset?.log; if (!k) return; logF[k] = e.target.value; logF.limit = LOG_PAGE; logRender(); });
 function allDash() {
-  return `<p class="muted" style="margin:0">Halaman ini memuat ${DASH_PARTS.length} dasbor. Pilih bagian atau gulir ke bawah.</p>
-    <nav class="dash-jump" aria-label="Bagian dasbor">${DASH_PARTS.map(([name], i) => `<button type="button" class="btn sm" data-act="dJump" data-id="${i}">${name}</button>`).join('')}</nav>`
-    + DASH_PARTS.map(([name, fn], i) => { try { return `<section class="dash-sec" id="dash-${i}">${fn()}</section>`; } catch (e) { return `<section class="dash-sec" id="dash-${i}"><div class="notice">Dasbor ${name} gagal dimuat: ${esc(e?.message)}</div></section>`; } }).join('');
+  return frag(el('p', {class: 'muted', style: 'margin:0'}, `Halaman ini memuat ${DASH_PARTS.length} dasbor. Pilih bagian atau gulir ke bawah.`),
+    el('nav', {class: 'dash-jump', 'aria-label': 'Bagian dasbor'}, DASH_PARTS.map(([name], i) => el('button', {type: 'button', class: 'btn sm', 'data-act': 'dJump', 'data-id': i}, name))),
+    DASH_PARTS.map(([name, fn], i) => { try { return el('section', {class: 'dash-sec', id: 'dash-' + i}, fn()); } catch (e) { return el('section', {class: 'dash-sec', id: 'dash-' + i}, el('div', {class: 'notice'}, `Dasbor ${name} gagal dimuat: ${e?.message ?? ''}`)); } }));
 }
 function renderRoleDash() {
   const role = company?.role || 'owner';
   $('financeDash').hidden = true;
-  $('roleDash').innerHTML = role === 'owner' ? allDash() : ({sales: salesDash, warehouse: warehouseDash, hr: hrDash, finance: financeDash}[role] || ownerDash)();
-  $('roleDash').insertAdjacentHTML('beforeend', `<p class="muted" style="font-size:11px;text-align:center;margin-top:20px">Versi ${APP_VERSION} · peran ${esc(ROLES[role])}</p>`);
+  $('roleDash').replaceChildren(role === 'owner' ? allDash() : ({sales: salesDash, warehouse: warehouseDash, hr: hrDash, finance: financeDash}[role] || ownerDash)(),
+    el('p', {class: 'muted', style: 'font-size:11px;text-align:center;margin-top:20px'}, `Versi ${APP_VERSION} · peran ${ROLES[role] ?? ''}`));
   const jump = $('roleDash').querySelector('.dash-jump');
   if (jump) jump.style.top = document.querySelector('header').offsetHeight + 'px'; // tetap terlihat di bawah kepala halaman
   return true;
@@ -1043,18 +1050,21 @@ function creditProblem(d) {
 
 /* Gudang: barcode dan saran pesan ulang */
 const C39 = {0: 'nnnwwnwnn', 1: 'wnnwnnnnw', 2: 'nnwwnnnnw', 3: 'wnwwnnnnn', 4: 'nnnwwnnnw', 5: 'wnnwwnnnn', 6: 'nnwwwnnnn', 7: 'nnnwnnwnw', 8: 'wnnwnnwnn', 9: 'nnwwnnwnn', A: 'wnnnnwnnw', B: 'nnwnnwnnw', C: 'wnwnnwnnn', D: 'nnnnwwnnw', E: 'wnnnwwnnn', F: 'nnwnwwnnn', G: 'nnnnnwwnw', H: 'wnnnnwwnn', I: 'nnwnnwwnn', J: 'nnnnwwwnn', K: 'wnnnnnnww', L: 'nnwnnnnww', M: 'wnwnnnnwn', N: 'nnnnwnnww', O: 'wnnnwnnwn', P: 'nnwnwnnwn', Q: 'nnnnnnwww', R: 'wnnnnnwwn', S: 'nnwnnnwwn', T: 'nnnnwnwwn', U: 'wwnnnnnnw', V: 'nwwnnnnnw', W: 'wwwnnnnnn', X: 'nwnnwnnnw', Y: 'wwnnwnnnn', Z: 'nwwnwnnnn', '-': 'nwnnnnwnw', '.': 'wwnnnnwnn', ' ': 'nwwnnnwnn', '*': 'nwnnwnwnn'};
+// Barcode Code 39 sebagai SVG yang dibangun lewat createElementNS (mdn/content: files/en-us/web/api/document/createelementns)
 function barcodeSvg(code) {
-  let x = 0, bars = '';
+  const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg');
+  let x = 0;
   for (const ch of `*${code}*`) {
-    [...(C39[ch] || C39['-'])].forEach((p, i) => { const w = p === 'w' ? 3 : 1; if (i % 2 === 0) bars += `<rect x="${x}" y="0" width="${w}" height="50"/>`; x += w; });
+    [...(C39[ch] || C39['-'])].forEach((p, i) => { const w = p === 'w' ? 3 : 1; if (i % 2 === 0) { const r = document.createElementNS(NS, 'rect'); for (const [k, v] of [['x', x], ['y', 0], ['width', w], ['height', 50]]) r.setAttribute(k, String(v)); svg.append(r); } x += w; });
     x += 1;
   }
-  return `<svg viewBox="0 0 ${x} 50" width="${Math.min(320, x * 1.4)}" height="60" role="img" aria-label="Barcode ${esc(code)}" style="background:#fff" fill="#000">${bars}</svg>`;
+  for (const [k, v] of [['viewBox', `0 0 ${x} 50`], ['width', Math.min(320, x * 1.4)], ['height', 60], ['role', 'img'], ['aria-label', 'Barcode ' + code], ['style', 'background:#fff'], ['fill', '#000']]) svg.setAttribute(k, String(v));
+  return svg;
 }
 function printLabel(id) {
   const i = itemOf(id); if (!i) return;
   if (!i.code) return toast('Isi kode barang dulu');
-  $('printArea').innerHTML = `<div style="padding:12px;color:#000;background:#fff"><b>${esc(i.name)}</b><div>${barcodeSvg(i.code.toUpperCase())}</div><div>${esc(i.code)} · ${rp(i.price)}</div></div>`;
+  $('printArea').replaceChildren(el('div', {style: 'padding:12px;color:#000;background:#fff'}, el('b', null, i.name), el('div', null, barcodeSvg(i.code.toUpperCase())), el('div', null, `${i.code} · ${rp(i.price)}`)));
   document.body.classList.add('print-voucher'); window.print();
 }
 function reorderList() {
@@ -1128,7 +1138,7 @@ function moreObligations() {
   const out = [], now = today(), ym = now.slice(0, 7), role = company?.role || 'owner';
   if (['owner', 'finance'].includes(role)) {
     const due = state.recurring.filter(r => r.active && r.lastYm !== ym && +now.slice(8) >= r.day - 3);
-    if (due.length) out.push(['warn', `${due.length} tagihan berulang belum dicatat bulan ini: ${due.slice(0, 3).map(r => esc(r.name)).join(', ')}.`]);
+    if (due.length) out.push(['warn', `${due.length} tagihan berulang belum dicatat bulan ini: ${due.slice(0, 3).map(r => txt(r.name)).join(', ')}.`]);
   }
   return out;
 }
@@ -1153,20 +1163,28 @@ Object.assign(ACTIONS, {
   },
 });
 function moreReport(type, from, to, period) {
+  const td = v => el('td', null, v), n = v => el('td', {class: 'num'}, v);
   if (type === 'komisi') {
     const rows = state.salespeople.map(s => { const v = state.trades.reduce((x, t) => t.kind === 'sale' && t.salesId === s.id && inRange(t.date, from, to) ? x + tradeTotal(t) : x, 0); return [s, v]; });
-    return kop('Penjualan dan Komisi', period) + `<table><thead><tr><th>Nama</th><th class="num">Penjualan</th><th class="num">Komisi %</th><th class="num">Komisi</th></tr></thead>${rows.map(([s, v]) => `<tr><td>${esc(s.name)}</td><td class="num">${rp(v)}</td><td class="num">${String(s.rate).replace('.', ',')}%</td><td class="num">${rp(v * s.rate / 100)}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">Belum ada tenaga penjual.</td></tr>'}<tr class="total"><td>Total</td><td class="num">${rp(rows.reduce((s, r) => s + r[1], 0))}</td><td></td><td class="num">${rp(rows.reduce((s, r) => s + r[1] * r[0].rate / 100, 0))}</td></tr></table>` + signBlock();
+    return [kopEl('Penjualan dan Komisi', period), tbl(thead(th('Nama'), th('Penjualan', 1), th('Komisi %', 1), th('Komisi', 1)),
+      rows.length ? rows.map(([s, v]) => el('tr', null, td(s.name), n(rp(v)), n(`${String(s.rate).replace('.', ',')}%`), n(rp(v * s.rate / 100)))) : el('tr', null, el('td', {colspan: 4, class: 'muted'}, 'Belum ada tenaga penjual.')),
+      el('tr', {class: 'total'}, td('Total'), n(rp(rows.reduce((s, r) => s + r[1], 0))), td(), n(rp(rows.reduce((s, r) => s + r[1] * r[0].rate / 100, 0))))), signEl()];
   }
   if (type === 'pph21') {
     const y = (to || today()).slice(0, 4), m = new Map();
     for (const p of state.payrolls) if (p.period.startsWith(y)) for (const l of p.lines) { const r = m.get(l.empId) || {name: l.name, ptkp: l.ptkp, n: 0, bruto: 0, iur: 0, pph: 0}; r.n++; r.bruto += l.bruto; r.iur += l.ee.jht + l.ee.jp; r.pph += l.pph; r.name = l.name; m.set(l.empId, r); }
-    return kop('Rekap Penghasilan dan PPh 21 Setahun', 'Tahun ' + esc(y)) + `<table><thead><tr><th>Nama</th><th>PTKP</th><th class="num">Bulan</th><th class="num">Bruto</th><th class="num">Iuran JHT/JP</th><th class="num">PPh 21</th></tr></thead>${[...m.values()].map(r => `<tr><td>${esc(r.name)}</td><td>${esc(r.ptkp)}</td><td class="num">${r.n}</td><td class="num">${rp(r.bruto)}</td><td class="num">${rp(r.iur)}</td><td class="num">${rp(r.pph)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Belum ada penggajian tahun ini.</td></tr>'}</table><p class="muted" style="font-size:12px">Bahan penyusunan bukti potong. Bukti potong resmi tetap diterbitkan lewat Coretax.</p>` + signBlock();
+    const rows = [...m.values()];
+    return [kopEl('Rekap Penghasilan dan PPh 21 Setahun', 'Tahun ' + y), tbl(thead(th('Nama'), th('PTKP'), th('Bulan', 1), th('Bruto', 1), th('Iuran JHT/JP', 1), th('PPh 21', 1)),
+      rows.length ? rows.map(r => el('tr', null, td(r.name), td(r.ptkp), n(r.n), n(rp(r.bruto)), n(rp(r.iur)), n(rp(r.pph)))) : el('tr', null, el('td', {colspan: 6, class: 'muted'}, 'Belum ada penggajian tahun ini.'))),
+      pMuted('Bahan penyusunan bukti potong. Bukti potong resmi tetap diterbitkan lewat Coretax.'), signEl()];
   }
   if (type === 'ringkasan') {
     const y = (to || today()).slice(0, 4), prev = String(+y - 1), months = Array.from({length: 12}, (_, i) => `${y}-${String(i + 1).padStart(2, '0')}`);
     const rows = months.map(ym => { const l = lrData(ym + '-01', lastDayOf(ym)), p = lrData(prev + ym.slice(4) + '-01', lastDayOf(prev + ym.slice(4))); return {ym, l, p, cash: cashOf(ym, 'in') - cashOf(ym, 'out')}; });
     const sum = f => rows.reduce((s, r) => s + f(r), 0);
-    return kop('Ringkasan Bulanan', 'Tahun ' + esc(y)) + `<table><thead><tr><th>Bulan</th><th class="num">Pendapatan</th><th class="num">Tahun lalu</th><th class="num">Laba kotor</th><th class="num">Laba bersih</th><th class="num">Arus kas</th></tr></thead>${rows.map(r => `<tr><td>${ymLabel(r.ym)}</td><td class="num">${rp(r.l.ti)}</td><td class="num">${rp(r.p.ti)}</td><td class="num">${rp(r.l.ti - r.l.hpp)}</td><td class="num">${rp(r.l.net)}</td><td class="num">${rp(r.cash)}</td></tr>`).join('')}<tr class="total"><td>Total</td><td class="num">${rp(sum(r => r.l.ti))}</td><td class="num">${rp(sum(r => r.p.ti))}</td><td class="num">${rp(sum(r => r.l.ti - r.l.hpp))}</td><td class="num">${rp(sum(r => r.l.net))}</td><td class="num">${rp(sum(r => r.cash))}</td></tr></table>` + signBlock();
+    return [kopEl('Ringkasan Bulanan', 'Tahun ' + y), tbl(thead(th('Bulan'), th('Pendapatan', 1), th('Tahun lalu', 1), th('Laba kotor', 1), th('Laba bersih', 1), th('Arus kas', 1)),
+      rows.map(r => el('tr', null, td(ymLabel(r.ym)), n(rp(r.l.ti)), n(rp(r.p.ti)), n(rp(r.l.ti - r.l.hpp)), n(rp(r.l.net)), n(rp(r.cash)))),
+      el('tr', {class: 'total'}, td('Total'), n(rp(sum(r => r.l.ti))), n(rp(sum(r => r.p.ti))), n(rp(sum(r => r.l.ti - r.l.hpp))), n(rp(sum(r => r.l.net))), n(rp(sum(r => r.cash))))), signEl()];
   }
   return '';
 }

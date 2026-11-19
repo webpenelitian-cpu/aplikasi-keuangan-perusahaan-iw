@@ -138,12 +138,20 @@ const $ = id => document.getElementById(id);
 // setAttribute, jadi data pengguna tidak pernah diurai sebagai HTML (mdn/content: files/en-us/web/api/node/textcontent,
 // files/en-us/web/api/element/setattribute; OWASP/CheatSheetSeries: cheatsheets/DOM_based_XSS_Prevention_Cheat_Sheet.md).
 // Atribut bernilai null/undefined/false dilewati, true = atribut kosong; anak null/false/'' dilewati, array diratakan.
-const kidsOf = kids => { const out = []; for (const k of kids.flat(Infinity)) if (k != null && k !== false && k !== '') out.push(k instanceof Node ? k : String(k)); return out; };
+const kidsOf = (kids, out = []) => { for (const k of kids) { if (k == null || k === false || k === '') continue; if (Array.isArray(k)) kidsOf(k, out); else out.push(k instanceof Node ? k : String(k)); } return out; };
 function el(tag, attrs, ...kids) {
   const e = document.createElement(tag);
   if (attrs) for (const k in attrs) { const v = attrs[k]; if (v != null && v !== false) e.setAttribute(k, v === true ? '' : String(v)); }
-  e.append(...kidsOf(kids));
+  // Jalur cepat sel tabel: satu anak teks -> satu simpul teks lewat textContent (DOM sama dengan append, lebih ringan)
+  if (kids.length === 1) { const k = kids[0]; if (typeof k === 'string') { if (k !== '') e.textContent = k; return e; } if (typeof k === 'number') { e.textContent = String(k); return e; } }
+  if (kids.length) e.append(...kidsOf(kids));
   return e;
+}
+// Baris tabel besar: prototipe <tr> (atribut sel) dibuat sekali lalu dikloning; sel diisi textContent/append.
+// DOM identik dengan el() per sel, tetapi jauh lebih ringan untuk ribuan baris (mdn/content: files/en-us/web/api/node/clonenode).
+function rowMaker(...cellAttrs) {
+  const proto = el('tr', null, cellAttrs.map(a => el('td', a)));
+  return (...vals) => { const r = proto.cloneNode(true); let td = r.firstElementChild; for (let i = 0; i < vals.length; i++, td = td.nextElementSibling) { const v = vals[i]; if (v == null || v === false || v === '') continue; if (typeof v === 'string' || typeof v === 'number') td.textContent = String(v); else td.append(...kidsOf([v])); } return r; };
 }
 const frag = (...kids) => { const f = document.createDocumentFragment(); f.append(...kidsOf(kids)); return f; };
 const emptyRow = (span, text) => el('tr', null, el('td', {colspan: span, class: 'empty', 'data-label': ''}, text));
@@ -173,12 +181,6 @@ function logoEl(size) {
   const c = state.company;
   if (LOGO_RE.test(c.logo)) return el('img', {src: c.logo, width: size, height: size, alt: 'Logo', style: 'object-fit:contain;border-radius:10px;flex:0 0 auto'});
   return el('img', {src: BRAND_LOGO, width: size, height: size, alt: '', style: 'object-fit:contain;flex:0 0 auto'});
-}
-function logoHTML(size) {
-  const c = state.company;
-  if (LOGO_RE.test(c.logo)) return `<img src="${c.logo}" width="${size}" height="${size}" alt="Logo" style="object-fit:contain;border-radius:10px;flex:0 0 auto">`;
-  // Tanpa logo unggahan: monogram GM (potongan tengah logo, bukan stempel utuh)
-  return `<img src="${BRAND_LOGO}" width="${size}" height="${size}" alt="" style="object-fit:contain;flex:0 0 auto">`;
 }
 
 function defaultState() {
@@ -977,8 +979,10 @@ const catName = id => catOf(id)?.name || '—';
 const catLabel = id => { const c = catOf(id); return c ? (c.code ? `<span class="code">${esc(c.code)}</span>` : '') + esc(c.name) : '—'; };
 const accLabel = a => (a.code ? `<span class="code">${esc(a.code)}</span>` : '') + esc(a.name);
 // Padanan DOM aman untuk catLabel/accLabel/accHTML (dipakai tampilan yang sudah tidak memakai innerHTML)
-const catLabelEl = id => { const c = catOf(id); return c ? [c.code ? el('span', {class: 'code'}, c.code) : null, c.name] : '—'; };
-const accLabelEl = a => [a.code ? el('span', {class: 'code'}, a.code) : null, a.name];
+let SPAN_CODE = null; // prototipe <span class="code"> untuk dikloning (dipakai ribuan kali di laporan)
+const codeEl = t => { const s = (SPAN_CODE ||= el('span', {class: 'code'})).cloneNode(); if (t != null && t !== '') s.textContent = String(t); return s; };
+const catLabelEl = id => { const c = catOf(id); return c ? [c.code ? codeEl(c.code) : null, c.name] : '—'; };
+const accLabelEl = a => [a.code ? codeEl(a.code) : null, a.name];
 // Transaksi yang dihitung sebagai pendapatan/beban di Laba Rugi
 const inLR = t => t.type !== 'transfer' && catOf(t.categoryId)?.lr !== false;
 const statCard = ([l, v, c, sub]) => `<div class="card stat"><div class="label">${l}</div><div class="value ${c}">${v}</div>${sub ? `<div class="muted" style="font-size:12px;margin-top:4px">${sub}</div>` : ''}</div>`;
@@ -1109,40 +1113,41 @@ function buildJournal() {
 }
 const accKey = a => a.code + '|' + a.name;
 const accHTML = a => `<span class="code">${esc(a.code)}</span>${esc(a.name)}`;
-const accEl = a => [el('span', {class: 'code'}, a.code), a.name];
+const accEl = a => [codeEl(a.code), a.name];
 
 // Laba rugi periode: akrual (dari jurnal) atau kas (dari transaksi), sesuai pengaturan
 function lrData(from, to) {
   const ins = new Map(), outs = new Map();
-  const put = (m, key, label, v) => { const r = m.get(key) || {label, v: 0}; r.v += v; m.set(key, r); };
+  // label() (string HTML lama) = kunci urut agar urutan identik, mk() = label sebagai simpul; keduanya baru dihitung saat kunci pertama kali muncul
+  const put = (m, key, label, v, mk) => { let r = m.get(key); if (!r) { r = {label: label(), mk, v: 0}; m.set(key, r); } r.v += v; };
   if (state.company.basis === 'kas') {
     for (const t of state.tx) if (inRange(t.date, from, to) && inLR(t) && !t.payrollId && !t.returnId)
-      put(t.type === 'in' ? ins : outs, t.categoryId, catLabel(t.categoryId), t.amount);
+      put(t.type === 'in' ? ins : outs, t.categoryId, () => catLabel(t.categoryId), t.amount, () => catLabelEl(t.categoryId));
     for (const t of state.trades) if (inRange(t.date, from, to)) {
-      if (t.kind === 'purchase') { put(outs, accKey(ACC_BEBAN_JASA), accHTML(ACC_BEBAN_JASA), M().stock.svc.get(t.id) || 0); continue; }
-      put(outs, accKey(ACC_HPP), accHTML(ACC_HPP), M().stock.cogs.get(t.id) || 0);
+      if (t.kind === 'purchase') { put(outs, accKey(ACC_BEBAN_JASA), () => accHTML(ACC_BEBAN_JASA), M().stock.svc.get(t.id) || 0, () => accEl(ACC_BEBAN_JASA)); continue; }
+      put(outs, accKey(ACC_HPP), () => accHTML(ACC_HPP), M().stock.cogs.get(t.id) || 0, () => accEl(ACC_HPP));
       const c = tradeCat(t);
-      put(ins, c?.id, catLabel(c?.id), t.pph - (t.wapu ? 0 : t.ppn));
+      put(ins, c?.id, () => catLabel(c?.id), t.pph - (t.wapu ? 0 : t.ppn), () => catLabelEl(c?.id));
     }
     const st = M().stock;
     for (const r of state.returns) if (inRange(r.date, from, to)) {
       const o = state.trades.find(t => t.id === r.origId), c = o && tradeCat(o);
-      if (r.kind === 'sale') { put(ins, c?.id, catLabel(c?.id), -r.dpp); put(outs, accKey(ACC_HPP), accHTML(ACC_HPP), -(st.rcost.get(r.id) || 0)); }
-      else { put(outs, accKey(ACC_BEBAN_JASA), accHTML(ACC_BEBAN_JASA), -(st.rsvc.get(r.id) || 0)); put(outs, accKey(ACC_HPP), accHTML(ACC_HPP), st.rdiff.get(r.id) || 0); }
+      if (r.kind === 'sale') { put(ins, c?.id, () => catLabel(c?.id), -r.dpp, () => catLabelEl(c?.id)); put(outs, accKey(ACC_HPP), () => accHTML(ACC_HPP), -(st.rcost.get(r.id) || 0), () => accEl(ACC_HPP)); }
+      else { put(outs, accKey(ACC_BEBAN_JASA), () => accHTML(ACC_BEBAN_JASA), -(st.rsvc.get(r.id) || 0), () => accEl(ACC_BEBAN_JASA)); put(outs, accKey(ACC_HPP), () => accHTML(ACC_HPP), st.rdiff.get(r.id) || 0, () => accEl(ACC_HPP)); }
     }
-    for (const a of state.adjusts) if (inRange(a.date, from, to)) put(outs, accKey(ACC_SELISIH), accHTML(ACC_SELISIH), -(st.adj.get(a.id) || 0));
+    for (const a of state.adjusts) if (inRange(a.date, from, to)) put(outs, accKey(ACC_SELISIH), () => accHTML(ACC_SELISIH), -(st.adj.get(a.id) || 0), () => accEl(ACC_SELISIH));
     for (const p of state.payrolls) if (inRange(p.date, from, to)) {
       const s = paySum(p), g = sysCat('5-201');
-      put(outs, g?.id, catLabel(g?.id), s.net + s.pph + s.ee + s.deduct);
-      put(outs, accKey(ACC_BEBAN_BPJS), accHTML(ACC_BEBAN_BPJS), s.co);
+      put(outs, g?.id, () => catLabel(g?.id), s.net + s.pph + s.ee + s.deduct, () => catLabelEl(g?.id));
+      put(outs, accKey(ACC_BEBAN_BPJS), () => accHTML(ACC_BEBAN_BPJS), s.co, () => accEl(ACC_BEBAN_BPJS));
     }
   } else {
     for (const e of M().journal) {
       if (!e.date || !inRange(e.date, from, to)) continue;
       for (const [acc, dr] of [[e.dr, true], [e.cr, false]]) {
         const g = acc.code[0];
-        if (g === '4') put(ins, accKey(acc), accHTML(acc), dr ? -e.amt : e.amt);
-        else if (g === '5') put(outs, accKey(acc), accHTML(acc), dr ? e.amt : -e.amt);
+        if (g === '4') put(ins, accKey(acc), () => accHTML(acc), dr ? -e.amt : e.amt, () => accEl(acc));
+        else if (g === '5') put(outs, accKey(acc), () => accHTML(acc), dr ? e.amt : -e.amt, () => accEl(acc));
       }
     }
   }
@@ -1163,7 +1168,7 @@ function neracaData(to) {
     for (const [acc, dr] of [[e.dr, true], [e.cr, false]]) {
       const g = acc.code[0], s = dr ? e.amt : -e.amt; // positif = debit
       if (g === '1' || g === '2' || g === '3') {
-        const m = G[g], r = m.get(acc.code) || {label: accHTML(acc), v: 0};
+        const m = G[g], r = m.get(acc.code) || {label: accHTML(acc), mk: () => accEl(acc), v: 0};
         r.v += g === '1' ? s : -s; m.set(acc.code, r);
       } else if (e.date && e.date >= yStart) cur -= s; else prev -= s;
     }
@@ -1221,22 +1226,22 @@ function obligations() {
     const paid = pphPaidFor(prevYm);
     if (pph > 0) out.push(paid >= pph
       ? ['ok', `PPh final masa ${MONTHS_FULL[+prevYm.slice(5) - 1]} ${prevYm.slice(0, 4)} sudah disetor (${rp(paid)}).`]
-      : [now > ym + '-15' ? 'bad' : 'warn', `Setor PPh final masa ${MONTHS_FULL[+prevYm.slice(5) - 1]} ${prevYm.slice(0, 4)}: <b>${rp(pph - paid)}</b>, jatuh tempo 15 ${MONTHS_FULL[+ym.slice(5) - 1]} ${y}.`]);
+      : [now > ym + '-15' ? 'bad' : 'warn', [`Setor PPh final masa ${MONTHS_FULL[+prevYm.slice(5) - 1]} ${prevYm.slice(0, 4)}: `, el('b', null, rp(pph - paid)), `, jatuh tempo 15 ${MONTHS_FULL[+ym.slice(5) - 1]} ${y}.`]]);
   }
   if (+now.slice(5, 7) <= (ent.badan ? 4 : 3))
-    out.push(['warn', `SPT Tahunan PPh ${ent.badan ? 'Badan' : 'Orang Pribadi'} tahun ${y - 1}: batas lapor ${ent.badan ? '30 April' : '31 Maret'} ${y}. Gunakan laporan <i>Laporan Keuangan Tahunan</i> ${y - 1} sebagai lampiran.`]);
+    out.push(['warn', [`SPT Tahunan PPh ${ent.badan ? 'Badan' : 'Orang Pribadi'} tahun ${y - 1}: batas lapor ${ent.badan ? '30 April' : '31 Maret'} ${y}. Gunakan laporan `, el('i', null, 'Laporan Keuangan Tahunan'), ` ${y - 1} sebagai lampiran.`]]);
   if (c.entity === 'ptp' && +now.slice(5, 7) <= 6)
     out.push(['warn', `Laporan keuangan PT Perorangan tahun ${y - 1} wajib disampaikan ke Menteri Hukum (AHU Online) paling lambat 30 Juni ${y} (PP 8/2021).`]);
   if (last && y > last) out.push(['bad', `Masa PPh final 0,5% berakhir di tahun pajak ${last} (${ent.label}: ${ent.years} tahun, PP 55/2022). Sejak ${last + 1} gunakan tarif PPh umum; ubah tarif di menu Atur.`]);
   else if (last && y === last) out.push(['warn', `Tahun ${y} adalah tahun terakhir PPh final 0,5% untuk ${ent.label} (PP 55/2022).`]);
-  if (!c.taxYear) out.push(['warn', 'Isi <b>tahun mulai PPh final</b> di menu Atur agar batas masa berlaku PP 55/2022 bisa dipantau.']);
+  if (!c.taxYear) out.push(['warn', ['Isi ', el('b', null, 'tahun mulai PPh final'), ' di menu Atur agar batas masa berlaku PP 55/2022 bisa dipantau.']]);
   const omzet = lrData(y + '-01-01', y + '-12-31').ti;
   if (omzet > OMZET_CAP) out.push(['bad', `Peredaran bruto ${y} (${rp(omzet)}) melewati Rp4,8 miliar: tahun pajak berikutnya tidak lagi memakai PPh final 0,5%.`]);
   else if (omzet > OMZET_CAP * 0.8) out.push(['warn', `Peredaran bruto ${y} sudah ${rp(omzet)} (mendekati batas Rp4,8 miliar PPh final).`]);
   out.push(...bizObligations());
   const suggestedLock = lastDayOf(addMonths(ym, -2));
   if (state.tx.length && (!state.lockedUntil || state.lockedUntil < suggestedLock))
-    out.push(['warn', `Belum tutup buku s.d. ${fmtDate(suggestedLock)}. Tutup buku mencegah data periode lalu berubah setelah dilaporkan. <button class="btn sm" data-act="goLock">Tutup buku</button>`]);
+    out.push(['warn', `Belum tutup buku s.d. ${fmtDate(suggestedLock)}. Tutup buku mencegah data periode lalu berubah setelah dilaporkan. `]); // dasbor tidak menampilkan tombol di daftar ini
   return out;
 }
 
@@ -1500,22 +1505,15 @@ function printVoucher(t) {
   const party = t.type === 'in' ? 'Diterima dari' : t.type === 'out' ? 'Dibayarkan kepada' : 'Mutasi';
   const debt = t.debtId && state.debts.find(d => d.id === t.debtId);
   const c = state.company, blank = '(..........................)';
-  $('printArea').innerHTML = `<div class="report">${kop(title, 'No. ' + esc(t.ref || '-'))}
-    <table class="voucher">
-      <tr><td>Tanggal</td><td>${fmtDate(t.date)}</td></tr>
-      <tr><td>${party}</td><td>${esc(debt ? debt.party : t.type === 'transfer' ? accName(t.accountId) + ' → ' + accName(t.toAccountId) : '')}&nbsp;</td></tr>
-      <tr><td>Uraian</td><td>${esc(t.desc || catName(t.categoryId))}</td></tr>
-      <tr><td>Akun kas/bank</td><td>${esc(accName(t.accountId))}</td></tr>
-      ${t.type !== 'transfer' ? `<tr><td>Kode akun lawan</td><td>${debt ? (debt.kind === 'piutang' ? '1-201 Piutang usaha' : '2-101 Utang usaha') : catLabel(t.categoryId)}</td></tr>` : ''}
-      <tr><td>Jumlah</td><td><b style="font-size:16px">${rp(t.amount)}</b></td></tr>
-      <tr><td>Terbilang</td><td><i>${esc(terbilang(t.amount))}</i></td></tr>
-    </table>
-    <div class="sign three">
-      <div>Dibuat oleh<div class="sp"></div><b>${c.preparedName ? esc(c.preparedName) : blank}</b></div>
-      <div>Disetujui oleh<div class="sp"></div><b>${c.checkedName ? esc(c.checkedName) : blank}</b></div>
-      <div>${t.type === 'in' ? 'Penyetor' : 'Penerima'}<div class="sp"></div><b>${blank}</b></div>
-    </div>
-    <p class="muted" style="font-size:11px">Dicetak ${new Date().toLocaleString('id-ID')} · lampirkan dokumen pendukung (faktur/kuitansi/bukti transfer) dan simpan minimal 10 tahun (UU KUP Pasal 28).</p></div>`;
+  const vr = (a, b) => el('tr', null, el('td', null, a), el('td', null, b)), sp = () => el('div', {class: 'sp'});
+  $('printArea').replaceChildren(el('div', {class: 'report'}, kopEl(title, 'No. ' + (t.ref || '-')),
+    tblC('voucher', vr('Tanggal', fmtDate(t.date)), vr(party, (debt ? debt.party : t.type === 'transfer' ? accName(t.accountId) + ' → ' + accName(t.toAccountId) : '') + '\u00a0'),
+      vr('Uraian', t.desc || catName(t.categoryId)), vr('Akun kas/bank', accName(t.accountId)),
+      t.type !== 'transfer' ? vr('Kode akun lawan', debt ? (debt.kind === 'piutang' ? '1-201 Piutang usaha' : '2-101 Utang usaha') : catLabelEl(t.categoryId)) : null,
+      vr('Jumlah', el('b', {style: 'font-size:16px'}, rp(t.amount))), vr('Terbilang', el('i', null, terbilang(t.amount)))),
+    el('div', {class: 'sign three'}, el('div', null, 'Dibuat oleh', sp(), el('b', null, c.preparedName || blank)), el('div', null, 'Disetujui oleh', sp(), el('b', null, c.checkedName || blank)),
+      el('div', null, t.type === 'in' ? 'Penyetor' : 'Penerima', sp(), el('b', null, blank))),
+    el('p', {class: 'muted', style: 'font-size:11px'}, `Dicetak ${new Date().toLocaleString('id-ID')} · lampirkan dokumen pendukung (faktur/kuitansi/bukti transfer) dan simpan minimal 10 tahun (UU KUP Pasal 28).`)));
   document.body.classList.add('print-voucher');
   window.print();
 }
@@ -1699,70 +1697,64 @@ function initReportDates() {
   const y = new Date().getFullYear();
   $('rFrom').value = `${y}-01-01`; $('rTo').value = `${y}-12-31`;
 }
-function kop(title, sub) {
-  const c = state.company;
-  const meta = [c.address, c.npwp && 'NPWP ' + c.npwp, c.nib && 'NIB ' + c.nib, c.phone, c.email].filter(Boolean).map(esc).join(' · ');
-  return `<div class="kop">${logoHTML(48)}<div><div class="kop-name">${esc(c.name || 'Nama Perusahaan')}</div>${c.tagline ? `<div class="kop-meta"><i>${esc(c.tagline)}</i></div>` : ''}<div class="kop-meta">${meta}</div></div></div>
-    <h2>${title}</h2><div class="sub">${sub}</div>`;
-}
-function signBlock() {
-  const c = state.company, blank = '(....................................)';
-  return `<div class="sign">
-    <div>Dibuat oleh<div class="sp"></div><b>${c.preparedName ? esc(c.preparedName.toUpperCase()) : blank}</b><div>${esc(c.preparedTitle)}</div></div>
-    <div>Diperiksa oleh<div class="sp"></div><b>${c.checkedName ? esc(c.checkedName.toUpperCase()) : blank}</b><div>${esc(c.checkedTitle)}</div></div></div>`;
-}
 const basisNote = () => state.company.basis === 'kas'
   ? 'Basis kas: pendapatan dan beban diakui saat uang diterima/dibayar.'
   : 'Basis akrual (SAK EMKM): pendapatan diakui saat faktur piutang diterbitkan atau kas diterima, beban saat tagihan utang diterima atau kas dibayar.';
-const footerNote = () => `<p class="muted" style="font-size:11px">Dicetak ${new Date().toLocaleString('id-ID')} dari ${esc(APP_SUB + ' ' + APP_NAME)}. ${state.lockedUntil ? 'Data s.d. ' + fmtDate(state.lockedUntil) + ' telah ditutup (tutup buku).' : 'Periode belum ditutup; angka masih dapat berubah.'}</p>`;
 
-function lrTable(L) {
-  const rows = list => list.map(r => `<tr><td style="padding-left:24px">${r.label}</td><td class="num">${rp(r.v)}</td></tr>`).join('')
-    || '<tr><td class="muted" style="padding-left:24px">—</td><td></td></tr>';
-  return `<table>
-    <tr class="sect"><td colspan="2">Pendapatan</td></tr>${rows(L.ins)}
-    <tr><td><b>Total Pendapatan</b></td><td class="num"><b>${rp(L.ti)}</b></td></tr>
-    ${L.hpp ? `<tr><td style="padding-left:24px">${accHTML(ACC_HPP)}</td><td class="num">(${rp(L.hpp)})</td></tr>
-    <tr><td><b>Laba Kotor</b></td><td class="num"><b>${rp(L.ti - L.hpp)}</b></td></tr>` : ''}
-    <tr class="sect"><td colspan="2">Beban</td></tr>${rows(L.opex)}
-    <tr><td><b>Total Beban</b></td><td class="num"><b>(${rp(L.to - L.hpp)})</b></td></tr>
-    <tr class="total"><td>${L.net >= 0 ? 'LABA BERSIH' : 'RUGI BERSIH'}</td><td class="num ${L.net >= 0 ? 'in' : 'out'}">${rp(L.net)}</td></tr>
-  </table>`;
+// Pembangun laporan DOM (pengganti templat HTML): tbody hanya dibuat bila ada baris, sama seperti hasil parser HTML
+const thead = (...cols) => el('thead', null, el('tr', null, cols));
+const th = (t, num) => el('th', num ? {class: 'num'} : null, t);
+const tblC = (cls, ...rows) => { const t = tbl(null, ...rows); t.setAttribute('class', cls); return t; };
+const tbl = (head, ...rows) => { const r = rows.flat(Infinity).filter(x => x != null && x !== false && x !== ''); return el('table', null, head, r.length ? el('tbody', null, r) : null); };
+const pMuted = t => el('p', {class: 'muted', style: 'font-size:12px'}, t);
+function kopEl(title, sub) {
+  const c = state.company;
+  const meta = [c.address, c.npwp && 'NPWP ' + c.npwp, c.nib && 'NIB ' + c.nib, c.phone, c.email].filter(Boolean).join(' · ');
+  return [el('div', {class: 'kop'}, logoEl(48), el('div', null, el('div', {class: 'kop-name'}, c.name || 'Nama Perusahaan'), c.tagline ? el('div', {class: 'kop-meta'}, el('i', null, c.tagline)) : null, el('div', {class: 'kop-meta'}, meta))),
+    el('h2', null, title), el('div', {class: 'sub'}, sub)];
 }
-function neracaTable(N) {
-  const rows = list => list.map(r => `<tr><td style="padding-left:24px">${r.label}</td><td class="num">${rp(r.v)}</td></tr>`).join('')
-    || '<tr><td class="muted" style="padding-left:24px">—</td><td></td></tr>';
-  return `<table>
-    <tr class="sect"><td colspan="2">ASET</td></tr>${rows(N.aset)}
-    <tr class="total"><td>TOTAL ASET</td><td class="num">${rp(N.ta)}</td></tr>
-    <tr class="sect"><td colspan="2">LIABILITAS</td></tr>${rows(N.liab)}
-    <tr><td><b>Total Liabilitas</b></td><td class="num"><b>${rp(N.tl)}</b></td></tr>
-    <tr class="sect"><td colspan="2">EKUITAS</td></tr>${rows(N.eq)}
-    <tr><td style="padding-left:24px">Saldo laba (rugi) tahun-tahun lalu</td><td class="num">${rp(N.prev)}</td></tr>
-    <tr><td style="padding-left:24px">Laba (rugi) tahun berjalan</td><td class="num">${rp(N.cur)}</td></tr>
-    <tr><td><b>Total Ekuitas</b></td><td class="num"><b>${rp(N.te)}</b></td></tr>
-    <tr class="total"><td>TOTAL LIABILITAS DAN EKUITAS</td><td class="num">${rp(N.tl + N.te)}</td></tr>
-  </table>
-  <p style="font-size:12px" class="${N.diff ? 'out' : 'in'}">${N.diff ? '⚠ Tidak seimbang, selisih ' + rp(N.diff) + '. Periksa kode akun kategori.' : '✓ Seimbang: total aset = total liabilitas dan ekuitas.'}</p>`;
+function signEl() {
+  const c = state.company, blank = '(....................................)';
+  return el('div', {class: 'sign'},
+    el('div', null, 'Dibuat oleh', el('div', {class: 'sp'}), el('b', null, c.preparedName ? c.preparedName.toUpperCase() : blank), el('div', null, c.preparedTitle)),
+    el('div', null, 'Diperiksa oleh', el('div', {class: 'sp'}), el('b', null, c.checkedName ? c.checkedName.toUpperCase() : blank), el('div', null, c.checkedTitle)));
 }
-function notesHTML(from, to, N, L) {
+const footerEl = () => el('p', {class: 'muted', style: 'font-size:11px'}, `Dicetak ${new Date().toLocaleString('id-ID')} dari ${APP_SUB + ' ' + APP_NAME}. ${state.lockedUntil ? 'Data s.d. ' + fmtDate(state.lockedUntil) + ' telah ditutup (tutup buku).' : 'Periode belum ditutup; angka masih dapat berubah.'}`);
+const sectRow = (t, span = 2) => el('tr', {class: 'sect'}, el('td', {colspan: span}, t));
+const indentRows = list => list.length ? list.map(r => el('tr', null, el('td', {style: 'padding-left:24px'}, r.mk()), el('td', {class: 'num'}, rp(r.v)))) : [el('tr', null, el('td', {class: 'muted', style: 'padding-left:24px'}, '—'), el('td'))];
+const boldRow = (t, v) => el('tr', null, el('td', null, el('b', null, t)), el('td', {class: 'num'}, el('b', null, v)));
+const totalRow = (t, v, cls = 'num') => el('tr', {class: 'total'}, el('td', null, t), el('td', {class: cls}, v));
+function lrTableEl(L) {
+  return tbl(null, sectRow('Pendapatan'), indentRows(L.ins), boldRow('Total Pendapatan', rp(L.ti)),
+    L.hpp ? [el('tr', null, el('td', {style: 'padding-left:24px'}, accEl(ACC_HPP)), el('td', {class: 'num'}, `(${rp(L.hpp)})`)), boldRow('Laba Kotor', rp(L.ti - L.hpp))] : null,
+    sectRow('Beban'), indentRows(L.opex), boldRow('Total Beban', `(${rp(L.to - L.hpp)})`),
+    totalRow(L.net >= 0 ? 'LABA BERSIH' : 'RUGI BERSIH', rp(L.net), 'num ' + (L.net >= 0 ? 'in' : 'out')));
+}
+function neracaTableEl(N) {
+  const plain = (t, v) => el('tr', null, el('td', {style: 'padding-left:24px'}, t), el('td', {class: 'num'}, v));
+  return [tbl(null, sectRow('ASET'), indentRows(N.aset), totalRow('TOTAL ASET', rp(N.ta)),
+    sectRow('LIABILITAS'), indentRows(N.liab), boldRow('Total Liabilitas', rp(N.tl)),
+    sectRow('EKUITAS'), indentRows(N.eq), plain('Saldo laba (rugi) tahun-tahun lalu', rp(N.prev)), plain('Laba (rugi) tahun berjalan', rp(N.cur)), boldRow('Total Ekuitas', rp(N.te)),
+    totalRow('TOTAL LIABILITAS DAN EKUITAS', rp(N.tl + N.te))),
+  el('p', {style: 'font-size:12px', class: N.diff ? 'out' : 'in'}, N.diff ? '⚠ Tidak seimbang, selisih ' + rp(N.diff) + '. Periksa kode akun kategori.' : '✓ Seimbang: total aset = total liabilitas dan ekuitas.')];
+}
+function notesEl(from, to, N, L) {
   const c = state.company, ent = ENTITY[c.entity] || ENTITY.ptp, {last} = pphEligibility();
   const prive = state.tx.filter(t => inRange(t.date, from, to) && t.type === 'out' && /prive|penarikan pemilik/i.test(catName(t.categoryId))).reduce((s, t) => s + t.amount, 0);
   const debtsOpen = kind => state.debts.filter(d => d.kind === kind && d.date <= N.asOf && remainOf(d, N.asOf) > 0);
-  const debtRows = kind => debtsOpen(kind).map(d => `<tr><td style="padding-left:24px">${esc(d.party)} · ${esc(d.ref || '-')} · jatuh tempo ${d.due ? fmtDate(d.due) : '—'}</td><td class="num">${rp(remainOf(d, N.asOf))}</td></tr>`).join('') || '<tr><td class="muted" style="padding-left:24px">Nihil</td><td></td></tr>';
-  return `<h3>Catatan atas Laporan Keuangan</h3>
-  <ol class="notes">
-    <li><b>Umum.</b> ${esc(c.name || 'Entitas')} adalah ${esc(ent.label)}${c.npwp ? ' dengan NPWP ' + esc(c.npwp) : ''}${c.nib ? ', NIB ' + esc(c.nib) : ''}${c.address ? ', beralamat di ' + esc(c.address) : ''}.</li>
-    <li><b>Dasar penyusunan.</b> Laporan disusun berdasarkan Standar Akuntansi Keuangan Entitas Mikro, Kecil, dan Menengah (SAK EMKM) dengan asumsi kelangsungan usaha, dalam mata uang Rupiah, untuk periode ${from ? fmtDate(from) : 'awal pencatatan'} s.d. ${fmtDate(to)}. ${esc(basisNote())}</li>
-    <li><b>Kas dan setara kas</b> terdiri atas kas tunai dan saldo rekening bank: ${state.accounts.map(a => esc(a.name) + ' ' + rp(balance(a.id, N.asOf))).join('; ') || 'nihil'}.</li>
-    <li><b>Piutang usaha</b> dicatat sebesar nilai faktur dikurangi pelunasan. Rincian per ${fmtDate(N.asOf)}:<table>${debtRows('piutang')}</table></li>
-    <li><b>Utang usaha</b> dicatat sebesar nilai tagihan dikurangi pembayaran. Rincian per ${fmtDate(N.asOf)}:<table>${debtRows('utang')}</table></li>
-    ${state.items.some(i => i.kind === 'barang') ? `<li><b>Persediaan</b> dicatat sebesar biaya perolehan dengan metode rata-rata tertimbang (moving average). Nilai per ${fmtDate(N.asOf)}: ${rp(stockValue(N.asOf))}.</li>` : ''}
-    <li><b>Aset tetap</b> dicatat sebesar biaya perolehan. Aset yang didaftarkan di menu ERP → Aset disusutkan otomatis dengan metode garis lurus.</li>
-    <li><b>Perpajakan.</b> ${last ? `Entitas memakai PPh final ${String(c.pphRate).replace('.', ',')}% atas peredaran bruto (PP 55/2022) sampai tahun pajak ${last}.` : `Tarif PPh final yang dipakai ${String(c.pphRate).replace('.', ',')}% atas peredaran bruto (PP 55/2022).`} Beban PPh final periode ini termasuk dalam beban usaha.</li>
-    <li><b>Pemisahan harta.</b> Penarikan untuk keperluan pribadi pemilik (prive) periode ini: ${rp(prive)}, dicatat sebagai pengurang ekuitas, bukan beban usaha.</li>
-    <li><b>Laba (rugi)</b> periode ini ${rp(L.net)}.</li>
-  </ol>`;
+  const debtRows = kind => { const l = debtsOpen(kind); return tbl(null, l.length ? l.map(d => el('tr', null, el('td', {style: 'padding-left:24px'}, `${d.party ?? ''} · ${d.ref || '-'} · jatuh tempo ${d.due ? fmtDate(d.due) : '—'}`), el('td', {class: 'num'}, rp(remainOf(d, N.asOf))))) : el('tr', null, el('td', {class: 'muted', style: 'padding-left:24px'}, 'Nihil'), el('td'))); };
+  const li = (judul, ...rest) => el('li', null, el('b', null, judul), ...rest);
+  return [el('h3', null, 'Catatan atas Laporan Keuangan'), el('ol', {class: 'notes'},
+    li('Umum.', ` ${c.name || 'Entitas'} adalah ${ent.label}${c.npwp ? ' dengan NPWP ' + c.npwp : ''}${c.nib ? ', NIB ' + c.nib : ''}${c.address ? ', beralamat di ' + c.address : ''}.`),
+    li('Dasar penyusunan.', ` Laporan disusun berdasarkan Standar Akuntansi Keuangan Entitas Mikro, Kecil, dan Menengah (SAK EMKM) dengan asumsi kelangsungan usaha, dalam mata uang Rupiah, untuk periode ${from ? fmtDate(from) : 'awal pencatatan'} s.d. ${fmtDate(to)}. ${basisNote()}`),
+    li('Kas dan setara kas', ` terdiri atas kas tunai dan saldo rekening bank: ${state.accounts.map(a => a.name + ' ' + rp(balance(a.id, N.asOf))).join('; ') || 'nihil'}.`),
+    li('Piutang usaha', ` dicatat sebesar nilai faktur dikurangi pelunasan. Rincian per ${fmtDate(N.asOf)}:`, debtRows('piutang')),
+    li('Utang usaha', ` dicatat sebesar nilai tagihan dikurangi pembayaran. Rincian per ${fmtDate(N.asOf)}:`, debtRows('utang')),
+    state.items.some(i => i.kind === 'barang') ? li('Persediaan', ` dicatat sebesar biaya perolehan dengan metode rata-rata tertimbang (moving average). Nilai per ${fmtDate(N.asOf)}: ${rp(stockValue(N.asOf))}.`) : null,
+    li('Aset tetap', ' dicatat sebesar biaya perolehan. Aset yang didaftarkan di menu ERP → Aset disusutkan otomatis dengan metode garis lurus.'),
+    li('Perpajakan.', ` ${last ? `Entitas memakai PPh final ${String(c.pphRate).replace('.', ',')}% atas peredaran bruto (PP 55/2022) sampai tahun pajak ${last}.` : `Tarif PPh final yang dipakai ${String(c.pphRate).replace('.', ',')}% atas peredaran bruto (PP 55/2022).`} Beban PPh final periode ini termasuk dalam beban usaha.`),
+    li('Pemisahan harta.', ` Penarikan untuk keperluan pribadi pemilik (prive) periode ini: ${rp(prive)}, dicatat sebagai pengurang ekuitas, bukan beban usaha.`),
+    li('Laba (rugi)', ` periode ini ${rp(L.net)}.`))];
 }
 
 // Setoran PPh final untuk suatu masa = transaksi kategori kode 5-501 yang dibayar pada bulan berikutnya
@@ -1779,28 +1771,31 @@ function renderReport() {
   const period = `Periode ${from ? fmtDate(from) : 'awal'} s.d. ${to ? fmtDate(to) : 'sekarang'}`;
   const dayBefore = from ? new Date(new Date(from).getTime() - 864e5).toISOString().slice(0, 10) : null;
   const inRangeTx = state.tx.filter(t => inRange(t.date, from, to));
-  let html = '';
+  let doc = null;
 
   if (type === 'lr') {
-    html = kop('Laporan Laba Rugi', period) + lrTable(lrData(from, to)) + `<p class="muted" style="font-size:12px">${esc(basisNote())} Kategori tanpa centang L/R (modal, pinjaman, pembelian aset, prive) tidak dimasukkan.</p>` + signBlock();
+    doc = [kopEl('Laporan Laba Rugi', period), lrTableEl(lrData(from, to)), pMuted(`${basisNote()} Kategori tanpa centang L/R (modal, pinjaman, pembelian aset, prive) tidak dimasukkan.`), signEl()];
   } else if (type === 'neraca') {
     const N = neracaData(to);
-    html = kop('Laporan Posisi Keuangan (Neraca)', 'Per ' + fmtDate(N.asOf)) + neracaTable(N) + signBlock();
+    doc = [kopEl('Laporan Posisi Keuangan (Neraca)', 'Per ' + fmtDate(N.asOf)), neracaTableEl(N), signEl()];
   } else if (type === 'tahunan') {
     const N = neracaData(to), L = lrData(from, to);
-    html = kop('Laporan Keuangan', period) + '<h3>1. Laporan Posisi Keuangan per ' + fmtDate(N.asOf) + '</h3>' + neracaTable(N)
-      + '<h3>2. Laporan Laba Rugi</h3>' + lrTable(L) + notesHTML(from || '', N.asOf, N, L)
-      + `<p class="muted" style="font-size:12px">${state.company.entity === 'ptp' ? 'PT Perorangan wajib menyampaikan laporan keuangan tahunan kepada Menteri Hukum melalui AHU Online paling lambat 6 bulan setelah akhir periode akuntansi (PP 8/2021). ' : ''}Laporan ini juga dapat dilampirkan pada SPT Tahunan PPh.</p>` + signBlock();
+    doc = [kopEl('Laporan Keuangan', period), el('h3', null, '1. Laporan Posisi Keuangan per ' + fmtDate(N.asOf)), neracaTableEl(N),
+      el('h3', null, '2. Laporan Laba Rugi'), lrTableEl(L), notesEl(from || '', N.asOf, N, L),
+      pMuted(`${state.company.entity === 'ptp' ? 'PT Perorangan wajib menyampaikan laporan keuangan tahunan kepada Menteri Hukum melalui AHU Online paling lambat 6 bulan setelah akhir periode akuntansi (PP 8/2021). ' : ''}Laporan ini juga dapat dilampirkan pada SPT Tahunan PPh.`), signEl()];
   } else if (type === 'jurnal') {
     const list = M().journal.filter(e => e.date ? inRange(e.date, from, to) : !from);
     let td_ = 0;
-    html = kop('Jurnal Umum', period) + `<table>
-      <thead><tr><th>Tanggal</th><th>No. Bukti</th><th>Akun</th><th>Keterangan</th><th class="num">Debit</th><th class="num">Kredit</th></tr></thead>
-      ${list.slice(0, 3000).map(e => { td_ += e.amt; return `
-        <tr><td style="white-space:nowrap">${fmtDate(e.date)}</td><td>${esc(e.ref)}</td><td>${accHTML(e.dr)}</td><td>${esc(e.desc)}</td><td class="num">${rp(e.amt)}</td><td></td></tr>
-        <tr><td></td><td></td><td style="padding-left:28px">${accHTML(e.cr)}</td><td></td><td></td><td class="num">${rp(e.amt)}</td></tr>`; }).join('')}
-      <tr class="total"><td colspan="4">Total</td><td class="num">${rp(td_)}</td><td class="num">${rp(td_)}</td></tr>
-    </table>${list.length > 3000 ? '<p class="muted">Ditampilkan 3.000 jurnal pertama; persempit periode atau ekspor CSV.</p>' : ''}<p class="muted" style="font-size:12px">Jurnal disusun otomatis dari transaksi kas, faktur piutang/utang, dan pelunasannya (pencatatan berpasangan).</p>` + signBlock();
+    const rows = document.createDocumentFragment(); // hingga 6.000 baris: dirakit di luar dokumen
+    const rowDr = rowMaker({style: 'white-space:nowrap'}, null, null, null, {class: 'num'}, null), rowCr = rowMaker(null, null, {style: 'padding-left:28px'}, null, null, {class: 'num'});
+    for (const e of list.slice(0, 3000)) {
+      td_ += e.amt;
+      rows.append(rowDr(fmtDate(e.date), e.ref, accEl(e.dr), e.desc, rp(e.amt)), rowCr('', '', accEl(e.cr), '', '', rp(e.amt)));
+    }
+    doc = [kopEl('Jurnal Umum', period), tbl(thead(th('Tanggal'), th('No. Bukti'), th('Akun'), th('Keterangan'), th('Debit', 1), th('Kredit', 1)), [...rows.childNodes],
+      el('tr', {class: 'total'}, el('td', {colspan: 4}, 'Total'), el('td', {class: 'num'}, rp(td_)), el('td', {class: 'num'}, rp(td_)))),
+      list.length > 3000 ? el('p', {class: 'muted'}, 'Ditampilkan 3.000 jurnal pertama; persempit periode atau ekspor CSV.') : null,
+      pMuted('Jurnal disusun otomatis dari transaksi kas, faktur piutang/utang, dan pelunasannya (pencatatan berpasangan).'), signEl()];
   } else if (type === 'ns') {
     const asOf = to || today(), m = new Map();
     for (const e of M().journal) {
@@ -1813,11 +1808,11 @@ function renderReport() {
     }
     const rows = [...m.values()].sort((a, b) => accKey(a.acc).localeCompare(accKey(b.acc)));
     let sd = 0, sk = 0;
-    html = kop('Neraca Saldo', 'Per ' + fmtDate(asOf)) + `<table>
-      <thead><tr><th>Akun</th><th class="num">Mutasi debit</th><th class="num">Mutasi kredit</th><th class="num">Saldo debit</th><th class="num">Saldo kredit</th></tr></thead>
-      ${rows.map(r => { const s = r.d - r.k; if (s > 0) sd += s; else sk -= s; return `<tr><td>${accHTML(r.acc)}</td><td class="num">${rp(r.d)}</td><td class="num">${rp(r.k)}</td><td class="num">${s > 0 ? rp(s) : ''}</td><td class="num">${s < 0 ? rp(-s) : ''}</td></tr>`; }).join('')}
-      <tr class="total"><td colspan="3">Total</td><td class="num">${rp(sd)}</td><td class="num">${rp(sk)}</td></tr>
-    </table><p style="font-size:12px" class="${sd === sk ? 'in' : 'out'}">${sd === sk ? '✓ Total saldo debit = total saldo kredit.' : '⚠ Tidak seimbang.'}</p>` + signBlock();
+    const row = rowMaker(null, {class: 'num'}, {class: 'num'}, {class: 'num'}, {class: 'num'});
+    const body = rows.map(r => { const s = r.d - r.k; if (s > 0) sd += s; else sk -= s; return row(accEl(r.acc), rp(r.d), rp(r.k), s > 0 ? rp(s) : '', s < 0 ? rp(-s) : ''); });
+    doc = [kopEl('Neraca Saldo', 'Per ' + fmtDate(asOf)), tbl(thead(th('Akun'), th('Mutasi debit', 1), th('Mutasi kredit', 1), th('Saldo debit', 1), th('Saldo kredit', 1)), body,
+      el('tr', {class: 'total'}, el('td', {colspan: 3}, 'Total'), el('td', {class: 'num'}, rp(sd)), el('td', {class: 'num'}, rp(sk)))),
+      el('p', {style: 'font-size:12px', class: sd === sk ? 'in' : 'out'}, sd === sk ? '✓ Total saldo debit = total saldo kredit.' : '⚠ Tidak seimbang.'), signEl()];
   } else if (type === 'ak') {
     const rows = state.accounts.map(a => {
       const open = dayBefore ? balance(a.id, dayBefore) : a.opening;
@@ -1826,25 +1821,22 @@ function renderReport() {
       return {a, open, inn, out, close: open + inn - out};
     });
     const tot = k => rows.reduce((s, r) => s + r[k], 0);
-    html = kop('Laporan Arus Kas per Akun', period) + `<table>
-      <thead><tr><th>Akun</th><th class="num">Saldo Awal</th><th class="num">Masuk</th><th class="num">Keluar</th><th class="num">Saldo Akhir</th></tr></thead>
-      ${rows.map(r => `<tr><td>${accLabel(r.a)}</td><td class="num">${rp(r.open)}</td><td class="num in">${rp(r.inn)}</td><td class="num out">${rp(r.out)}</td><td class="num">${rp(r.close)}</td></tr>`).join('')}
-      <tr class="total"><td>Total</td><td class="num">${rp(tot('open'))}</td><td class="num">${rp(tot('inn'))}</td><td class="num">${rp(tot('out'))}</td><td class="num">${rp(tot('close'))}</td></tr>
-    </table><p class="muted" style="font-size:12px">Mutasi antarakun tercatat masuk/keluar di masing-masing akun, sehingga totalnya saling meniadakan. Cocokkan saldo akhir dengan rekening koran setiap akhir bulan.</p>` + signBlock();
+    doc = [kopEl('Laporan Arus Kas per Akun', period), tbl(thead(th('Akun'), th('Saldo Awal', 1), th('Masuk', 1), th('Keluar', 1), th('Saldo Akhir', 1)),
+      rows.map(r => el('tr', null, el('td', null, accLabelEl(r.a)), el('td', {class: 'num'}, rp(r.open)), el('td', {class: 'num in'}, rp(r.inn)), el('td', {class: 'num out'}, rp(r.out)), el('td', {class: 'num'}, rp(r.close)))),
+      el('tr', {class: 'total'}, el('td', null, 'Total'), el('td', {class: 'num'}, rp(tot('open'))), el('td', {class: 'num'}, rp(tot('inn'))), el('td', {class: 'num'}, rp(tot('out'))), el('td', {class: 'num'}, rp(tot('close'))))),
+      pMuted('Mutasi antarakun tercatat masuk/keluar di masing-masing akun, sehingga totalnya saling meniadakan. Cocokkan saldo akhir dengan rekening koran setiap akhir bulan.'), signEl()];
   } else if (type === 'bk') {
     const accId = $('rAcc').value, a = state.accounts.find(x => x.id === accId);
-    if (!a) { $('reportOut').innerHTML = '<div class="empty">Belum ada akun.</div>'; return; }
+    if (!a) { $('reportOut').replaceChildren(el('div', {class: 'empty'}, 'Belum ada akun.')); return; }
     let run = dayBefore ? balance(accId, dayBefore) : a.opening;
     const list = inRangeTx.filter(t => effect(t, accId) !== 0).sort((x, y) => cmpText(x.date, y.date) || x.created - y.created);
-    html = kop('Buku Kas & Bank — ' + (a.code ? esc(a.code) + ' ' : '') + esc(a.name), period) + `<table>
-      <thead><tr><th>Tanggal</th><th>No. Bukti</th><th>Uraian</th><th>Kode</th><th class="num">Masuk</th><th class="num">Keluar</th><th class="num">Saldo</th></tr></thead>
-      <tr class="sect"><td colspan="6">Saldo awal</td><td class="num">${rp(run)}</td></tr>
-      ${list.map(t => { const e = effect(t, accId); run += e;
-        const ket = t.desc || (t.type === 'transfer' ? `Mutasi ${accName(t.accountId)} → ${accName(t.toAccountId)}` : catName(t.categoryId));
-        return `<tr><td style="white-space:nowrap">${fmtDate(t.date)}</td><td>${esc(t.ref)}</td><td>${esc(ket)}</td><td>${esc(catOf(t.categoryId)?.code || '')}</td>
-          <td class="num">${e > 0 ? rp(e) : ''}</td><td class="num">${e < 0 ? rp(-e) : ''}</td><td class="num">${rp(run)}</td></tr>`; }).join('')}
-      <tr class="total"><td colspan="6">Saldo akhir</td><td class="num">${rp(run)}</td></tr>
-    </table>` + signBlock();
+    const first = el('tr', {class: 'sect'}, el('td', {colspan: 6}, 'Saldo awal'), el('td', {class: 'num'}, rp(run)));
+    const row = rowMaker({style: 'white-space:nowrap'}, null, null, null, {class: 'num'}, {class: 'num'}, {class: 'num'});
+    const body = list.map(t => { const e = effect(t, accId); run += e;
+      const ket = t.desc || (t.type === 'transfer' ? `Mutasi ${accName(t.accountId)} → ${accName(t.toAccountId)}` : catName(t.categoryId));
+      return row(fmtDate(t.date), t.ref, ket, catOf(t.categoryId)?.code || '', e > 0 ? rp(e) : '', e < 0 ? rp(-e) : '', rp(run)); });
+    doc = [kopEl('Buku Kas & Bank — ' + (a.code ? a.code + ' ' : '') + a.name, period), tbl(thead(th('Tanggal'), th('No. Bukti'), th('Uraian'), th('Kode'), th('Masuk', 1), th('Keluar', 1), th('Saldo', 1)), first, body,
+      el('tr', {class: 'total'}, el('td', {colspan: 6}, 'Saldo akhir'), el('td', {class: 'num'}, rp(run)))), signEl()];
   } else if (type === 'umur') {
     const asOf = to || today();
     const buckets = ['Belum jatuh tempo', '1–30 hari', '31–60 hari', '61–90 hari', '> 90 hari'];
@@ -1864,15 +1856,13 @@ function renderReport() {
       });
       const parties = [...rows.entries()].sort((a, b) => a[0].localeCompare(b[0]));
       const tot = buckets.map((_, i) => parties.reduce((s, [, v]) => s + v[i], 0));
-      return `<tr class="sect"><td colspan="7">${KIND_LABEL[kind]}</td></tr>` +
-        (parties.map(([p, v]) => `<tr><td style="padding-left:24px">${esc(p)}</td>${v.map(x => `<td class="num">${x ? rp(x) : '—'}</td>`).join('')}<td class="num">${rp(total(v))}</td></tr>`).join('')
-          || '<tr><td colspan="7" class="muted" style="padding-left:24px">Tidak ada saldo</td></tr>') +
-        `<tr class="total"><td>Total ${KIND_LABEL[kind]}</td>${tot.map(x => `<td class="num">${rp(x)}</td>`).join('')}<td class="num">${rp(total(tot))}</td></tr>`;
+      return [sectRow(KIND_LABEL[kind], 7),
+        parties.length ? parties.map(([p, v]) => el('tr', null, el('td', {style: 'padding-left:24px'}, p), v.map(x => el('td', {class: 'num'}, x ? rp(x) : '—')), el('td', {class: 'num'}, rp(total(v)))))
+          : el('tr', null, el('td', {colspan: 7, class: 'muted', style: 'padding-left:24px'}, 'Tidak ada saldo')),
+        el('tr', {class: 'total'}, el('td', null, `Total ${KIND_LABEL[kind]}`), tot.map(x => el('td', {class: 'num'}, rp(x))), el('td', {class: 'num'}, rp(total(tot))))];
     };
-    html = kop('Umur Piutang &amp; Utang', 'Per ' + fmtDate(asOf)) + `<table>
-        <thead><tr><th>Pihak</th>${buckets.map(b => `<th class="num">${b}</th>`).join('')}<th class="num">Total</th></tr></thead>
-        ${section('piutang')}${section('utang')}
-      </table><p class="muted" style="font-size:12px">Umur dihitung dari jatuh tempo sampai tanggal "Sampai". Tagihan tanpa jatuh tempo dianggap belum jatuh tempo.</p>` + signBlock();
+    doc = [kopEl('Umur Piutang & Utang', 'Per ' + fmtDate(asOf)), tbl(thead(th('Pihak'), buckets.map(b => th(b, 1)), th('Total', 1)), section('piutang'), section('utang')),
+      pMuted('Umur dihitung dari jatuh tempo sampai tanggal "Sampai". Tagihan tanpa jatuh tempo dianggap belum jatuh tempo.'), signEl()];
   } else if (type === 'pph') {
     const c = state.company, rate = (+c.pphRate || 0) / 100, {ent, last} = pphEligibility();
     const start = (from || inRangeTx.map(t => t.date).sort()[0] || today()).slice(0, 7), end = (to || today()).slice(0, 7);
@@ -1888,26 +1878,21 @@ function renderReport() {
       rows.push({ym, bruto, pph, due, paid, st, refs: pays.map(t => t.ref).join(', ')});
     }
     const sumK = k => rows.reduce((s, r) => s + r[k], 0);
-    html = kop(`Rekap PPh Final ${esc(String(c.pphRate).replace('.', ','))}% (PP 55/2022)`, period) + `<table>
-      <thead><tr><th>Masa</th><th class="num">Peredaran bruto</th><th class="num">PPh terutang</th><th>Jatuh tempo</th><th class="num">Disetor</th><th>No. bukti / NTPN</th><th>Status</th></tr></thead>
-      ${rows.map(r => `<tr><td>${MONTHS_FULL[+r.ym.slice(5) - 1]} ${r.ym.slice(0, 4)}</td><td class="num">${rp(r.bruto)}</td><td class="num">${rp(r.pph)}</td>
-        <td style="white-space:nowrap">${fmtDate(r.due)}</td><td class="num">${rp(r.paid)}</td><td>${esc(r.refs)}</td><td><span class="badge ${r.st[1]}">${r.st[0]}</span></td></tr>`).join('')}
-      <tr class="total"><td>Total</td><td class="num">${rp(sumK('bruto'))}</td><td class="num">${rp(sumK('pph'))}</td><td></td><td class="num">${rp(sumK('paid'))}</td><td></td><td></td></tr>
-    </table><p class="muted" style="font-size:12px">
-      Peredaran bruto mengikuti ${state.company.basis === 'kas' ? 'penerimaan kas' : 'pendapatan akrual'} dari kategori pendapatan (usaha perantara cukup mencatat komisinya).
-      Setor paling lambat tanggal 15 bulan berikutnya lewat kode billing Coretax (KAP-KJS 411128-420); setoran dengan NTPN dianggap telah melaporkan SPT Masa.
-      Isi No. bukti transaksi setoran dengan NTPN agar mudah ditelusuri.
-      ${ent.label}: PPh final berlaku ${ent.years} tahun pajak${last ? ` (s.d. ${last})` : ''}, untuk peredaran bruto ≤ Rp4,8 miliar setahun${ent.badan ? '; badan tidak mendapat pengurangan Rp500 juta' : '; orang pribadi bebas PPh atas peredaran bruto s.d. Rp500 juta setahun (hitung manual)'}.</p>` + signBlock();
+    doc = [kopEl(`Rekap PPh Final ${String(c.pphRate).replace('.', ',')}% (PP 55/2022)`, period),
+      tbl(thead(th('Masa'), th('Peredaran bruto', 1), th('PPh terutang', 1), th('Jatuh tempo'), th('Disetor', 1), th('No. bukti / NTPN'), th('Status')),
+        rows.map(r => el('tr', null, el('td', null, `${MONTHS_FULL[+r.ym.slice(5) - 1]} ${r.ym.slice(0, 4)}`), el('td', {class: 'num'}, rp(r.bruto)), el('td', {class: 'num'}, rp(r.pph)),
+          el('td', {style: 'white-space:nowrap'}, fmtDate(r.due)), el('td', {class: 'num'}, rp(r.paid)), el('td', null, r.refs), el('td', null, el('span', {class: 'badge ' + r.st[1]}, r.st[0])))),
+        el('tr', {class: 'total'}, el('td', null, 'Total'), el('td', {class: 'num'}, rp(sumK('bruto'))), el('td', {class: 'num'}, rp(sumK('pph'))), el('td'), el('td', {class: 'num'}, rp(sumK('paid'))), el('td'), el('td'))),
+      pMuted(`Peredaran bruto mengikuti ${state.company.basis === 'kas' ? 'penerimaan kas' : 'pendapatan akrual'} dari kategori pendapatan (usaha perantara cukup mencatat komisinya). Setor paling lambat tanggal 15 bulan berikutnya lewat kode billing Coretax (KAP-KJS 411128-420); setoran dengan NTPN dianggap telah melaporkan SPT Masa. Isi No. bukti transaksi setoran dengan NTPN agar mudah ditelusuri. ${ent.label}: PPh final berlaku ${ent.years} tahun pajak${last ? ` (s.d. ${last})` : ''}, untuk peredaran bruto ≤ Rp4,8 miliar setahun${ent.badan ? '; badan tidak mendapat pengurangan Rp500 juta' : '; orang pribadi bebas PPh atas peredaran bruto s.d. Rp500 juta setahun (hitung manual)'}.`), signEl()];
   } else if (type === 'audit') {
     const list = state.audit.filter(a => inRange(a.ts.slice(0, 10), from, to)).slice().reverse();
-    html = kop('Jejak Audit', period) + `<table>
-      <thead><tr><th>Waktu</th><th>Pengguna/perangkat</th><th>Aksi</th><th>Data</th><th>Rincian</th></tr></thead>
-      ${list.slice(0, 3000).map(a => `<tr><td style="white-space:nowrap">${esc(new Date(a.ts).toLocaleString('id-ID'))}</td><td>${esc(a.by)}</td><td><span class="badge ${a.act === 'hapus' ? 'out' : a.act === 'tambah' ? 'in' : 'warn'}">${esc(a.act)}</span></td><td>${esc(a.ent)}</td><td>${esc(a.info)}</td></tr>`).join('')
-        || '<tr><td colspan="5" class="muted">Belum ada catatan pada periode ini.</td></tr>'}
-    </table><p class="muted" style="font-size:12px">Jejak audit mencatat setiap penambahan, perubahan, dan penghapusan data beserta alasannya. Catatan ini tidak dapat diubah dari aplikasi.</p>`;
+    doc = [kopEl('Jejak Audit', period), tbl(thead(th('Waktu'), th('Pengguna/perangkat'), th('Aksi'), th('Data'), th('Rincian')),
+      list.length ? list.slice(0, 3000).map(a => el('tr', null, el('td', {style: 'white-space:nowrap'}, new Date(a.ts).toLocaleString('id-ID')), el('td', null, a.by), el('td', null, el('span', {class: 'badge ' + (a.act === 'hapus' ? 'out' : a.act === 'tambah' ? 'in' : 'warn')}, a.act)), el('td', null, a.ent), el('td', null, a.info)))
+        : el('tr', null, el('td', {colspan: 5, class: 'muted'}, 'Belum ada catatan pada periode ini.'))),
+      pMuted('Jejak audit mencatat setiap penambahan, perubahan, dan penghapusan data beserta alasannya. Catatan ini tidak dapat diubah dari aplikasi.')];
   }
-  html ||= bizReport(type, from, to, period) || erpReport(type, from, to, period) || moreReport(type, from, to, period);
-  $('reportOut').innerHTML = html + (type !== 'audit' ? footerNote() : '');
+  doc ||= bizReport(type, from, to, period) || erpReport(type, from, to, period) || moreReport(type, from, to, period) || null;
+  $('reportOut').replaceChildren(frag(doc, type !== 'audit' ? footerEl() : null));
 }
 ['rType', 'rFrom', 'rTo', 'rAcc'].forEach(id => $(id).oninput = renderReport);
 $('rType').addEventListener('input', () => rememberView());
@@ -2994,39 +2979,33 @@ $('btnSetorWapu').onclick = () => setorPajak(ACC_PPN_WAPU, 'PPN WAPU');
 function printInvoice(t) {
   const c = state.company, debt = tradeDebt(t), total = tradeTotal(t), gross = total + t.ppn, retAmt = retOf(t).reduce((s, r) => s + retPay(r), 0), due = tradePay(t) - retAmt;
   const remain = debt ? Math.max(0, remainOf(debt)) : 0, paid = !debt || remain <= 0, sub = t.lines.reduce((s, l) => s + l.qty * l.price, 0);
-  const meta = [c.address, c.phone, c.email].filter(Boolean).map(esc).join(' · ');
-  const ids = [c.npwp && 'NPWP ' + c.npwp, c.nib && 'NIB ' + c.nib].filter(Boolean).map(esc).join(' · ');
-  const kv = [['Tanggal', fmtDate(t.date)], ['Jatuh tempo', t.pay === 'credit' ? (t.due ? fmtDate(t.due) : 'Sesuai kesepakatan') : 'Saat diterima'], ['No. PO / kontrak', t.poNo && esc(t.poNo)], ['No. faktur pajak', t.fpNo && esc(t.fpNo)]].filter(x => x[1]);
-  const row = (a, b, neg) => `<tr><td>${a}</td><td>${neg ? '(' + rp(b) + ')' : rp(b)}</td></tr>`;
-  $('printArea').innerHTML = `<div class="inv">
-    <div class="inv-top">
-      <div class="inv-co">${logoHTML(56)}<div><b>${esc(c.name || 'Nama Perusahaan')}</b>${c.tagline ? `<i>${esc(c.tagline)}</i><br>` : ''}${meta}${ids ? '<br>' + ids : ''}</div></div>
-      <div class="inv-title"><h1>INVOICE</h1><div><b>${esc(t.ref)}</b></div><span class="inv-status ${paid ? 'paid' : 'due'}">${paid ? 'LUNAS' : 'BELUM LUNAS'}</span></div>
-    </div>
-    <div class="inv-meta">
-      <div><div class="inv-lbl">Ditagihkan kepada</div><b>${esc(partyOf(t))}</b>${t.custAddr ? '<br>' + esc(t.custAddr) : ''}${t.custNpwp ? '<br>NPWP ' + esc(t.custNpwp) : ''}</div>
-      <table class="inv-kv">${kv.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('')}</table>
-    </div>
-    <table class="lines"><thead><tr><th style="width:34px">No</th><th>Deskripsi</th><th class="num">Jumlah</th><th class="num">Harga satuan</th><th class="num">Subtotal</th></tr></thead><tbody>
-      ${t.lines.map((l, n) => { const it = itemOf(l.itemId); return `<tr><td>${n + 1}</td><td>${esc(it?.name)}${it?.code ? ` <span style="color:#566878">(${esc(it.code)})</span>` : ''}</td><td class="num">${fmtQty(l.qty)} ${esc(it?.unit)}</td><td class="num">${rp(l.price)}</td><td class="num">${rp(l.qty * l.price)}</td></tr>`; }).join('')}
-    </tbody></table>
-    <div class="inv-bottom">
-      <div>
-        ${c.bankInfo ? `<div class="inv-lbl">Pembayaran ke</div><div class="inv-pay">${esc(c.bankInfo)}\nCantumkan nomor invoice ${esc(t.ref)} pada berita transfer.</div>` : ''}
-        <div class="inv-lbl" style="margin-top:12px">Terbilang</div><i>${esc(terbilang(due))}</i>
-        ${t.desc || c.invoiceNote ? `<div class="inv-lbl" style="margin-top:12px">Catatan</div>${esc(t.desc || c.invoiceNote)}` : ''}
-      </div>
-      <table class="inv-sum">
-        ${row('Subtotal', Math.round(sub))}${t.discount ? row('Diskon', t.discount, true) : ''}
-        ${t.ppn ? row('Dasar pengenaan pajak', total) + row(`PPN (${state.tax.ppnRate}% × ${state.tax.dppNum}/${state.tax.dppDen})`, t.ppn) + row('Jumlah tagihan', gross) : ''}
-        ${t.wapu && t.ppn ? row('PPN dipungut pembeli (WAPU)', t.ppn, true) : ''}
-        ${t.pphParts.map(x => row(`${PPH_LABEL[x.code]} ${String(x.rate).replace('.', ',')}%`, x.amt, true)).join('')}
-        ${retAmt ? row('Retur', retAmt, true) : ''}
-        <tr class="grand"><td>${paid ? 'Total dibayar' : 'Jumlah harus dibayar'}</td><td>${rp(debt && !paid ? remain : due)}</td></tr>
-      </table>
-    </div>
-    <div class="inv-sign"><div>Hormat kami,${due > 5000000 ? '<div class="inv-stamp">Meterai Rp10.000</div>' : '<div style="height:66px"></div>'}<b>${c.checkedName ? esc(c.checkedName) : '(..............................)'}</b><div>${esc(c.checkedTitle)}</div></div></div>
-    <div class="inv-foot">Terima kasih atas kepercayaan Anda.</div></div>`;
+  const meta = [c.address, c.phone, c.email].filter(Boolean).join(' · ');
+  const ids = [c.npwp && 'NPWP ' + c.npwp, c.nib && 'NIB ' + c.nib].filter(Boolean).join(' · ');
+  const kv = [['Tanggal', fmtDate(t.date)], ['Jatuh tempo', t.pay === 'credit' ? (t.due ? fmtDate(t.due) : 'Sesuai kesepakatan') : 'Saat diterima'], ['No. PO / kontrak', t.poNo], ['No. faktur pajak', t.fpNo]].filter(x => x[1]);
+  const row = (a, b, neg) => el('tr', null, el('td', null, a), el('td', null, neg ? '(' + rp(b) + ')' : rp(b)));
+  $('printArea').replaceChildren(el('div', {class: 'inv'},
+    el('div', {class: 'inv-top'},
+      el('div', {class: 'inv-co'}, logoEl(56), el('div', null, el('b', null, c.name || 'Nama Perusahaan'), c.tagline ? [el('i', null, c.tagline), el('br')] : null, meta, ids ? [el('br'), ids] : null)),
+      el('div', {class: 'inv-title'}, el('h1', null, 'INVOICE'), el('div', null, el('b', null, t.ref)), el('span', {class: 'inv-status ' + (paid ? 'paid' : 'due')}, paid ? 'LUNAS' : 'BELUM LUNAS'))),
+    el('div', {class: 'inv-meta'},
+      el('div', null, el('div', {class: 'inv-lbl'}, 'Ditagihkan kepada'), el('b', null, partyOf(t)), t.custAddr ? [el('br'), t.custAddr] : null, t.custNpwp ? [el('br'), 'NPWP ' + t.custNpwp] : null),
+      tblC('inv-kv', kv.map(([a, b]) => el('tr', null, el('td', null, a), el('td', null, b))))),
+    el('table', {class: 'lines'}, el('thead', null, el('tr', null, el('th', {style: 'width:34px'}, 'No'), el('th', null, 'Deskripsi'), el('th', {class: 'num'}, 'Jumlah'), el('th', {class: 'num'}, 'Harga satuan'), el('th', {class: 'num'}, 'Subtotal'))),
+      el('tbody', null, t.lines.map((l, n) => { const it = itemOf(l.itemId); return el('tr', null, el('td', null, n + 1), el('td', null, it?.name, it?.code ? [' ', el('span', {style: 'color:#566878'}, `(${it.code})`)] : null),
+        el('td', {class: 'num'}, `${fmtQty(l.qty)} ${it?.unit ?? ''}`), el('td', {class: 'num'}, rp(l.price)), el('td', {class: 'num'}, rp(l.qty * l.price))); }))),
+    el('div', {class: 'inv-bottom'},
+      el('div', null,
+        c.bankInfo ? [el('div', {class: 'inv-lbl'}, 'Pembayaran ke'), el('div', {class: 'inv-pay'}, `${c.bankInfo}\nCantumkan nomor invoice ${t.ref ?? ''} pada berita transfer.`)] : null,
+        el('div', {class: 'inv-lbl', style: 'margin-top:12px'}, 'Terbilang'), el('i', null, terbilang(due)),
+        t.desc || c.invoiceNote ? [el('div', {class: 'inv-lbl', style: 'margin-top:12px'}, 'Catatan'), t.desc || c.invoiceNote] : null),
+      tblC('inv-sum', row('Subtotal', Math.round(sub)), t.discount ? row('Diskon', t.discount, true) : null,
+        t.ppn ? [row('Dasar pengenaan pajak', total), row(`PPN (${state.tax.ppnRate}% × ${state.tax.dppNum}/${state.tax.dppDen})`, t.ppn), row('Jumlah tagihan', gross)] : null,
+        t.wapu && t.ppn ? row('PPN dipungut pembeli (WAPU)', t.ppn, true) : null,
+        t.pphParts.map(x => row(`${PPH_LABEL[x.code]} ${String(x.rate).replace('.', ',')}%`, x.amt, true)),
+        retAmt ? row('Retur', retAmt, true) : null,
+        el('tr', {class: 'grand'}, el('td', null, paid ? 'Total dibayar' : 'Jumlah harus dibayar'), el('td', null, rp(debt && !paid ? remain : due))))),
+    el('div', {class: 'inv-sign'}, el('div', null, 'Hormat kami,', due > 5000000 ? el('div', {class: 'inv-stamp'}, 'Meterai Rp10.000') : el('div', {style: 'height:66px'}), el('b', null, c.checkedName || '(..............................)'), el('div', null, c.checkedTitle))),
+    el('div', {class: 'inv-foot'}, 'Terima kasih atas kepercayaan Anda.')));
   document.body.classList.add('print-voucher');
   window.print();
 }
@@ -3386,15 +3365,15 @@ $('btnDeleteRun').onclick = () => {
 };
 function printSlip(empId) {
   const p = viewingRun, l = p?.lines.find(x => x.empId === empId); if (!l) return;
-  const row = (a, b) => `<tr><td>${a}</td><td class="num">${rp(b)}</td></tr>`;
-  $('printArea').innerHTML = `<div class="report">${kop('SLIP GAJI', ymLabel(p.period) + ' · No. ' + esc(p.ref))}
-    <p>Nama: <b>${esc(l.name)}</b><br>Jabatan: ${esc(l.title)}<br>Status PTKP: ${esc(l.ptkp)}<br>Tanggal bayar: ${fmtDate(p.date)}</p>
-    <table><tr class="sect"><td colspan="2">Penerimaan</td></tr>${row('Gaji pokok', l.base)}${row('Tunjangan tetap', l.fixed)}${l.varAllow ? row('Tunjangan tidak tetap', l.varAllow) : ''}${l.ot ? row('Upah lembur', l.ot) : ''}${l.bonus ? row('Bonus / THR', l.bonus) : ''}
-    <tr class="sect"><td colspan="2">Potongan</td></tr>${row('BPJS JHT (2%)'.replace('2%', state.hr.jhtEe + '%'), l.ee.jht)}${row('BPJS JP', l.ee.jp)}${row('BPJS Kesehatan', l.ee.kes)}${l.taxBy === 'karyawan' ? row('PPh 21', l.pph) : ''}${l.deduct ? row('Kasbon', l.deduct) : ''}
-    <tr class="total"><td>Gaji bersih diterima</td><td class="num">${rp(l.net)}</td></tr></table>
-    <p class="muted" style="font-size:12px">Ditanggung perusahaan (tidak memotong gaji): BPJS ${rp(lineCo(l))}${l.taxBy === 'perusahaan' ? `, PPh 21 ${rp(l.pph)}` : ''}.</p>
-    <p><i>${esc(terbilang(l.net))}</i></p>
-    <div class="sign"><div>Penerima<div class="sp"></div><b>${esc(l.name.toUpperCase())}</b></div><div>Disetujui oleh<div class="sp"></div><b>${state.company.checkedName ? esc(state.company.checkedName.toUpperCase()) : '(..............................)'}</b></div></div></div>`;
+  const row = (a, b) => el('tr', null, el('td', null, a), el('td', {class: 'num'}, rp(b))), sp = () => el('div', {class: 'sp'});
+  $('printArea').replaceChildren(el('div', {class: 'report'}, kopEl('SLIP GAJI', ymLabel(p.period) + ' · No. ' + (p.ref ?? '')),
+    el('p', null, 'Nama: ', el('b', null, l.name), el('br'), 'Jabatan: ' + (l.title ?? ''), el('br'), 'Status PTKP: ' + (l.ptkp ?? ''), el('br'), 'Tanggal bayar: ' + fmtDate(p.date)),
+    tbl(null, sectRow('Penerimaan'), row('Gaji pokok', l.base), row('Tunjangan tetap', l.fixed), l.varAllow ? row('Tunjangan tidak tetap', l.varAllow) : null, l.ot ? row('Upah lembur', l.ot) : null, l.bonus ? row('Bonus / THR', l.bonus) : null,
+      sectRow('Potongan'), row('BPJS JHT (2%)'.replace('2%', state.hr.jhtEe + '%'), l.ee.jht), row('BPJS JP', l.ee.jp), row('BPJS Kesehatan', l.ee.kes), l.taxBy === 'karyawan' ? row('PPh 21', l.pph) : null, l.deduct ? row('Kasbon', l.deduct) : null,
+      el('tr', {class: 'total'}, el('td', null, 'Gaji bersih diterima'), el('td', {class: 'num'}, rp(l.net)))),
+    pMuted(`Ditanggung perusahaan (tidak memotong gaji): BPJS ${rp(lineCo(l))}${l.taxBy === 'perusahaan' ? `, PPh 21 ${rp(l.pph)}` : ''}.`),
+    el('p', null, el('i', null, terbilang(l.net))),
+    el('div', {class: 'sign'}, el('div', null, 'Penerima', sp(), el('b', null, l.name.toUpperCase())), el('div', null, 'Disetujui oleh', sp(), el('b', null, state.company.checkedName ? state.company.checkedName.toUpperCase() : '(..............................)')))));
   document.body.classList.add('print-voucher');
   window.print();
 }
@@ -3433,31 +3412,32 @@ function bizObligations() {
   const out = [], now = today(), ym = now.slice(0, 7), hr = state.hr;
   out.push(...erpObligations());
   const ppn = journalBal(ACC_PPN), ppnW = journalBal(ACC_PPN_WAPU), pot = journalBal(ACC_PPH_POT);
-  if (ppn > 0) out.push(['warn', `Utang PPN belum disetor: <b>${rp(ppn)}</b> (sudah dikurangi PPN masukan masa yang lewat). Lihat Rekap Faktur &amp; Pajak.`]);
-  if (ppnW > 0) out.push(['warn', `PPN yang dipungut dari vendor (WAPU) belum disetor: <b>${rp(ppnW)}</b>.`]);
-  if (pot > 0) out.push([+now.slice(8) > 15 ? 'bad' : 'warn', `PPh yang dipotong/dipungut dari vendor belum disetor: <b>${rp(pot)}</b>. Setor paling lambat tanggal 15 bulan berikutnya dan buat bukti potongnya.`]);
+  if (ppn > 0) out.push(['warn', ['Utang PPN belum disetor: ', el('b', null, rp(ppn)), ' (sudah dikurangi PPN masukan masa yang lewat). Lihat Rekap Faktur & Pajak.']]);
+  if (ppnW > 0) out.push(['warn', ['PPN yang dipungut dari vendor (WAPU) belum disetor: ', el('b', null, rp(ppnW)), '.']]);
+  if (pot > 0) out.push([+now.slice(8) > 15 ? 'bad' : 'warn', ['PPh yang dipotong/dipungut dari vendor belum disetor: ', el('b', null, rp(pot)), '. Setor paling lambat tanggal 15 bulan berikutnya dan buat bukti potongnya.']]);
   const low = state.items.filter(i => { const s = M().stock.stock.get(i.id); return s && i.minQty && s.qty <= i.minQty; });
-  if (low.length) out.push(['warn', `Stok menipis: ${low.slice(0, 5).map(i => esc(i.name)).join(', ')}${low.length > 5 ? ` dan ${low.length - 5} lainnya` : ''}.`]);
+  if (low.length) out.push(['warn', `Stok menipis: ${low.slice(0, 5).map(i => String(i.name ?? '')).join(', ')}${low.length > 5 ? ` dan ${low.length - 5} lainnya` : ''}.`]);
   const act = state.employees.filter(e => empActive(e, ym));
   if (!act.length) return out;
-  if (hr.umpMode === 'wajib' && !hr.ump) out.push(['warn', 'Isi nilai UMP/UMK, atau pilih <b>tidak wajib upah minimum</b> bila usaha mikro/kecil, di Karyawan → Aturan.']);
+  if (hr.umpMode === 'wajib' && !hr.ump) out.push(['warn', ['Isi nilai UMP/UMK, atau pilih ', el('b', null, 'tidak wajib upah minimum'), ' bila usaha mikro/kecil, di Karyawan → Aturan.']]);
   const under = act.filter(e => belowMin(e) || belowFloor(e));
-  if (under.length) out.push(['bad', `${under.length} karyawan bergaji di bawah batas upah yang diatur: ${under.slice(0, 5).map(e => esc(e.name)).join(', ')}.`]);
+  if (under.length) out.push(['bad', `${under.length} karyawan bergaji di bawah batas upah yang diatur: ${under.slice(0, 5).map(e => String(e.name ?? '')).join(', ')}.`]);
   for (const e of act) {
     if (e.status !== 'pkwt' || !e.endDate) continue;
     const n = daysBetween(now, e.endDate);
     if (n > 30) continue;
     const comp = hr.umpMode === 'kesepakatan' ? 'kompensasi sesuai kesepakatan' : `uang kompensasi sekitar ${rp(pkwtComp({...e, exitDate: e.endDate}))}`;
-    out.push([n < 0 ? 'bad' : 'warn', `Kontrak ${esc(e.name)} ${n < 0 ? 'sudah berakhir' : 'berakhir'} ${fmtDate(e.endDate)}: perpanjang atau akhiri, ${comp}.`]);
+    out.push([n < 0 ? 'bad' : 'warn', `Kontrak ${e.name ?? ''} ${n < 0 ? 'sudah berakhir' : 'berakhir'} ${fmtDate(e.endDate)}: perpanjang atau akhiri, ${comp}.`]);
   }
   const pph = journalBal(ACC_PPH21), bpjs = journalBal(ACC_BPJS), [y, m] = addMonths(ym, 0).split('-');
-  if (pph > 0) out.push([+now.slice(8) > 15 ? 'bad' : 'warn', `Utang PPh 21 belum disetor: <b>${rp(pph)}</b>. Setor paling lambat tanggal 15 bulan berikutnya, lapor tanggal 20.`]);
-  if (bpjs > 0) out.push([+now.slice(8) > 15 ? 'bad' : 'warn', `Iuran BPJS belum disetor: <b>${rp(bpjs)}</b>. Setor sesuai tagihan BPJS bulan ${MONTHS_FULL[+m - 1]} ${y}.`]);
+  if (pph > 0) out.push([+now.slice(8) > 15 ? 'bad' : 'warn', ['Utang PPh 21 belum disetor: ', el('b', null, rp(pph)), '. Setor paling lambat tanggal 15 bulan berikutnya, lapor tanggal 20.']]);
+  if (bpjs > 0) out.push([+now.slice(8) > 15 ? 'bad' : 'warn', ['Iuran BPJS belum disetor: ', el('b', null, rp(bpjs)), `. Setor sesuai tagihan BPJS bulan ${MONTHS_FULL[+m - 1]} ${y}.`]]);
   if (!state.payrolls.some(p => p.period === addMonths(ym, -1))) out.push(['warn', `Gaji ${ymLabel(addMonths(ym, -1))} belum diproses di Karyawan → Penggajian.`]);
   return out;
 }
 function bizReport(type, from, to, period) {
   const asOf = to || today();
+  const td = (v, cls, style) => el('td', cls || style ? {class: cls || null, style: style || null} : null, v), n = v => td(v, 'num'), nw = v => td(v, null, 'white-space:nowrap');
   if (type === 'jual') {
     const rows = sorted(state.trades.filter(t => t.kind === 'sale' && inRange(t.date, from, to))).reverse(), cogs = M().stock.cogs;
     const rets = state.returns.filter(r => r.kind === 'sale' && inRange(r.date, from, to)), rcost = M().stock.rcost;
@@ -3466,22 +3446,24 @@ function bizReport(type, from, to, period) {
     rows.forEach(t => { const total = tradeTotal(t), c = cogs.get(t.id) || 0; tr += total; tc += c;
       const sub = t.lines.reduce((s, l) => s + l.qty * l.price, 0) || 1;
       t.lines.forEach(l => { const r = per.get(l.itemId) || {qty: 0, rev: 0}; r.qty += l.qty; r.rev += l.qty * l.price * total / sub; per.set(l.itemId, r); }); });
-    return kop('Laba Penjualan', period) + `<table><thead><tr><th>Tanggal</th><th>No. Bukti</th><th>Pelanggan</th><th class="num">Penjualan</th><th class="num">HPP</th><th class="num">Laba kotor</th><th class="num">Margin</th></tr></thead>
-      ${rows.map(t => { const total = tradeTotal(t), c = cogs.get(t.id) || 0; return `<tr><td style="white-space:nowrap">${fmtDate(t.date)}</td><td>${esc(t.ref)}</td><td>${esc(partyOf(t))}</td><td class="num">${rp(total)}</td><td class="num">${rp(c)}</td><td class="num">${rp(total - c)}</td><td class="num">${total ? pct((total - c) / total * 100) : '—'}</td></tr>`; }).join('')}
-      ${rets.map(r => { const c = rcost.get(r.id) || 0; return `<tr><td style="white-space:nowrap">${fmtDate(r.date)}</td><td>${esc(r.ref)}</td><td>Retur penjualan</td><td class="num">(${rp(r.dpp)})</td><td class="num">(${rp(c)})</td><td class="num">(${rp(r.dpp - c)})</td><td></td></tr>`; }).join('')}
-      <tr class="total"><td colspan="3">Total</td><td class="num">${rp(tr)}</td><td class="num">${rp(tc)}</td><td class="num">${rp(tr - tc)}</td><td class="num">${tr ? pct((tr - tc) / tr * 100) : '—'}</td></tr></table>
-      <h3>Penjualan per barang/jasa</h3><table><thead><tr><th>Barang/Jasa</th><th class="num">Terjual</th><th class="num">Penjualan bersih</th></tr></thead>
-      ${[...per.entries()].sort((a, b) => b[1].rev - a[1].rev).map(([id, r]) => `<tr><td>${esc(itemOf(id)?.name || '(terhapus)')}</td><td class="num">${fmtQty(r.qty)} ${esc(itemOf(id)?.unit)}</td><td class="num">${rp(r.rev)}</td></tr>`).join('')}</table>
-      <p class="muted" style="font-size:12px">HPP memakai metode rata-rata tertimbang (moving average). Diskon pada nota dibagi merata sesuai nilai barang.</p>` + signBlock();
+    return [kopEl('Laba Penjualan', period), tbl(thead(th('Tanggal'), th('No. Bukti'), th('Pelanggan'), th('Penjualan', 1), th('HPP', 1), th('Laba kotor', 1), th('Margin', 1)),
+      rows.map(t => { const total = tradeTotal(t), c = cogs.get(t.id) || 0; return el('tr', null, nw(fmtDate(t.date)), td(t.ref), td(partyOf(t)), n(rp(total)), n(rp(c)), n(rp(total - c)), n(total ? pct((total - c) / total * 100) : '—')); }),
+      rets.map(r => { const c = rcost.get(r.id) || 0; return el('tr', null, nw(fmtDate(r.date)), td(r.ref), td('Retur penjualan'), n(`(${rp(r.dpp)})`), n(`(${rp(c)})`), n(`(${rp(r.dpp - c)})`), td()); }),
+      el('tr', {class: 'total'}, el('td', {colspan: 3}, 'Total'), n(rp(tr)), n(rp(tc)), n(rp(tr - tc)), n(tr ? pct((tr - tc) / tr * 100) : '—'))),
+      el('h3', null, 'Penjualan per barang/jasa'), tbl(thead(th('Barang/Jasa'), th('Terjual', 1), th('Penjualan bersih', 1)),
+        [...per.entries()].sort((a, b) => b[1].rev - a[1].rev).map(([id, r]) => el('tr', null, td(itemOf(id)?.name || '(terhapus)'), n(`${fmtQty(r.qty)} ${itemOf(id)?.unit ?? ''}`), n(rp(r.rev))))),
+      pMuted('HPP memakai metode rata-rata tertimbang (moving average). Diskon pada nota dibagi merata sesuai nilai barang.'), signEl()];
   }
   if (type === 'stok') {
     const st = stockAsOf(asOf); let tv = 0;
     const rows = state.items.filter(i => st.has(i.id)).sort((a, b) => a.name.localeCompare(b.name));
-    return kop('Laporan Persediaan', 'Per ' + fmtDate(asOf)) + `<table><thead><tr><th>Kode</th><th>Barang</th><th class="num">Stok</th><th class="num">HPP rata-rata</th><th class="num">Nilai</th></tr></thead>
-      ${rows.map(i => { const s = st.get(i.id); tv += s.value; return `<tr><td>${esc(i.code)}</td><td>${esc(i.name)}</td><td class="num">${fmtQty(s.qty)} ${esc(i.unit)}</td><td class="num">${s.qty ? rp(s.value / s.qty) : '—'}</td><td class="num">${rp(s.value)}</td></tr>`; }).join('')}
-      <tr class="total"><td colspan="4">Total nilai persediaan</td><td class="num">${rp(tv)}</td></tr></table>
-      ${state.adjusts.some(a => a.date <= asOf) ? `<h3>Stok opname</h3><table><thead><tr><th>Tanggal</th><th>No. bukti</th><th>Selisih</th><th class="num">Nilai</th></tr></thead>${state.adjusts.filter(a => a.date <= asOf).map(a => `<tr><td>${fmtDate(a.date)}</td><td>${esc(a.ref)}</td><td>${a.lines.filter(l => l.diff).map(l => `${esc(itemOf(l.itemId)?.name)} ${l.diff > 0 ? '+' : ''}${fmtQty(l.diff)}`).join(', ') || 'Semua cocok'}</td><td class="num">${rp(M().stock.adj.get(a.id) || 0)}</td></tr>`).join('')}</table>` : ''}
-      <p class="muted" style="font-size:12px">Total harus sama dengan akun 1-301 Persediaan di neraca pada tanggal yang sama. Cocokkan stok fisik secara berkala.</p>` + signBlock();
+    const ops = state.adjusts.filter(a => a.date <= asOf);
+    return [kopEl('Laporan Persediaan', 'Per ' + fmtDate(asOf)), tbl(thead(th('Kode'), th('Barang'), th('Stok', 1), th('HPP rata-rata', 1), th('Nilai', 1)),
+      rows.map(i => { const s = st.get(i.id); tv += s.value; return el('tr', null, td(i.code), td(i.name), n(`${fmtQty(s.qty)} ${i.unit ?? ''}`), n(s.qty ? rp(s.value / s.qty) : '—'), n(rp(s.value))); }),
+      el('tr', {class: 'total'}, el('td', {colspan: 4}, 'Total nilai persediaan'), n(rp(tv)))),
+      ops.length ? [el('h3', null, 'Stok opname'), tbl(thead(th('Tanggal'), th('No. bukti'), th('Selisih'), th('Nilai', 1)),
+        ops.map(a => el('tr', null, td(fmtDate(a.date)), td(a.ref), td(a.lines.filter(l => l.diff).map(l => `${itemOf(l.itemId)?.name ?? ''} ${l.diff > 0 ? '+' : ''}${fmtQty(l.diff)}`).join(', ') || 'Semua cocok'), n(rp(M().stock.adj.get(a.id) || 0)))))] : null,
+      pMuted('Total harus sama dengan akun 1-301 Persediaan di neraca pada tanggal yang sama. Cocokkan stok fisik secara berkala.'), signEl()];
   }
   if (type === 'beli') {
     const rows = sorted(state.trades.filter(t => t.kind === 'purchase' && inRange(t.date, from, to))).reverse(), per = new Map();
@@ -3489,61 +3471,59 @@ function bizReport(type, from, to, period) {
     const rets = state.returns.filter(r => r.kind === 'purchase' && inRange(r.date, from, to));
     rets.forEach(r => { const v = partyOf(state.trades.find(t => t.id === r.origId) || {kind: 'purchase'}); per.set(v, (per.get(v) || 0) - r.dpp); });
     const total = rows.reduce((s, t) => s + tradeTotal(t), 0) - rets.reduce((s, r) => s + r.dpp, 0);
-    return kop('Pembelian per Vendor', period) + `<table><thead><tr><th>Vendor</th><th class="num">Total pembelian</th></tr></thead>
-      ${[...per.entries()].sort((a, b) => b[1] - a[1]).map(([v, n]) => `<tr><td>${esc(v)}</td><td class="num">${rp(n)}</td></tr>`).join('')}
-      <tr class="total"><td>Total</td><td class="num">${rp(total)}</td></tr></table>
-      <h3>Rincian</h3><table><thead><tr><th>Tanggal</th><th>No. Bukti</th><th>Vendor</th><th>Bayar</th><th class="num">Total</th></tr></thead>
-      ${rows.map(t => `<tr><td style="white-space:nowrap">${fmtDate(t.date)}</td><td>${esc(t.ref)}</td><td>${esc(partyOf(t))}</td><td>${t.pay === 'cash' ? 'Tunai' : 'Kredit'}</td><td class="num">${rp(tradeTotal(t))}</td></tr>`).join('')}</table>` + signBlock();
+    return [kopEl('Pembelian per Vendor', period), tbl(thead(th('Vendor'), th('Total pembelian', 1)),
+      [...per.entries()].sort((a, b) => b[1] - a[1]).map(([v, x]) => el('tr', null, td(v), n(rp(x)))), el('tr', {class: 'total'}, td('Total'), n(rp(total)))),
+      el('h3', null, 'Rincian'), tbl(thead(th('Tanggal'), th('No. Bukti'), th('Vendor'), th('Bayar'), th('Total', 1)),
+        rows.map(t => el('tr', null, nw(fmtDate(t.date)), td(t.ref), td(partyOf(t)), td(t.pay === 'cash' ? 'Tunai' : 'Kredit'), n(rp(tradeTotal(t)))))), signEl()];
   }
   if (type === 'faktur') {
     const rows = state.trades.filter(t => inRange(t.fpDate || t.date, from, to) && (t.ppn || t.pph || t.fpNo)).sort((a, b) => (a.fpDate || a.date).localeCompare(b.fpDate || b.date));
     const sum = f => rows.reduce((s, t) => s + f(t), 0), buy = t => t.kind === 'purchase';
     const pphTxt = t => t.pphParts.map(x => `${PPH_LABEL[x.code]} ${rp(x.amt)}`).join('; ') || '—';
-    return kop('Rekap Faktur &amp; Pajak Jual Beli', period) + `<table><thead><tr><th>Tgl faktur</th><th>No. bukti</th><th>No. faktur pajak</th><th>Jenis</th><th>Pihak</th><th class="num">DPP</th><th class="num">PPN</th><th>Perlakuan PPN</th><th>PPh</th></tr></thead>
-      ${rows.map(t => `<tr><td style="white-space:nowrap">${fmtDate(t.fpDate || t.date)}</td><td>${esc(t.ref)}</td><td>${esc(t.fpNo) || '<span class="out">belum diisi</span>'}</td><td>${buy(t) ? 'Masukan' : 'Keluaran'}</td><td>${esc(partyOf(t))}</td><td class="num">${rp(tradeTotal(t))}</td><td class="num">${rp(t.ppn)}</td><td>${!t.ppn ? '—' : t.wapu ? (buy(t) ? 'Kami pungut (WAPU)' : 'Dipungut pembeli') : buy(t) ? (t.ppnCredit ? 'Dikreditkan' : 'Masuk harga pokok') : 'Disetor sendiri'}</td><td>${esc(pphTxt(t))}</td></tr>`).join('') || '<tr><td colspan="9" class="muted">Belum ada faktur pada periode ini.</td></tr>'}
-      </table><h3>Ringkasan</h3><table>
-      ${state.returns.filter(r => inRange(r.date, from, to)).map(r => `<tr><td>Retur ${r.kind === 'sale' ? 'penjualan' : 'pembelian'} ${esc(r.ref)}: buat retur faktur di Coretax</td><td class="num">(${rp(r.ppn)})</td></tr>`).join('')}
-      <tr><td>PPN keluaran disetor sendiri</td><td class="num">${rp(sum(t => !buy(t) && !t.wapu ? t.ppn : 0))}</td></tr>
-      <tr><td>PPN keluaran dipungut pembeli WAPU</td><td class="num">${rp(sum(t => !buy(t) && t.wapu ? t.ppn : 0))}</td></tr>
-      <tr><td>PPN masukan dapat dikreditkan</td><td class="num">${rp(sum(t => buy(t) && t.ppnCredit ? t.ppn : 0))}</td></tr>
-      <tr><td>PPN vendor yang kami pungut (WAPU)</td><td class="num">${rp(sum(t => buy(t) && t.wapu ? t.ppn : 0))}</td></tr>
-      <tr><td>PPh yang kami potong/pungut dari vendor</td><td class="num">${rp(sum(t => buy(t) ? t.pph : 0))}</td></tr>
-      <tr><td>PPh yang dipotong pembeli (kredit pajak)</td><td class="num">${rp(sum(t => buy(t) ? 0 : t.pph))}</td></tr>
-      <tr class="total"><td>Saldo utang PPN / PPN WAPU / PPh potput saat ini</td><td class="num">${rp(journalBal(ACC_PPN))} / ${rp(journalBal(ACC_PPN_WAPU))} / ${rp(journalBal(ACC_PPH_POT))}</td></tr></table>
-      <h3>Perhitungan PPN per masa</h3><table><thead><tr><th>Masa</th><th class="num">Keluaran</th><th class="num">Masukan</th><th class="num">Lebih bayar masa lalu</th><th class="num">Dikompensasi</th><th class="num">Kurang bayar</th><th>Status</th></tr></thead>
-      ${ppnMasa().filter(m => inRange(m.ym + '-01', from ? from.slice(0, 7) + '-01' : '', to)).map(m => `<tr><td>${ymLabel(m.ym)}</td><td class="num">${rp(m.out)}</td><td class="num">${rp(m.in)}</td><td class="num">${rp(m.carry)}</td><td class="num">${rp(m.offset)}</td><td class="num">${rp(m.pay)}</td><td>${m.closed ? 'Dikompensasi otomatis' : 'Masa berjalan'}</td></tr>`).join('')}</table>
-      <p class="muted" style="font-size:12px">Faktur pajak tetap diterbitkan dan dilaporkan lewat Coretax; rekap ini untuk mencocokkan. PPN masukan dikurangkan otomatis ke PPN keluaran setelah masa berakhir, dan kelebihannya dibawa ke masa berikutnya. PPN WAPU tidak ikut dikompensasi.</p>` + signBlock();
+    const sumRow = (t, v) => el('tr', null, td(t), n(v));
+    return [kopEl('Rekap Faktur & Pajak Jual Beli', period), tbl(thead(th('Tgl faktur'), th('No. bukti'), th('No. faktur pajak'), th('Jenis'), th('Pihak'), th('DPP', 1), th('PPN', 1), th('Perlakuan PPN'), th('PPh')),
+      rows.length ? rows.map(t => el('tr', null, nw(fmtDate(t.fpDate || t.date)), td(t.ref), td(t.fpNo ? t.fpNo : el('span', {class: 'out'}, 'belum diisi')), td(buy(t) ? 'Masukan' : 'Keluaran'), td(partyOf(t)), n(rp(tradeTotal(t))), n(rp(t.ppn)),
+        td(!t.ppn ? '—' : t.wapu ? (buy(t) ? 'Kami pungut (WAPU)' : 'Dipungut pembeli') : buy(t) ? (t.ppnCredit ? 'Dikreditkan' : 'Masuk harga pokok') : 'Disetor sendiri'), td(pphTxt(t))))
+        : el('tr', null, el('td', {colspan: 9, class: 'muted'}, 'Belum ada faktur pada periode ini.'))),
+      el('h3', null, 'Ringkasan'), tbl(null, state.returns.filter(r => inRange(r.date, from, to)).map(r => sumRow(`Retur ${r.kind === 'sale' ? 'penjualan' : 'pembelian'} ${r.ref ?? ''}: buat retur faktur di Coretax`, `(${rp(r.ppn)})`)),
+        sumRow('PPN keluaran disetor sendiri', rp(sum(t => !buy(t) && !t.wapu ? t.ppn : 0))),
+        sumRow('PPN keluaran dipungut pembeli WAPU', rp(sum(t => !buy(t) && t.wapu ? t.ppn : 0))),
+        sumRow('PPN masukan dapat dikreditkan', rp(sum(t => buy(t) && t.ppnCredit ? t.ppn : 0))),
+        sumRow('PPN vendor yang kami pungut (WAPU)', rp(sum(t => buy(t) && t.wapu ? t.ppn : 0))),
+        sumRow('PPh yang kami potong/pungut dari vendor', rp(sum(t => buy(t) ? t.pph : 0))),
+        sumRow('PPh yang dipotong pembeli (kredit pajak)', rp(sum(t => buy(t) ? 0 : t.pph))),
+        el('tr', {class: 'total'}, td('Saldo utang PPN / PPN WAPU / PPh potput saat ini'), n(`${rp(journalBal(ACC_PPN))} / ${rp(journalBal(ACC_PPN_WAPU))} / ${rp(journalBal(ACC_PPH_POT))}`))),
+      el('h3', null, 'Perhitungan PPN per masa'), tbl(thead(th('Masa'), th('Keluaran', 1), th('Masukan', 1), th('Lebih bayar masa lalu', 1), th('Dikompensasi', 1), th('Kurang bayar', 1), th('Status')),
+        ppnMasa().filter(m => inRange(m.ym + '-01', from ? from.slice(0, 7) + '-01' : '', to)).map(m => el('tr', null, td(ymLabel(m.ym)), n(rp(m.out)), n(rp(m.in)), n(rp(m.carry)), n(rp(m.offset)), n(rp(m.pay)), td(m.closed ? 'Dikompensasi otomatis' : 'Masa berjalan')))),
+      pMuted('Faktur pajak tetap diterbitkan dan dilaporkan lewat Coretax; rekap ini untuk mencocokkan. PPN masukan dikurangkan otomatis ke PPN keluaran setelah masa berakhir, dan kelebihannya dibawa ke masa berikutnya. PPN WAPU tidak ikut dikompensasi.'), signEl()];
   }
   const runs = state.payrolls.filter(p => inRange(p.date, from, to)).sort((a, b) => a.period.localeCompare(b.period));
   if (type === 'upah') {
     let no = 0;
-    return kop('Daftar Upah', period) + `<table><thead><tr><th>No</th><th>Periode</th><th>Nama</th><th>Jabatan</th><th class="num">Gaji pokok</th><th class="num">Tunjangan</th><th class="num">Lembur/bonus</th><th class="num">Potongan BPJS</th><th class="num">PPh 21</th><th class="num">Kasbon</th><th class="num">Bersih</th><th>Tgl bayar</th><th>Paraf</th></tr></thead>
-      ${runs.flatMap(p => p.lines.map(l => `<tr><td>${++no}</td><td>${ymLabel(p.period)}</td><td>${esc(l.name)}</td><td>${esc(l.title)}</td><td class="num">${rp(l.base)}</td><td class="num">${rp(l.fixed + l.varAllow)}</td><td class="num">${rp(l.ot + l.bonus)}</td><td class="num">${rp(lineEe(l))}</td><td class="num">${rp(l.taxBy === 'karyawan' ? l.pph : 0)}</td><td class="num">${rp(l.deduct)}</td><td class="num">${rp(l.net)}</td><td style="white-space:nowrap">${fmtDate(p.date)}</td><td></td></tr>`)).join('') || '<tr><td colspan="13" class="muted">Belum ada penggajian pada periode ini.</td></tr>'}
-      </table>` + signBlock();
+    const lines = runs.flatMap(p => p.lines.map(l => el('tr', null, td(++no), td(ymLabel(p.period)), td(l.name), td(l.title), n(rp(l.base)), n(rp(l.fixed + l.varAllow)), n(rp(l.ot + l.bonus)), n(rp(lineEe(l))), n(rp(l.taxBy === 'karyawan' ? l.pph : 0)), n(rp(l.deduct)), n(rp(l.net)), nw(fmtDate(p.date)), td())));
+    return [kopEl('Daftar Upah', period), tbl(thead(th('No'), th('Periode'), th('Nama'), th('Jabatan'), th('Gaji pokok', 1), th('Tunjangan', 1), th('Lembur/bonus', 1), th('Potongan BPJS', 1), th('PPh 21', 1), th('Kasbon', 1), th('Bersih', 1), th('Tgl bayar'), th('Paraf')),
+      lines.length ? lines : el('tr', null, el('td', {colspan: 13, class: 'muted'}, 'Belum ada penggajian pada periode ini.'))), signEl()];
   }
   if (type === 'bpjs') {
     const sum = (p, f) => p.lines.reduce((s, l) => s + f(l), 0);
     const cols = [['JKK', l => l.co.jkk], ['JKM', l => l.co.jkm], ['JHT prsh', l => l.co.jht], ['JP prsh', l => l.co.jp], ['Kes prsh', l => l.co.kes], ['JHT kary', l => l.ee.jht], ['JP kary', l => l.ee.jp], ['Kes kary', l => l.ee.kes], ['PPh 21', l => l.pph], ['PPh ditanggung', l => l.taxAllow]];
-    return kop('Rekap PPh 21 &amp; BPJS', period) + `<table><thead><tr><th>Masa</th>${cols.map(c => `<th class="num">${c[0]}</th>`).join('')}</tr></thead>
-      ${runs.map(p => `<tr><td>${ymLabel(p.period)}</td>${cols.map(c => `<td class="num">${rp(sum(p, c[1]))}</td>`).join('')}</tr>`).join('')}
-      <tr class="total"><td>Total</td>${cols.map(c => `<td class="num">${rp(runs.reduce((s, p) => s + sum(p, c[1]), 0))}</td>`).join('')}</tr></table>
-      <p>Utang PPh 21 saat ini ${rp(journalBal(ACC_PPH21))} · Utang BPJS saat ini ${rp(journalBal(ACC_BPJS))}.</p>
-      <p class="muted" style="font-size:12px">PPh 21 memakai tarif efektif PP 58/2023; masa Desember dihitung ulang dengan tarif Pasal 17. Buat bukti potong walaupun nihil. "PPh ditanggung" adalah tunjangan pajak yang dibayar perusahaan dan sudah termasuk di kolom PPh 21.</p>` + signBlock();
+    return [kopEl('Rekap PPh 21 & BPJS', period), tbl(thead(th('Masa'), cols.map(c => th(c[0], 1))),
+      runs.map(p => el('tr', null, td(ymLabel(p.period)), cols.map(c => n(rp(sum(p, c[1])))))),
+      el('tr', {class: 'total'}, td('Total'), cols.map(c => n(rp(runs.reduce((s, p) => s + sum(p, c[1]), 0)))))),
+      el('p', null, `Utang PPh 21 saat ini ${rp(journalBal(ACC_PPH21))} · Utang BPJS saat ini ${rp(journalBal(ACC_BPJS))}.`),
+      pMuted('PPh 21 memakai tarif efektif PP 58/2023; masa Desember dihitung ulang dengan tarif Pasal 17. Buat bukti potong walaupun nihil. "PPh ditanggung" adalah tunjangan pajak yang dibayar perusahaan dan sudah termasuk di kolom PPh 21.'), signEl()];
   }
   if (type === 'sdm') {
-    const ym = asOf.slice(0, 7), act = state.employees.filter(e => empActive(e, ym)), n = f => act.filter(f).length;
-    const monthly = act.filter(e => e.status !== 'harian').map(empWage);
-    return kop('Data Ketenagakerjaan', 'Per ' + fmtDate(asOf)) + `<table>
-      <tr class="sect"><td colspan="2">Jumlah pekerja</td></tr>
-      <tr><td>Laki-laki</td><td class="num">${n(e => e.gender === 'L')}</td></tr><tr><td>Perempuan</td><td class="num">${n(e => e.gender === 'P')}</td></tr>
-      ${Object.entries(EMP_STATUS).map(([k, v]) => `<tr><td>${v}</td><td class="num">${n(e => e.status === k)}</td></tr>`).join('')}
-      <tr class="total"><td>Total</td><td class="num">${act.length}</td></tr>
-      <tr class="sect"><td colspan="2">Upah bulanan (pokok + tunjangan tetap)</td></tr>
-      <tr><td>Terendah</td><td class="num">${monthly.length ? rp(Math.min(...monthly)) : '—'}</td></tr><tr><td>Tertinggi</td><td class="num">${monthly.length ? rp(Math.max(...monthly)) : '—'}</td></tr>
-      <tr><td>Dasar upah</td><td class="num">${state.hr.umpMode === 'wajib' ? 'Upah minimum' + (state.hr.ump ? ' ' + rp(state.hr.ump) : '') : 'Kesepakatan (usaha mikro/kecil)'}</td></tr>
-      <tr class="sect"><td colspan="2">Kepesertaan BPJS</td></tr>
-      <tr><td>BPJS Ketenagakerjaan</td><td class="num">${n(e => e.bpjsTk)}</td></tr><tr><td>BPJS Kesehatan</td><td class="num">${n(e => e.bpjsKes)}</td></tr>
-      </table><p class="muted" style="font-size:12px">Dapat dipakai sebagai bahan wajib lapor ketenagakerjaan.</p>` + signBlock();
+    const ym = asOf.slice(0, 7), act = state.employees.filter(e => empActive(e, ym)), cnt = f => act.filter(f).length;
+    const monthly = act.filter(e => e.status !== 'harian').map(empWage), row = (t, v) => el('tr', null, td(t), n(v));
+    return [kopEl('Data Ketenagakerjaan', 'Per ' + fmtDate(asOf)), tbl(null,
+      sectRow('Jumlah pekerja'), row('Laki-laki', cnt(e => e.gender === 'L')), row('Perempuan', cnt(e => e.gender === 'P')),
+      Object.entries(EMP_STATUS).map(([k, v]) => row(v, cnt(e => e.status === k))),
+      el('tr', {class: 'total'}, td('Total'), n(act.length)),
+      sectRow('Upah bulanan (pokok + tunjangan tetap)'), row('Terendah', monthly.length ? rp(Math.min(...monthly)) : '—'), row('Tertinggi', monthly.length ? rp(Math.max(...monthly)) : '—'),
+      row('Dasar upah', state.hr.umpMode === 'wajib' ? 'Upah minimum' + (state.hr.ump ? ' ' + rp(state.hr.ump) : '') : 'Kesepakatan (usaha mikro/kecil)'),
+      sectRow('Kepesertaan BPJS'), row('BPJS Ketenagakerjaan', cnt(e => e.bpjsTk)), row('BPJS Kesehatan', cnt(e => e.bpjsKes))),
+      pMuted('Dapat dipakai sebagai bahan wajib lapor ketenagakerjaan.'), signEl()];
   }
   return '';
 }
