@@ -67,23 +67,30 @@ const PANDUAN = {
 };
 // Satu file PDF per akun, dibuat dari isi panduan ini dan diunggah ke folder panduan/
 const PD_FILE = {owner: 'pimpinan', finance: 'keuangan', sales: 'penjualan', warehouse: 'gudang', hr: 'sdm', viewer: 'hanya-lihat'};
-const pdRich = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+// Teks panduan dengan **tebal** -> simpul teks dan <b>, tanpa penguraian HTML
+const pdRich = s => String(s ?? '').split(/\*\*(.+?)\*\*/g).map((x, i) => i % 2 ? el('b', null, x) : x);
 const pdTabsFor = () => { const r = company?.role || 'owner'; return ['mulai', ...(r === 'owner' ? ['owner', 'finance', 'sales', 'warehouse', 'hr', 'viewer'] : [r])]; };
 const pdExcelKeys = k => k === 'viewer' || k === 'mulai' || k === 'owner' ? [] : Object.keys(UNGGAH).filter(x => k === 'finance' ? !UNGGAH[x].roles.length : UNGGAH[x].roles.includes(k));
 let pdTab = '';
 function pdExcel(k) {
   const keys = pdExcelKeys(k); if (!keys.length) return '';
-  return `<div class="card pd-card"><h3>Isi template Excel</h3><p class="muted" style="margin-top:0">Tekan judul template untuk melihat cara mengisi tiap kolom. Kolom wajib ditandai.</p>${keys.map(x => { const s = UNGGAH[x]; return `<details class="pd-x"><summary><b>${esc(s.title)}</b> <span class="muted">· ${esc(s.desc)}</span></summary><div class="table-wrap"><table><thead><tr><th>Kolom</th><th>Wajib</th><th>Cara mengisi</th><th>Keterangan</th><th>Contoh</th></tr></thead><tbody>${s.cols.map(c => `<tr><td><b>${esc(c.h)}</b></td><td>${c.req ? '<span class="badge warn">Wajib</span>' : '<span class="muted">Boleh kosong</span>'}</td><td>${esc(colFormat(c))}</td><td>${esc(c.note || '')}</td><td>${esc(c.ex ?? '')}</td></tr>`).join('')}</tbody></table></div></details>`; }).join('')}</div>`;
+  return el('div', {class: 'card pd-card'}, el('h3', null, 'Isi template Excel'), el('p', {class: 'muted', style: 'margin-top:0'}, 'Tekan judul template untuk melihat cara mengisi tiap kolom. Kolom wajib ditandai.'),
+    keys.map(x => { const s = UNGGAH[x]; return el('details', {class: 'pd-x'}, el('summary', null, el('b', null, s.title), ' ', el('span', {class: 'muted'}, '· ' + s.desc)),
+      el('div', {class: 'table-wrap'}, el('table', null, el('thead', null, el('tr', null, ['Kolom', 'Wajib', 'Cara mengisi', 'Keterangan', 'Contoh'].map(h => el('th', null, h)))),
+        el('tbody', null, s.cols.map(c => el('tr', null, el('td', null, el('b', null, c.h)), el('td', null, c.req ? el('span', {class: 'badge warn'}, 'Wajib') : el('span', {class: 'muted'}, 'Boleh kosong')),
+          el('td', null, colFormat(c)), el('td', null, c.note || ''), el('td', null, c.ex ?? '')))))));
+    }));
 }
 function renderPanduan() {
   const tabs = pdTabsFor(); if (!tabs.includes(pdTab)) pdTab = tabs[1] || 'mulai';
-  $('pdTabs').innerHTML = tabs.map(k => `<button type="button" data-act="pdTab" data-id="${k}" class="${k === pdTab ? 'on' : ''}" aria-pressed="${k === pdTab}">${esc(PANDUAN[k].title)}</button>`).join('');
+  $('pdTabs').replaceChildren(...tabs.map(k => el('button', {type: 'button', 'data-act': 'pdTab', 'data-id': k, class: k === pdTab ? 'on' : '', 'aria-pressed': String(k === pdTab)}, PANDUAN[k].title)));
   const p = PANDUAN[pdTab], who = pdTab === 'mulai' ? company?.role || 'owner' : pdTab, link = $('pdPdf');
   link.href = `panduan/panduan-${PD_FILE[who]}.pdf`; link.download = `panduan-${PD_FILE[who]}.pdf`; link.textContent = `Unduh panduan PDF ${PANDUAN[who].title}`;
-  $('pdHead').innerHTML = `<h2>Panduan ${esc(p.title)}</h2><p class="muted">${esc(p.intro)}</p>`;
-  $('pdBody').innerHTML = `${p.rutin ? `<div class="card pd-card"><h3>Pekerjaan rutin</h3><table class="dt"><tbody>${p.rutin.map(([w, t]) => `<tr><td style="width:96px"><b>${esc(w)}</b></td><td>${pdRich(t)}</td></tr>`).join('')}</tbody></table></div>` : ''}
-    ${p.guides.map(g => `<div class="card pd-card"><h3>${esc(g.t)}</h3>${g.steps ? `<ol class="pd-steps">${g.steps.map(s => `<li>${pdRich(s)}</li>`).join('')}</ol>` : ''}${g.list ? `<ul class="pd-steps">${g.list.map(s => `<li>${pdRich(s)}</li>`).join('')}</ul>` : ''}${g.tip ? `<div class="notice" style="margin:10px 0 0">${pdRich(g.tip)}</div>` : ''}</div>`).join('')}
-    ${pdExcel(pdTab)}`;
+  $('pdHead').replaceChildren(el('h2', null, 'Panduan ' + p.title), el('p', {class: 'muted'}, p.intro));
+  $('pdBody').replaceChildren(frag(
+    p.rutin && el('div', {class: 'card pd-card'}, el('h3', null, 'Pekerjaan rutin'), el('table', {class: 'dt'}, el('tbody', null, p.rutin.map(([w, t]) => el('tr', null, el('td', {style: 'width:96px'}, el('b', null, w)), el('td', null, pdRich(t))))))),
+    p.guides.map(g => el('div', {class: 'card pd-card'}, el('h3', null, g.t), g.steps && el('ol', {class: 'pd-steps'}, g.steps.map(x => el('li', null, pdRich(x)))), g.list && el('ul', {class: 'pd-steps'}, g.list.map(x => el('li', null, pdRich(x)))), g.tip && el('div', {class: 'notice', style: 'margin:10px 0 0'}, pdRich(g.tip)))),
+    pdExcel(pdTab)));
 }
 Object.assign(ACTIONS, {
   pdTab: k => { if (pdTabsFor().includes(k)) { pdTab = k; renderPanduan(); window.scrollTo(0, 0); } },

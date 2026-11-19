@@ -134,6 +134,19 @@ const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOff
 const fmtDate = d => { if (!d) return 'Saldo awal'; const [y, m, dd] = d.split('-'); return `${dd} ${MONTHS[+m - 1]} ${y}`; };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $ = id => document.getElementById(id);
+// Pembangun DOM aman (pengganti templat innerHTML): teks selalu menjadi simpul teks dan atribut diisi lewat
+// setAttribute, jadi data pengguna tidak pernah diurai sebagai HTML (mdn/content: files/en-us/web/api/node/textcontent,
+// files/en-us/web/api/element/setattribute; OWASP/CheatSheetSeries: cheatsheets/DOM_based_XSS_Prevention_Cheat_Sheet.md).
+// Atribut bernilai null/undefined/false dilewati, true = atribut kosong; anak null/false/'' dilewati, array diratakan.
+const kidsOf = kids => { const out = []; for (const k of kids.flat(Infinity)) if (k != null && k !== false && k !== '') out.push(k instanceof Node ? k : String(k)); return out; };
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  if (attrs) for (const k in attrs) { const v = attrs[k]; if (v != null && v !== false) e.setAttribute(k, v === true ? '' : String(v)); }
+  e.append(...kidsOf(kids));
+  return e;
+}
+const frag = (...kids) => { const f = document.createDocumentFragment(); f.append(...kidsOf(kids)); return f; };
+const emptyRow = (span, text) => el('tr', null, el('td', {colspan: span, class: 'empty', 'data-label': ''}, text));
 const moneyInput = el => el.oninput = () => { const n = parseNum(el.value); el.value = n ? n.toLocaleString('id-ID') : ''; };
 const daysBetween = (a, b) => Math.round((new Date(b) - new Date(a)) / 864e5);
 const inRange = (date, from, to) => (!from || date >= from) && (!to || date <= to);
@@ -957,9 +970,13 @@ const catOf = id => state.categories.find(c => c.id === id);
 const catName = id => catOf(id)?.name || '—';
 const catLabel = id => { const c = catOf(id); return c ? (c.code ? `<span class="code">${esc(c.code)}</span>` : '') + esc(c.name) : '—'; };
 const accLabel = a => (a.code ? `<span class="code">${esc(a.code)}</span>` : '') + esc(a.name);
+// Padanan DOM aman untuk catLabel/accLabel/accHTML (dipakai tampilan yang sudah tidak memakai innerHTML)
+const catLabelEl = id => { const c = catOf(id); return c ? [c.code ? el('span', {class: 'code'}, c.code) : null, c.name] : '—'; };
+const accLabelEl = a => [a.code ? el('span', {class: 'code'}, a.code) : null, a.name];
 // Transaksi yang dihitung sebagai pendapatan/beban di Laba Rugi
 const inLR = t => t.type !== 'transfer' && catOf(t.categoryId)?.lr !== false;
 const statCard = ([l, v, c, sub]) => `<div class="card stat"><div class="label">${l}</div><div class="value ${c}">${v}</div>${sub ? `<div class="muted" style="font-size:12px;margin-top:4px">${sub}</div>` : ''}</div>`;
+const statCardEl = ([l, v, c, sub]) => el('div', {class: 'card stat'}, el('div', {class: 'label'}, l), el('div', {class: 'value ' + c}, v), sub ? el('div', {class: 'muted', style: 'font-size:12px;margin-top:4px'}, sub) : null);
 
 function nextRef(type, date) {
   const p = `${REF_PREFIX[type]}-${date.slice(2, 4)}${date.slice(5, 7)}-`;
@@ -1086,6 +1103,7 @@ function buildJournal() {
 }
 const accKey = a => a.code + '|' + a.name;
 const accHTML = a => `<span class="code">${esc(a.code)}</span>${esc(a.name)}`;
+const accEl = a => [el('span', {class: 'code'}, a.code), a.name];
 
 // Laba rugi periode: akrual (dari jurnal) atau kas (dari transaksi), sesuai pengaturan
 function lrData(from, to) {

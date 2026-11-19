@@ -3,7 +3,7 @@
 /* Modul ERP: perusahaan bersama (banyak pengguna), penjualan & CRM, pembelian & gudang, akuntansi lanjutan, dan SDM lanjutan.
    Berkas ini dimuat setelah app.js dan memakai fungsi serta data yang sama. */
 
-const APP_VERSION = '46'; // samakan dengan versi CACHE di sw.js
+const APP_VERSION = '47'; // samakan dengan versi CACHE di sw.js
 const ROLES = {owner: 'Pimpinan', finance: 'Keuangan', sales: 'Penjualan', warehouse: 'Gudang & pembelian', hr: 'SDM', viewer: 'Hanya lihat'};
 const ROLE_VIEWS = {sales: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'], warehouse: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'],
   hr: ['dashboard', 'karyawan', 'unggah', 'laporan', 'panduan', 'pengaturan'], viewer: ['dashboard', 'laporan', 'panduan', 'pengaturan']};
@@ -330,33 +330,36 @@ function orderBadge(o) {
 }
 function renderErp() {
   const tabs = erpTabs(); if (!tabs.some(([k]) => k === erpTab) && tabs[0]) erpTab = tabs[0][0];
-  $('erpTabs').innerHTML = tabs.map(([k, v]) => `<button type="button" data-act="erpTab" data-id="${k}" class="${k === erpTab ? 'on' : ''}" aria-pressed="${k === erpTab}">${esc(v[0])}</button>`).join('');
-  const box = $('erpBody'), table = (head, rows, empty) => `<div class="table-wrap"><table class="rtable"><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}<th class="no-print"></th></tr></thead><tbody>${rows.join('') || `<tr><td colspan="${head.length + 1}" class="empty" data-label="">${empty}</td></tr>`}</tbody></table></div>`;
-  const td = (l, v, c = '') => `<td data-label="${l}" class="${c}">${v}</td>`, open = (act, id, t = 'Buka') => `<td data-label="" class="no-print num"><button class="btn sm" data-act="${act}" data-id="${esc(id)}">${t}</button></td>`;
-  const add = (label, key) => `<div class="toolbar"><button class="btn primary" data-act="${key}">${label}</button></div>`;
-  if (renderErpMore(box, table, td, open, add)) return;
+  $('erpTabs').replaceChildren(...tabs.map(([k, v]) => el('button', {type: 'button', 'data-act': 'erpTab', 'data-id': k, class: k === erpTab ? 'on' : '', 'aria-pressed': String(k === erpTab)}, v[0])));
+  // Pembantu tabel DOM: sel berisi teks/simpul, tidak pernah HTML mentah
+  const box = $('erpBody'), table = (head, rows, empty) => el('div', {class: 'table-wrap'}, el('table', {class: 'rtable'}, el('thead', null, el('tr', null, head.map(h => el('th', null, h)), el('th', {class: 'no-print'}))),
+    el('tbody', null, rows.length ? rows : el('tr', null, el('td', {colspan: head.length + 1, class: 'empty', 'data-label': ''}, empty)))));
+  const td = (l, v, c = '') => el('td', {'data-label': l, class: c}, v), open = (act, id, t = 'Buka') => el('td', {'data-label': '', class: 'no-print num'}, el('button', {class: 'btn sm', 'data-act': act, 'data-id': id}, t));
+  const add = (label, key) => el('div', {class: 'toolbar'}, el('button', {class: 'btn primary', 'data-act': key}, label));
+  const h3 = t => el('h3', {style: 'font-size:14px;margin:16px 0 8px'}, t);
+  if (renderErpMore(box, table, td, open, add, h3)) return;
   if (ORDER_KINDS[erpTab]) {
     const k = ORDER_KINDS[erpTab], rows = sorted(state.orders.filter(o => o.kind === erpTab));
-    box.innerHTML = add('+ ' + k.label, 'newOrder') + table(['Tanggal', 'No.', 'Pihak', 'Nilai', 'Status'], rows.map(o => { const b = orderBadge(o); return `<tr>${td('Tanggal', fmtDate(o.date))}${td('No.', esc(o.ref))}${td('Pihak', esc(partyName(o)))}${td('Nilai', rp(orderTotal(o)), 'num')}${td('Status', `<span class="badge ${b[1]}">${b[0]}</span>`)}${open('openOrder', o.id)}</tr>`; }), 'Belum ada dokumen.');
+    box.replaceChildren(add('+ ' + k.label, 'newOrder'), table(['Tanggal', 'No.', 'Pihak', 'Nilai', 'Status'], rows.map(o => { const b = orderBadge(o); return el('tr', null, td('Tanggal', fmtDate(o.date)), td('No.', o.ref), td('Pihak', partyName(o)), td('Nilai', rp(orderTotal(o)), 'num'), td('Status', el('span', {class: 'badge ' + b[1]}, b[0])), open('openOrder', o.id)); }), 'Belum ada dokumen.'));
   } else if (erpTab === 'customers') {
-    box.innerHTML = add('+ Pelanggan', 'formNew') + table(['Nama', 'Kontak', 'Piutang'], state.customers.slice().sort((a, b) => a.name.localeCompare(b.name)).map(c => {
+    box.replaceChildren(add('+ Pelanggan', 'formNew'), table(['Nama', 'Kontak', 'Piutang'], state.customers.slice().sort((a, b) => a.name.localeCompare(b.name)).map(c => {
       const open_ = state.debts.filter(d => d.kind === 'piutang' && d.party === c.name).reduce((s, d) => s + Math.max(0, remainOf(d)), 0);
-      return `<tr>${td('Nama', `<b>${esc(c.name)}</b>${c.wapu ? ' <span class="badge warn">WAPU</span>' : ''}`)}${td('Kontak', esc([c.pic, c.phone].filter(Boolean).join(' · ')))}${td('Piutang', rp(open_), 'num')}${open('formEdit', c.id, 'Ubah')}</tr>`; }), 'Belum ada pelanggan.');
+      return el('tr', null, td('Nama', [el('b', null, c.name), c.wapu ? [' ', el('span', {class: 'badge warn'}, 'WAPU')] : null]), td('Kontak', [c.pic, c.phone].filter(Boolean).join(' · ')), td('Piutang', rp(open_), 'num'), open('formEdit', c.id, 'Ubah')); }), 'Belum ada pelanggan.'));
   } else if (erpTab === 'wh') {
     const st = whStock(), names = [{id: '', name: 'Gudang utama'}, ...state.warehouses];
-    const rows = state.items.filter(i => i.kind === 'barang').map(i => `<tr>${td('Barang', esc(i.name))}${names.map(w => td(esc(w.name), fmtQty(st.get(w.id)?.get(i.id) || 0), 'num')).join('')}<td class="no-print"></td></tr>`);
-    box.innerHTML = `<div class="toolbar"><button class="btn primary" data-act="formNew">+ Gudang</button> <button class="btn" data-act="newTransfer">Pindah stok</button></div>` + table(['Barang', ...names.map(w => esc(w.name))], rows, 'Belum ada barang.')
-      + `<h3 style="font-size:14px;margin:16px 0 8px">Daftar gudang</h3>` + table(['Nama', 'Alamat'], state.warehouses.map(w => `<tr>${td('Nama', esc(w.name))}${td('Alamat', esc(w.address))}${open('formEdit', w.id, 'Ubah')}</tr>`), 'Baru ada gudang utama.')
-      + `<h3 style="font-size:14px;margin:16px 0 8px">Riwayat pindah stok</h3>` + table(['Tanggal', 'No.', 'Barang', 'Jumlah', 'Rute'], sorted(state.transfers).map(t => `<tr>${td('Tanggal', fmtDate(t.date))}${td('No.', esc(t.ref))}${td('Barang', esc(itemOf(t.itemId)?.name))}${td('Jumlah', fmtQty(t.qty), 'num')}${td('Rute', esc(whName(t.fromId) + ' → ' + whName(t.toId)))}${open('delTransfer', t.id, 'Hapus')}</tr>`), 'Belum ada.');
+    const rows = state.items.filter(i => i.kind === 'barang').map(i => el('tr', null, td('Barang', i.name), names.map(w => td(w.name, fmtQty(st.get(w.id)?.get(i.id) || 0), 'num')), el('td', {class: 'no-print'})));
+    box.replaceChildren(el('div', {class: 'toolbar'}, el('button', {class: 'btn primary', 'data-act': 'formNew'}, '+ Gudang'), ' ', el('button', {class: 'btn', 'data-act': 'newTransfer'}, 'Pindah stok')), table(['Barang', ...names.map(w => w.name)], rows, 'Belum ada barang.'),
+      h3('Daftar gudang'), table(['Nama', 'Alamat'], state.warehouses.map(w => el('tr', null, td('Nama', w.name), td('Alamat', w.address), open('formEdit', w.id, 'Ubah'))), 'Baru ada gudang utama.'),
+      h3('Riwayat pindah stok'), table(['Tanggal', 'No.', 'Barang', 'Jumlah', 'Rute'], sorted(state.transfers).map(t => el('tr', null, td('Tanggal', fmtDate(t.date)), td('No.', t.ref), td('Barang', itemOf(t.itemId)?.name), td('Jumlah', fmtQty(t.qty), 'num'), td('Rute', whName(t.fromId) + ' → ' + whName(t.toId)), open('delTransfer', t.id, 'Hapus'))), 'Belum ada.'));
   } else if (erpTab === 'assets') {
     const upTo = lastDayOf(addMonths(today().slice(0, 7), -1));
-    box.innerHTML = add('+ Aset', 'formNew') + table(['Aset', 'Tanggal', 'Harga perolehan', 'Akum. susut', 'Nilai buku'], state.assets.map(a => { const d = depTo(a, upTo); return `<tr>${td('Aset', `<b>${esc(a.name)}</b>`)}${td('Tanggal', fmtDate(a.date))}${td('Harga perolehan', rp(a.cost), 'num')}${td('Akum. susut', rp(d), 'num')}${td('Nilai buku', rp(a.cost - d), 'num')}${open('formEdit', a.id, 'Ubah')}</tr>`; }), 'Belum ada aset tetap.');
+    box.replaceChildren(add('+ Aset', 'formNew'), table(['Aset', 'Tanggal', 'Harga perolehan', 'Akum. susut', 'Nilai buku'], state.assets.map(a => { const d = depTo(a, upTo); return el('tr', null, td('Aset', el('b', null, a.name)), td('Tanggal', fmtDate(a.date)), td('Harga perolehan', rp(a.cost), 'num'), td('Akum. susut', rp(d), 'num'), td('Nilai buku', rp(a.cost - d), 'num'), open('formEdit', a.id, 'Ubah')); }), 'Belum ada aset tetap.'));
   } else if (erpTab === 'journals') {
-    box.innerHTML = add('+ Jurnal', 'formNew') + table(['Tanggal', 'No.', 'Debit', 'Kredit', 'Jumlah'], sorted(state.journals).map(j => `<tr>${td('Tanggal', fmtDate(j.date))}${td('No.', esc(j.ref))}${td('Debit', accHTML(j.dr))}${td('Kredit', accHTML(j.cr))}${td('Jumlah', rp(j.amount), 'num')}${open('formEdit', j.id, 'Ubah')}</tr>`), 'Belum ada jurnal manual.');
+    box.replaceChildren(add('+ Jurnal', 'formNew'), table(['Tanggal', 'No.', 'Debit', 'Kredit', 'Jumlah'], sorted(state.journals).map(j => el('tr', null, td('Tanggal', fmtDate(j.date)), td('No.', j.ref), td('Debit', accEl(j.dr)), td('Kredit', accEl(j.cr)), td('Jumlah', rp(j.amount), 'num'), open('formEdit', j.id, 'Ubah'))), 'Belum ada jurnal manual.'));
   } else if (erpTab === 'budgets') {
-    box.innerHTML = add('+ Anggaran', 'formNew') + table(['Tahun', 'Kategori', 'Anggaran', 'Realisasi'], state.budgets.map(b => `<tr>${td('Tahun', esc(b.year))}${td('Kategori', catLabel(b.categoryId))}${td('Anggaran', rp(b.amount), 'num')}${td('Realisasi', rp(actualOf(b)), 'num')}${open('formEdit', b.id, 'Ubah')}</tr>`), 'Belum ada anggaran.');
+    box.replaceChildren(add('+ Anggaran', 'formNew'), table(['Tahun', 'Kategori', 'Anggaran', 'Realisasi'], state.budgets.map(b => el('tr', null, td('Tahun', b.year), td('Kategori', catLabelEl(b.categoryId)), td('Anggaran', rp(b.amount), 'num'), td('Realisasi', rp(actualOf(b)), 'num'), open('formEdit', b.id, 'Ubah'))), 'Belum ada anggaran.'));
   } else {
-    box.innerHTML = add('+ Pusat biaya', 'formNew') + table(['Kode', 'Nama'], state.centers.map(c => `<tr>${td('Kode', esc(c.code))}${td('Nama', esc(c.name))}${open('formEdit', c.id, 'Ubah')}</tr>`), 'Belum ada cabang atau proyek.');
+    box.replaceChildren(add('+ Pusat biaya', 'formNew'), table(['Kode', 'Nama'], state.centers.map(c => el('tr', null, td('Kode', c.code), td('Nama', c.name), open('formEdit', c.id, 'Ubah'))), 'Belum ada cabang atau proyek.'));
   }
 }
 
@@ -580,12 +583,18 @@ function renderHrExtra() {
   if (hrTab === 'att') {
     attDate ||= today(); $('attDate').value = attDate;
     const rows = state.employees.filter(e => empActive(e, attDate.slice(0, 7))).sort((a, b) => a.name.localeCompare(b.name));
-    $('attBody').innerHTML = rows.map(e => { const a = state.attendance.find(x => x.empId === e.id && x.date === attDate); return `<tr><td data-label="Nama"><b>${esc(e.name)}</b></td><td data-label="Kehadiran"><select data-att="${esc(e.id)}" aria-label="Kehadiran"><option value="">Belum diisi</option>${Object.entries(ATT_STATUS).map(([k, v]) => `<option value="${k}"${a?.status === k ? ' selected' : ''}>${v}</option>`).join('')}</select></td></tr>`; }).join('') || '<tr><td colspan="2" class="empty" data-label="">Belum ada karyawan aktif.</td></tr>';
+    $('attBody').replaceChildren(...(rows.length ? rows.map(e => { const a = state.attendance.find(x => x.empId === e.id && x.date === attDate); return el('tr', null, el('td', {'data-label': 'Nama'}, el('b', null, e.name)),
+      el('td', {'data-label': 'Kehadiran'}, el('select', {'data-att': e.id, 'aria-label': 'Kehadiran'}, el('option', {value: ''}, 'Belum diisi'), Object.entries(ATT_STATUS).map(([k, v]) => el('option', {value: k, selected: a?.status === k}, v))))); })
+      : [emptyRow(2, 'Belum ada karyawan aktif.')]));
   } else if (hrTab === 'leave') {
-    $('leaveBody').innerHTML = sorted(state.leaves).map(l => { const b = ORDER_STATUS[l.status]; return `<tr><td data-label="Nama"><b>${esc(empOf(l.empId)?.name)}</b></td><td data-label="Jenis">${LEAVE_TYPES[l.type]}</td><td data-label="Tanggal">${fmtDate(l.date)} s.d. ${fmtDate(l.to)}</td><td data-label="Hari" class="num">${l.days}</td><td data-label="Sisa cuti ${y}" class="num">${LEAVE_QUOTA - leaveUsed(l.empId, y)}</td><td data-label="Status"><span class="badge ${b[1]}">${b[0]}</span></td>
-      <td data-label="" class="no-print num" style="white-space:nowrap">${l.status === 'draft' ? `<button class="btn sm primary" data-act="approveLeave" data-id="${esc(l.id)}">Setujui</button> ` : ''}<button class="btn sm" data-act="openLeave" data-id="${esc(l.id)}">Ubah</button></td></tr>`; }).join('') || '<tr><td colspan="7" class="empty" data-label="">Belum ada pengajuan.</td></tr>';
+    $('leaveBody').replaceChildren(...(state.leaves.length ? sorted(state.leaves).map(l => { const b = ORDER_STATUS[l.status]; return el('tr', null, el('td', {'data-label': 'Nama'}, el('b', null, empOf(l.empId)?.name)), el('td', {'data-label': 'Jenis'}, LEAVE_TYPES[l.type]),
+      el('td', {'data-label': 'Tanggal'}, `${fmtDate(l.date)} s.d. ${fmtDate(l.to)}`), el('td', {'data-label': 'Hari', class: 'num'}, l.days), el('td', {'data-label': `Sisa cuti ${y}`, class: 'num'}, LEAVE_QUOTA - leaveUsed(l.empId, y)), el('td', {'data-label': 'Status'}, el('span', {class: 'badge ' + b[1]}, b[0])),
+      el('td', {'data-label': '', class: 'no-print num', style: 'white-space:nowrap'}, l.status === 'draft' ? [el('button', {class: 'btn sm primary', 'data-act': 'approveLeave', 'data-id': l.id}, 'Setujui'), ' '] : null, el('button', {class: 'btn sm', 'data-act': 'openLeave', 'data-id': l.id}, 'Ubah'))); })
+      : [emptyRow(7, 'Belum ada pengajuan.')]));
   } else {
-    $('kasBody').innerHTML = sorted(state.kasbons).map(k => `<tr><td data-label="Tanggal">${fmtDate(k.date)}</td><td data-label="No.">${esc(k.ref)}</td><td data-label="Nama"><b>${esc(empOf(k.empId)?.name)}</b></td><td data-label="Jumlah" class="num">${rp(k.amount)}</td><td data-label="Sisa kasbon karyawan" class="num">${rp(Math.max(0, kasbonLeft(k.empId)))}</td><td data-label="" class="no-print num"><button class="btn sm" data-act="openKasbon" data-id="${esc(k.id)}">Ubah</button></td></tr>`).join('') || '<tr><td colspan="6" class="empty" data-label="">Belum ada kasbon.</td></tr>';
+    $('kasBody').replaceChildren(...(state.kasbons.length ? sorted(state.kasbons).map(k => el('tr', null, el('td', {'data-label': 'Tanggal'}, fmtDate(k.date)), el('td', {'data-label': 'No.'}, k.ref), el('td', {'data-label': 'Nama'}, el('b', null, empOf(k.empId)?.name)),
+      el('td', {'data-label': 'Jumlah', class: 'num'}, rp(k.amount)), el('td', {'data-label': 'Sisa kasbon karyawan', class: 'num'}, rp(Math.max(0, kasbonLeft(k.empId)))), el('td', {'data-label': '', class: 'no-print num'}, el('button', {class: 'btn sm', 'data-act': 'openKasbon', 'data-id': k.id}, 'Ubah'))))
+      : [emptyRow(6, 'Belum ada kasbon.')]));
   }
 }
 $('attDate').oninput = () => { attDate = cleanDate($('attDate').value) || today(); renderHrExtra(); };
@@ -912,9 +921,14 @@ function logAccounts() {
 }
 function logRender() {
   const rows = logRows(), shown = rows.slice(0, logF.limit), acts = logAccounts();
-  $('logAccounts').innerHTML = `<table class="rtable"><thead><tr><th>Akun</th><th>Peran</th><th class="num">Hari ini</th><th class="num">30 hari</th><th>Terakhir mengisi</th><th>Kegiatan terakhir</th></tr></thead><tbody>${acts.map(([k, r]) => `<tr><td data-label="Akun"><b>${esc(k)}</b></td><td data-label="Peran">${esc(r.role)}</td><td data-label="Hari ini" class="num">${r.day}</td><td data-label="30 hari" class="num">${r.n}</td><td data-label="Terakhir mengisi">${r.last ? esc(logTime(r.last.ts)) : 'Belum ada'}</td><td data-label="Kegiatan terakhir">${r.last ? esc(`${r.last.act} ${logEnt(r.last.ent)}`) : '—'}</td></tr>`).join('') || '<tr><td colspan="6" class="empty" data-label="">Belum ada aktivitas.</td></tr>'}</tbody></table>`;
+  $('logAccounts').replaceChildren(el('table', {class: 'rtable'}, el('thead', null, el('tr', null, el('th', null, 'Akun'), el('th', null, 'Peran'), el('th', {class: 'num'}, 'Hari ini'), el('th', {class: 'num'}, '30 hari'), el('th', null, 'Terakhir mengisi'), el('th', null, 'Kegiatan terakhir'))),
+    el('tbody', null, acts.length ? acts.map(([k, r]) => el('tr', null, el('td', {'data-label': 'Akun'}, el('b', null, k)), el('td', {'data-label': 'Peran'}, r.role), el('td', {'data-label': 'Hari ini', class: 'num'}, r.day), el('td', {'data-label': '30 hari', class: 'num'}, r.n),
+      el('td', {'data-label': 'Terakhir mengisi'}, r.last ? logTime(r.last.ts) : 'Belum ada'), el('td', {'data-label': 'Kegiatan terakhir'}, r.last ? `${r.last.act} ${logEnt(r.last.ent)}` : '—'))) : emptyRow(6, 'Belum ada aktivitas.'))));
   $('logCount').textContent = `${rows.length.toLocaleString('id-ID')} catatan cocok dari ${state.audit.length.toLocaleString('id-ID')}`;
-  $('logBody').innerHTML = shown.map(a => { const b = LOG_ACTS[a.act] || [a.act, 'warn']; return `<tr><td data-label="Waktu" style="white-space:nowrap">${esc(logTime(a.ts))}</td><td data-label="Akun"><b>${esc(logAcc(a))}</b></td><td data-label="Aksi"><span class="badge ${b[1]}">${esc(b[0])}</span></td><td data-label="Data">${esc(logEnt(a.ent))}</td><td data-label="Rincian" class="log-info">${esc(a.info)}</td><td data-label="Perangkat" class="muted">${esc(logDevice(a))}</td></tr>`; }).join('') || '<tr><td colspan="6" class="empty" data-label="">Tidak ada catatan yang cocok.</td></tr>';
+  const body = document.createDocumentFragment(); // catatan audit bisa ribuan: dirakit di luar dokumen, dipasang sekali
+  for (const a of shown) { const b = LOG_ACTS[a.act] || [a.act, 'warn']; body.append(el('tr', null, el('td', {'data-label': 'Waktu', style: 'white-space:nowrap'}, logTime(a.ts)), el('td', {'data-label': 'Akun'}, el('b', null, logAcc(a))), el('td', {'data-label': 'Aksi'}, el('span', {class: 'badge ' + b[1]}, b[0])),
+    el('td', {'data-label': 'Data'}, logEnt(a.ent)), el('td', {'data-label': 'Rincian', class: 'log-info'}, a.info), el('td', {'data-label': 'Perangkat', class: 'muted'}, logDevice(a)))); }
+  $('logBody').replaceChildren(shown.length ? body : emptyRow(6, 'Tidak ada catatan yang cocok.'));
   $('logMore').hidden = rows.length <= shown.length;
 }
 function logDash() {
@@ -987,23 +1001,23 @@ function sanitizeMore(d) {
 
 /* Tab ERP tambahan */
 let reconAcc = '';
-function renderErpMore(box, table, td, open, add) {
-  const go = html => { box.innerHTML = html; return true; };
-  if (erpTab === 'contacts') return go(add('+ Kontak', 'formNew') + table(['Tanggal', 'Pelanggan', 'Catatan', 'Tindak lanjut'], sorted(state.contacts).map(c => `<tr>${td('Tanggal', fmtDate(c.date))}${td('Pelanggan', esc(custOf(c.customerId)?.name))}${td('Catatan', esc([c.channel, c.note].filter(Boolean).join(' · ')))}${td('Tindak lanjut', c.next ? fmtDate(c.next) : '—')}${open('formEdit', c.id, 'Ubah')}</tr>`), 'Belum ada riwayat kontak.'));
-  if (erpTab === 'salespeople') { const ym = today().slice(0, 7); return go(add('+ Tenaga penjual', 'formNew') + table(['Nama', 'Target', 'Penjualan bulan ini', 'Komisi'], state.salespeople.map(s => { const v = salesBy(s.id, ym); return `<tr>${td('Nama', `<b>${esc(s.name)}</b>`)}${td('Target', rp(s.target), 'num')}${td('Penjualan bulan ini', rp(v), 'num')}${td('Komisi', rp(v * s.rate / 100), 'num')}${open('formEdit', s.id, 'Ubah')}</tr>`; }), 'Belum ada tenaga penjual.')); }
-  if (erpTab === 'batches') return go(add('+ Batch', 'formNew') + table(['Barang', 'No. batch', 'Kedaluwarsa', 'Jumlah'], state.batches.slice().sort((a, b) => (a.exp || '9').localeCompare(b.exp || '9')).map(b => `<tr>${td('Barang', esc(itemOf(b.itemId)?.name))}${td('No. batch', esc(b.batch))}${td('Kedaluwarsa', b.exp ? fmtDate(b.exp) : '—', b.exp && b.exp < today() ? 'out' : '')}${td('Jumlah', fmtQty(b.qty), 'num')}${open('formEdit', b.id, 'Ubah')}</tr>`), 'Belum ada batch. Keluarkan barang yang kedaluwarsanya paling dekat lebih dulu.'));
-  if (erpTab === 'recurring') { const ym = today().slice(0, 7); return go(add('+ Tagihan berulang', 'formNew') + table(['Nama', 'Jatuh tempo', 'Jumlah', 'Bulan ini'], state.recurring.map(r => `<tr>${td('Nama', `<b>${esc(r.name)}</b>${r.active ? '' : ' <span class="badge warn">Nonaktif</span>'}`)}${td('Jatuh tempo', 'Tanggal ' + r.day)}${td('Jumlah', rp(r.amount), 'num')}${td('Bulan ini', r.lastYm === ym ? '<span class="badge in">Tercatat</span>' : `<button class="btn sm primary" data-act="postRecurring" data-id="${esc(r.id)}">Catat</button>`)}${open('formEdit', r.id, 'Ubah')}</tr>`), 'Belum ada tagihan berulang.')); }
+function renderErpMore(box, table, td, open, add, h3) {
+  const go = (...nodes) => { box.replaceChildren(...nodes); return true; };
+  if (erpTab === 'contacts') return go(add('+ Kontak', 'formNew'), table(['Tanggal', 'Pelanggan', 'Catatan', 'Tindak lanjut'], sorted(state.contacts).map(c => el('tr', null, td('Tanggal', fmtDate(c.date)), td('Pelanggan', custOf(c.customerId)?.name), td('Catatan', [c.channel, c.note].filter(Boolean).join(' · ')), td('Tindak lanjut', c.next ? fmtDate(c.next) : '—'), open('formEdit', c.id, 'Ubah'))), 'Belum ada riwayat kontak.'));
+  if (erpTab === 'salespeople') { const ym = today().slice(0, 7); return go(add('+ Tenaga penjual', 'formNew'), table(['Nama', 'Target', 'Penjualan bulan ini', 'Komisi'], state.salespeople.map(s => { const v = salesBy(s.id, ym); return el('tr', null, td('Nama', el('b', null, s.name)), td('Target', rp(s.target), 'num'), td('Penjualan bulan ini', rp(v), 'num'), td('Komisi', rp(v * s.rate / 100), 'num'), open('formEdit', s.id, 'Ubah')); }), 'Belum ada tenaga penjual.')); }
+  if (erpTab === 'batches') return go(add('+ Batch', 'formNew'), table(['Barang', 'No. batch', 'Kedaluwarsa', 'Jumlah'], state.batches.slice().sort((a, b) => (a.exp || '9').localeCompare(b.exp || '9')).map(b => el('tr', null, td('Barang', itemOf(b.itemId)?.name), td('No. batch', b.batch), td('Kedaluwarsa', b.exp ? fmtDate(b.exp) : '—', b.exp && b.exp < today() ? 'out' : ''), td('Jumlah', fmtQty(b.qty), 'num'), open('formEdit', b.id, 'Ubah'))), 'Belum ada batch. Keluarkan barang yang kedaluwarsanya paling dekat lebih dulu.'));
+  if (erpTab === 'recurring') { const ym = today().slice(0, 7); return go(add('+ Tagihan berulang', 'formNew'), table(['Nama', 'Jatuh tempo', 'Jumlah', 'Bulan ini'], state.recurring.map(r => el('tr', null, td('Nama', [el('b', null, r.name), r.active ? null : [' ', el('span', {class: 'badge warn'}, 'Nonaktif')]]), td('Jatuh tempo', 'Tanggal ' + r.day), td('Jumlah', rp(r.amount), 'num'), td('Bulan ini', r.lastYm === ym ? el('span', {class: 'badge in'}, 'Tercatat') : el('button', {class: 'btn sm primary', 'data-act': 'postRecurring', 'data-id': r.id}, 'Catat')), open('formEdit', r.id, 'Ubah'))), 'Belum ada tagihan berulang.')); }
   if (erpTab === 'recon') {
     reconAcc = state.accounts.some(a => a.id === reconAcc) ? reconAcc : state.accounts[0]?.id || '';
     const a = state.accounts.find(x => x.id === reconAcc), rows = sorted(state.tx.filter(t => effect(t, reconAcc) !== 0));
     const cleared = (a?.opening || 0) + rows.reduce((s, t) => s + (t.cleared ? effect(t, reconAcc) : 0), 0), open_ = rows.filter(t => !t.cleared);
-    return go(`<div class="toolbar"><label class="f">Akun<select id="reconAcc">${state.accounts.map(x => `<option value="${esc(x.id)}"${x.id === reconAcc ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
-      <label class="f">Saldo rekening koran (Rp)<input id="reconStmt" inputmode="numeric"></label><button class="btn primary" data-act="saveRecon">Simpan rekonsiliasi</button></div>
-      <div class="tsum" id="reconSum" data-book="${cleared}" style="margin-bottom:12px">Saldo buku yang sudah cocok <b>${rp(cleared)}</b> · Saldo buku keseluruhan <b>${rp(balance(reconAcc))}</b> · ${open_.length} transaksi belum dicocokkan</div>`
-      + table(['Cocok', 'Tanggal', 'No. bukti', 'Uraian', 'Jumlah'], rows.slice(0, 200).map(t => `<tr>${td('Cocok', `<input type="checkbox" data-clr="${esc(t.id)}"${t.cleared ? ' checked' : ''} aria-label="Cocok dengan rekening koran">`)}${td('Tanggal', fmtDate(t.date))}${td('No. bukti', esc(t.ref))}${td('Uraian', esc(t.desc))}${td('Jumlah', rp(effect(t, reconAcc)), 'num')}<td class="no-print"></td></tr>`), 'Belum ada transaksi di akun ini.')
-      + `<h3 style="font-size:14px;margin:16px 0 8px">Riwayat rekonsiliasi</h3>` + table(['Tanggal', 'Akun', 'Rekening koran', 'Saldo cocok', 'Selisih'], sorted(state.recons).slice(0, 12).map(r => `<tr>${td('Tanggal', fmtDate(r.date))}${td('Akun', esc(accName(r.accountId)))}${td('Rekening koran', rp(r.stmt), 'num')}${td('Saldo cocok', rp(r.book), 'num')}${td('Selisih', rp(r.diff), 'num ' + (r.diff ? 'out' : ''))}<td class="no-print"></td></tr>`), 'Belum ada rekonsiliasi.'));
+    return go(el('div', {class: 'toolbar'}, el('label', {class: 'f'}, 'Akun', el('select', {id: 'reconAcc'}, state.accounts.map(x => el('option', {value: x.id, selected: x.id === reconAcc}, x.name)))),
+      el('label', {class: 'f'}, 'Saldo rekening koran (Rp)', el('input', {id: 'reconStmt', inputmode: 'numeric'})), el('button', {class: 'btn primary', 'data-act': 'saveRecon'}, 'Simpan rekonsiliasi')),
+      el('div', {class: 'tsum', id: 'reconSum', 'data-book': cleared, style: 'margin-bottom:12px'}, 'Saldo buku yang sudah cocok ', el('b', null, rp(cleared)), ' · Saldo buku keseluruhan ', el('b', null, rp(balance(reconAcc))), ` · ${open_.length} transaksi belum dicocokkan`),
+      table(['Cocok', 'Tanggal', 'No. bukti', 'Uraian', 'Jumlah'], rows.slice(0, 200).map(t => el('tr', null, td('Cocok', el('input', {type: 'checkbox', 'data-clr': t.id, checked: !!t.cleared, 'aria-label': 'Cocok dengan rekening koran'})), td('Tanggal', fmtDate(t.date)), td('No. bukti', t.ref), td('Uraian', t.desc), td('Jumlah', rp(effect(t, reconAcc)), 'num'), el('td', {class: 'no-print'}))), 'Belum ada transaksi di akun ini.'),
+      h3('Riwayat rekonsiliasi'), table(['Tanggal', 'Akun', 'Rekening koran', 'Saldo cocok', 'Selisih'], sorted(state.recons).slice(0, 12).map(r => el('tr', null, td('Tanggal', fmtDate(r.date)), td('Akun', accName(r.accountId)), td('Rekening koran', rp(r.stmt), 'num'), td('Saldo cocok', rp(r.book), 'num'), td('Selisih', rp(r.diff), 'num ' + (r.diff ? 'out' : '')), el('td', {class: 'no-print'}))), 'Belum ada rekonsiliasi.'));
   }
-  if (erpTab === 'pr' && reorderList().length) { queueMicrotask(() => { const t = box.querySelector('.toolbar'); if (t) t.insertAdjacentHTML('beforeend', ` <button class="btn" data-act="prFromReorder">Buat dari saran pesan ulang (${reorderList().length})</button>`); }); }
+  if (erpTab === 'pr' && reorderList().length) { queueMicrotask(() => { const t = box.querySelector('.toolbar'); if (t) t.append(' ', el('button', {class: 'btn', 'data-act': 'prFromReorder'}, `Buat dari saran pesan ulang (${reorderList().length})`)); }); }
   return false;
 }
 document.addEventListener('change', e => {
@@ -1013,7 +1027,7 @@ document.addEventListener('change', e => {
   if (e.target.checked) t.cleared = true; else delete t.cleared;
   save();
 });
-document.addEventListener('input', e => { if (e.target.id !== 'reconStmt') return; const n = parseNum(e.target.value); e.target.value = n ? n.toLocaleString('id-ID') : ''; const b = +$('reconSum').dataset.book, d = n - b; $('reconSum').innerHTML = $('reconSum').innerHTML.split(' · Selisih')[0] + ` · Selisih <b class="${d ? 'out' : 'in'}">${rp(d)}</b>`; });
+document.addEventListener('input', e => { if (e.target.id !== 'reconStmt') return; const n = parseNum(e.target.value); e.target.value = n ? n.toLocaleString('id-ID') : ''; const sum = $('reconSum'), b = +sum.dataset.book, d = n - b; sum.querySelector('[data-selisih]')?.remove(); sum.append(el('span', {'data-selisih': ''}, ' · Selisih ', el('b', {class: d ? 'out' : 'in'}, rp(d)))); });
 
 /* Penjualan: tenaga penjual, batas kredit, harga pelanggan */
 const salesBy = (id, ym) => state.trades.reduce((s, t) => t.kind === 'sale' && t.salesId === id && t.date.startsWith(ym) ? s + tradeTotal(t) : s, 0);
@@ -1062,13 +1076,19 @@ function weekDates() {
 }
 function renderHrMore() {
   if (hrTab === 'doc') {
-    $('docBody').innerHTML = state.empdocs.slice().sort((a, b) => (a.exp || '9').localeCompare(b.exp || '9')).map(x => `<tr><td data-label="Nama"><b>${esc(empOf(x.empId)?.name)}</b></td><td data-label="Dokumen">${DOC_TYPES[x.type]} ${esc(x.no)}</td><td data-label="Berlaku s.d." class="${x.exp && x.exp < days(today(), 30) ? 'out' : ''}">${x.exp ? fmtDate(x.exp) : 'Tanpa batas'}</td><td data-label="" class="no-print num"><button class="btn sm" data-act="openDoc" data-id="${esc(x.id)}">Ubah</button></td></tr>`).join('') || '<tr><td colspan="4" class="empty" data-label="">Belum ada dokumen.</td></tr>';
+    $('docBody').replaceChildren(...(state.empdocs.length ? state.empdocs.slice().sort((a, b) => (a.exp || '9').localeCompare(b.exp || '9')).map(x => el('tr', null, el('td', {'data-label': 'Nama'}, el('b', null, empOf(x.empId)?.name)), el('td', {'data-label': 'Dokumen'}, `${DOC_TYPES[x.type]} ${x.no ?? ''}`),
+      el('td', {'data-label': 'Berlaku s.d.', class: x.exp && x.exp < days(today(), 30) ? 'out' : ''}, x.exp ? fmtDate(x.exp) : 'Tanpa batas'), el('td', {'data-label': '', class: 'no-print num'}, el('button', {class: 'btn sm', 'data-act': 'openDoc', 'data-id': x.id}, 'Ubah'))))
+      : [emptyRow(4, 'Belum ada dokumen.')]));
   } else if (hrTab === 'rev') {
-    $('revBody').innerHTML = sorted(state.reviews).map(x => `<tr><td data-label="Tanggal">${fmtDate(x.date)}</td><td data-label="Nama"><b>${esc(empOf(x.empId)?.name)}</b></td><td data-label="Nilai" class="num">${x.score}/5</td><td data-label="Catatan">${esc(x.note)}</td><td data-label="" class="no-print num"><button class="btn sm" data-act="openRev" data-id="${esc(x.id)}">Ubah</button></td></tr>`).join('') || '<tr><td colspan="5" class="empty" data-label="">Belum ada penilaian.</td></tr>';
+    $('revBody').replaceChildren(...(state.reviews.length ? sorted(state.reviews).map(x => el('tr', null, el('td', {'data-label': 'Tanggal'}, fmtDate(x.date)), el('td', {'data-label': 'Nama'}, el('b', null, empOf(x.empId)?.name)), el('td', {'data-label': 'Nilai', class: 'num'}, `${x.score}/5`),
+      el('td', {'data-label': 'Catatan'}, x.note), el('td', {'data-label': '', class: 'no-print num'}, el('button', {class: 'btn sm', 'data-act': 'openRev', 'data-id': x.id}, 'Ubah'))))
+      : [emptyRow(5, 'Belum ada penilaian.')]));
   } else if (hrTab === 'shift') {
     const w = weekDates(); $('shiftDate').value = shiftWeek;
-    $('shiftHead').innerHTML = `<tr><th>Nama</th>${w.map(d => `<th>${d.slice(8)}/${d.slice(5, 7)}</th>`).join('')}</tr>`;
-    $('shiftBody').innerHTML = state.employees.filter(e => empActive(e, today().slice(0, 7))).map(e => `<tr><td><b>${esc(e.name)}</b></td>${w.map(d => { const s = state.shifts.find(x => x.empId === e.id && x.date === d); return `<td><select data-shift="${esc(e.id)}" data-date="${d}" aria-label="Shift ${d}"><option value="">—</option>${Object.entries(SHIFTS).map(([k, v]) => `<option value="${k}"${s?.shift === k ? ' selected' : ''}>${v}</option>`).join('')}</select></td>`; }).join('')}</tr>`).join('') || '<tr><td class="empty">Belum ada karyawan aktif.</td></tr>';
+    $('shiftHead').replaceChildren(el('tr', null, el('th', null, 'Nama'), w.map(d => el('th', null, `${d.slice(8)}/${d.slice(5, 7)}`))));
+    const act = state.employees.filter(e => empActive(e, today().slice(0, 7)));
+    $('shiftBody').replaceChildren(...(act.length ? act.map(e => el('tr', null, el('td', null, el('b', null, e.name)), w.map(d => { const s = state.shifts.find(x => x.empId === e.id && x.date === d); return el('td', null, el('select', {'data-shift': e.id, 'data-date': d, 'aria-label': 'Shift ' + d}, el('option', {value: ''}, '—'), Object.entries(SHIFTS).map(([k, v]) => el('option', {value: k, selected: s?.shift === k}, v)))); })))
+      : [el('tr', null, el('td', {class: 'empty'}, 'Belum ada karyawan aktif.'))]));
   }
 }
 $('shiftDate').oninput = () => { shiftWeek = cleanDate($('shiftDate').value) || today(); renderHrMore(); };

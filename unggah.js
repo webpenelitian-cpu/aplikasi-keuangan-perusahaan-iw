@@ -464,26 +464,32 @@ let ugKey = '', ugFile = null, ugName = '', ugPlan = null;
 function renderUnggah() {
   const keys = ugKinds(); if (!keys.includes(ugKey)) ugKey = keys[0] || '';
   const groups = [...new Set(keys.map(k => UNGGAH[k].group))];
-  $('ugKind').innerHTML = groups.map(g => `<optgroup label="${esc(g)}">${keys.filter(k => UNGGAH[k].group === g).map(k => `<option value="${k}"${k === ugKey ? ' selected' : ''}>${esc(UNGGAH[k].title)}</option>`).join('')}</optgroup>`).join('');
-  $('ugList').innerHTML = groups.map(g => `<h4 class="ug-group">${esc(g)}</h4><div class="ug-grid">${keys.filter(k => UNGGAH[k].group === g).map(k => `<div class="ug-item"><div><b>${esc(UNGGAH[k].title)}</b><p class="muted">${esc(UNGGAH[k].desc)}</p></div><button type="button" class="btn sm" data-act="ugTpl" data-id="${k}">Unduh template</button></div>`).join('')}</div>`).join('') || '<div class="empty">Akun ini hanya bisa melihat data.</div>';
+  $('ugKind').replaceChildren(...groups.map(g => el('optgroup', {label: g}, keys.filter(k => UNGGAH[k].group === g).map(k => el('option', {value: k, selected: k === ugKey}, UNGGAH[k].title)))));
+  $('ugList').replaceChildren(...(groups.length ? groups.flatMap(g => [el('h4', {class: 'ug-group'}, g), el('div', {class: 'ug-grid'}, keys.filter(k => UNGGAH[k].group === g).map(k => el('div', {class: 'ug-item'},
+    el('div', null, el('b', null, UNGGAH[k].title), el('p', {class: 'muted'}, UNGGAH[k].desc)), el('button', {type: 'button', class: 'btn sm', 'data-act': 'ugTpl', 'data-id': k}, 'Unduh template'))))])
+    : [el('div', {class: 'empty'}, 'Akun ini hanya bisa melihat data.')]));
   $('ugForm').hidden = !keys.length;
   const s = UNGGAH[ugKey]; if (!s) return;
   $('ugUpdateWrap').hidden = !s.update;
-  $('ugNeed').innerHTML = `Kolom wajib: ${s.cols.filter(c => c.req).map(c => `<b>${esc(c.h)}</b>`).join(', ')}.`;
+  $('ugNeed').replaceChildren('Kolom wajib: ', ...s.cols.filter(c => c.req).flatMap((c, i) => [i ? ', ' : '', el('b', null, c.h)]).filter(Boolean), '.');
 }
 function ugShow() {
-  const p = ugPlan, box = $('ugResult'); if (!p) { box.innerHTML = ''; return; }
-  if (p.fatal) { box.innerHTML = `<div class="notice">${esc(p.fatal)}</div>`; return; }
+  const p = ugPlan, box = $('ugResult'); if (!p) { box.replaceChildren(); return; }
+  if (p.fatal) { box.replaceChildren(el('div', {class: 'notice'}, p.fatal)); return; }
   const ready = p.added + p.changed, s = UNGGAH[p.key], tag = i => i.err ? ['Salah', 'out'] : i.skip ? ['Dilewati', 'warn'] : i.mode === 'ubah' ? ['Diperbarui', 'tr'] : ['Baru', 'in'];
   const rows = [...p.items].sort((a, b) => !!b.err - !!a.err || !!b.warn - !!a.warn || a.line - b.line).slice(0, 300);
-  box.innerHTML = `<div class="grid cards">${statCard(['Siap disimpan', ready.toLocaleString('id-ID'), 'in', p.docs ? `${p.docs} dokumen` : `${p.added} baru, ${p.changed} diperbarui`])}${statCard(['Dilewati', String(p.skipped), '', 'Sudah ada di aplikasi'])}${statCard(['Perlu diperbaiki', String(p.errors), p.errors ? 'out' : '', 'Baris yang salah'])}</div>
-    <div class="card" style="margin-top:12px">
-      <p class="muted" style="margin-top:0;font-size:12px">File: ${esc(ugName)}</p>
-      ${p.errors ? `<div class="notice">Belum ada yang tersimpan. Perbaiki ${p.errors} baris di file, lalu unggah ulang.</div>` : ''}
-      <div class="toolbar"><button type="button" class="btn primary" data-act="ugSave"${p.errors || !ready ? ' disabled' : ''}>Simpan ${ready.toLocaleString('id-ID')} data ${esc(s.title.toLowerCase())}</button>${p.errors ? '<button type="button" class="btn" data-act="ugErrors">Unduh daftar kesalahan</button>' : ''}<button type="button" class="btn" data-act="ugReset">Batal</button></div>
-      <div class="table-wrap"><table class="rtable"><thead><tr><th>Baris</th><th>Status</th><th>Data</th><th>Catatan</th></tr></thead><tbody>${rows.map(i => { const t = tag(i); return `<tr><td data-label="Baris">${i.line}</td><td data-label="Status"><span class="badge ${t[1]}">${t[0]}</span></td><td data-label="Data">${esc(i.label)}</td><td data-label="Catatan" class="${i.err ? 'out' : ''}">${esc(i.err || i.skip || i.warn || '')}</td></tr>`; }).join('')}</tbody></table></div>
-      ${p.items.length > rows.length ? `<p class="muted" style="font-size:12px">Ditampilkan ${rows.length} dari ${p.items.length} baris; yang bermasalah tampil lebih dulu.</p>` : ''}
-    </div>`;
+  const body = document.createDocumentFragment(); // ratusan baris dirakit di luar dokumen, lalu dipasang sekali
+  for (const i of rows) { const t = tag(i); body.append(el('tr', null, el('td', {'data-label': 'Baris'}, i.line), el('td', {'data-label': 'Status'}, el('span', {class: 'badge ' + t[1]}, t[0])),
+    el('td', {'data-label': 'Data'}, i.label), el('td', {'data-label': 'Catatan', class: i.err ? 'out' : ''}, i.err || i.skip || i.warn || ''))); }
+  box.replaceChildren(
+    el('div', {class: 'grid cards'}, statCardEl(['Siap disimpan', ready.toLocaleString('id-ID'), 'in', p.docs ? `${p.docs} dokumen` : `${p.added} baru, ${p.changed} diperbarui`]), statCardEl(['Dilewati', String(p.skipped), '', 'Sudah ada di aplikasi']), statCardEl(['Perlu diperbaiki', String(p.errors), p.errors ? 'out' : '', 'Baris yang salah'])),
+    el('div', {class: 'card', style: 'margin-top:12px'},
+      el('p', {class: 'muted', style: 'margin-top:0;font-size:12px'}, 'File: ' + ugName),
+      p.errors ? el('div', {class: 'notice'}, `Belum ada yang tersimpan. Perbaiki ${p.errors} baris di file, lalu unggah ulang.`) : null,
+      el('div', {class: 'toolbar'}, el('button', {type: 'button', class: 'btn primary', 'data-act': 'ugSave', disabled: !!(p.errors || !ready)}, `Simpan ${ready.toLocaleString('id-ID')} data ${s.title.toLowerCase()}`),
+        p.errors ? el('button', {type: 'button', class: 'btn', 'data-act': 'ugErrors'}, 'Unduh daftar kesalahan') : null, el('button', {type: 'button', class: 'btn', 'data-act': 'ugReset'}, 'Batal')),
+      el('div', {class: 'table-wrap'}, el('table', {class: 'rtable'}, el('thead', null, el('tr', null, ['Baris', 'Status', 'Data', 'Catatan'].map(h => el('th', null, h)))), el('tbody', null, body))),
+      p.items.length > rows.length && el('p', {class: 'muted', style: 'font-size:12px'}, `Ditampilkan ${rows.length} dari ${p.items.length} baris; yang bermasalah tampil lebih dulu.`)));
 }
 // ugSeq: hasil pemeriksaan lama (file/jenis yang sudah diganti) dibuang, tidak menimpa yang baru
 let ugSeq = 0;
