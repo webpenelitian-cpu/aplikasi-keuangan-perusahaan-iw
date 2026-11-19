@@ -168,6 +168,12 @@ function terbilang(n) {
 }
 
 // Logo unggahan, atau inisial nama perusahaan bila belum ada logo
+// Padanan DOM logoHTML (logo diperiksa LOGO_RE: hanya data URL gambar)
+function logoEl(size) {
+  const c = state.company;
+  if (LOGO_RE.test(c.logo)) return el('img', {src: c.logo, width: size, height: size, alt: 'Logo', style: 'object-fit:contain;border-radius:10px;flex:0 0 auto'});
+  return el('img', {src: BRAND_LOGO, width: size, height: size, alt: '', style: 'object-fit:contain;flex:0 0 auto'});
+}
 function logoHTML(size) {
   const c = state.company;
   if (LOGO_RE.test(c.logo)) return `<img src="${c.logo}" width="${size}" height="${size}" alt="Logo" style="object-fit:contain;border-radius:10px;flex:0 0 auto">`;
@@ -918,13 +924,13 @@ async function idleLogoutAtStart(user) {
 
 /* ---------- Pengaturan keamanan ---------- */
 function renderSecurity() {
-  if (company) { $('secStatus').innerHTML = '<div class="notice">Data perusahaan dipakai bersama sehingga tidak memakai kata sandi enkripsi perangkat. Aksesnya dijaga peran anggota di server.</div>'; ['btnSetPw', 'btnRemovePw', 'btnLockNow'].forEach(id => $(id).style.display = 'none'); $('secAuto').disabled = true; return; }
+  if (company) { $('secStatus').replaceChildren(el('div', {class: 'notice'}, 'Data perusahaan dipakai bersama sehingga tidak memakai kata sandi enkripsi perangkat. Aksesnya dijaga peran anggota di server.')); ['btnSetPw', 'btnRemovePw', 'btnLockNow'].forEach(id => $(id).style.display = 'none'); $('secAuto').disabled = true; return; }
   const noCrypto = !hasCrypto;
-  $('secStatus').innerHTML = noCrypto
-    ? '<div class="notice">Kata sandi & enkripsi hanya tersedia bila aplikasi dibuka lewat alamat https (mis. GitHub Pages).</div>'
+  $('secStatus').replaceChildren(noCrypto
+    ? el('div', {class: 'notice'}, 'Kata sandi & enkripsi hanya tersedia bila aplikasi dibuka lewat alamat https (mis. GitHub Pages).')
     : vault
-      ? '<div class="notice ok"><b>Terlindungi.</b> Data di perangkat ini terenkripsi (AES-256) dan aplikasi meminta kata sandi setiap dibuka.</div>'
-      : '<div class="notice"><b>Belum terlindungi.</b> Siapa pun yang memegang perangkat ini bisa membuka data. Pasang kata sandi untuk mengenkripsi data dan mengunci aplikasi.</div>';
+      ? el('div', {class: 'notice ok'}, el('b', null, 'Terlindungi.'), ' Data di perangkat ini terenkripsi (AES-256) dan aplikasi meminta kata sandi setiap dibuka.')
+      : el('div', {class: 'notice'}, el('b', null, 'Belum terlindungi.'), ' Siapa pun yang memegang perangkat ini bisa membuka data. Pasang kata sandi untuk mengenkripsi data dan mengunci aplikasi.'));
   $('btnSetPw').textContent = vault ? 'Ganti kata sandi' : 'Pasang kata sandi';
   $('btnSetPw').disabled = noCrypto;
   $('btnRemovePw').style.display = vault ? '' : 'none';
@@ -1236,79 +1242,21 @@ function obligations() {
 
 /* ---------- Dasbor ---------- */
 function renderDashboard() {
-  const notices = [];
+  const notices = [], note = (...kids) => notices.push(el('div', {class: 'notice'}, ...kids)), btn = (act, t) => el('button', {class: 'btn sm', 'data-act': act}, t);
   const manager = !company || canApprove(); // pengingat pengaturan hanya untuk pimpinan dan keuangan
-  if (manager && !state.company.name) notices.push('<div class="notice">Lengkapi nama, slogan, dan logo perusahaan untuk kop laporan. <button class="btn sm" data-act="goProfile">Isi profil</button></div>');
-  if (!company && hasCrypto && !vault) notices.push('<div class="notice">Data belum dilindungi kata sandi. <button class="btn sm" data-act="goSecurity">Pasang sekarang</button></div>');
+  if (manager && !state.company.name) note('Lengkapi nama, slogan, dan logo perusahaan untuk kop laporan. ', btn('goProfile', 'Isi profil'));
+  if (!company && hasCrypto && !vault) note('Data belum dilindungi kata sandi. ', btn('goSecurity', 'Pasang sekarang'));
   if (manager && state.tx.length && (!state.lastBackup || daysBetween(state.lastBackup, today()) > 7))
-    notices.push(`<div class="notice">${state.lastBackup ? 'Backup terakhir ' + fmtDate(state.lastBackup) + '.' : 'Data belum pernah di-backup.'} <button class="btn sm" data-act="backup">Backup sekarang</button></div>`);
+    note(state.lastBackup ? 'Backup terakhir ' + fmtDate(state.lastBackup) + '.' : 'Data belum pernah di-backup.', ' ', btn('backup', 'Backup sekarang'));
   if (cloudUser && !localMergePending && !mergeBusy && localStorage.getItem(KEY))
-    notices.push(`<div class="notice">Ada data dari mode tanpa akun yang belum masuk ke akun ini. Data tetap aman di perangkat. <button class="btn sm" data-act="mergeLocal">Gabungkan sekarang</button></div>`);
+    note('Ada data dari mode tanpa akun yang belum masuk ke akun ini. Data tetap aman di perangkat. ', btn('mergeLocal', 'Gabungkan sekarang'));
   const used = (localStorage.getItem(storeKey) || '').length;
-  if (used > STORE_WARN) notices.push(`<div class="notice">Penyimpanan perangkat hampir penuh (${Math.round(used / 50000)}%). Unduh backup, lalu arsipkan data tahun lama agar penyimpanan tidak gagal. <button class="btn sm" data-act="backup">Backup sekarang</button></div>`);
-  if (cloudUser && conflictKeys().length) notices.push(`<div class="notice">Ada ${conflictKeys().length} salinan data dari konflik sinkron. Periksa di Atur → Akun.</div>`);
-  $('dashNotices').innerHTML = notices.join('');
-  if (renderRoleDash()) return;
-
-  const years = new Set([new Date().getFullYear(), ...state.tx.map(t => +t.date.slice(0, 4)), ...state.debts.map(d => +d.date.slice(0, 4))]);
-  const ySel = $('dashYear'), cur = ySel.value || new Date().getFullYear();
-  ySel.innerHTML = [...years].sort((a, b) => b - a).map(y => `<option ${y == cur ? 'selected' : ''}>${y}</option>`).join('');
-  const year = ySel.value;
-  const ym = today().slice(0, 7);
-
-  const yearTx = state.tx.filter(t => t.date.startsWith(year));
-  const sum = (list, type) => list.reduce((s, t) => t.type === type ? s + t.amount : s, 0);
-  const monthTx = state.tx.filter(t => t.date.startsWith(ym));
-  const lr = lrData(year + '-01-01', year + '-12-31');
-  const margin = lr.ti ? Math.round(lr.net / lr.ti * 1000) / 10 : 0;
-  const p = debtTotals('piutang'), u = debtTotals('utang');
-  const mIn = sum(monthTx, 'in'), mOut = sum(monthTx, 'out');
-
-  $('statCards').innerHTML = [
-    ['Total Kas & Bank', rp(totalBalance()), ''],
-    [`Arus kas bersih ${MONTHS[+ym.slice(5) - 1]} ${ym.slice(0, 4)}`, rp(mIn - mOut), mIn - mOut >= 0 ? 'in' : 'out', `Masuk ${rp(mIn)} · keluar ${rp(mOut)}`],
-    [`Pendapatan ${esc(year)}`, rp(lr.ti), 'in', state.company.basis === 'kas' ? 'basis kas' : 'basis akrual (SAK EMKM)'],
-    [`Laba/Rugi ${esc(year)}`, rp(lr.net), lr.net >= 0 ? 'in' : 'out', lr.ti ? `Margin laba ${String(margin).replace('.', ',')}%` : ''],
-    ['Piutang Belum Tertagih', rp(p.open), '', p.no ? `<span class="out">${p.no} lewat jatuh tempo (${rp(p.overdue)})</span>` : `${p.n} tagihan`],
-    ['Utang Belum Dibayar', rp(u.open), '', u.no ? `<span class="out">${u.no} lewat jatuh tempo (${rp(u.overdue)})</span>` : `${u.n} tagihan`],
-    ...(state.trades.length || state.items.length ? [
-      [`Laba Kotor ${esc(year)}`, rp(lr.ti - lr.hpp), lr.ti - lr.hpp >= 0 ? 'in' : 'out', `HPP ${rp(lr.hpp)}`],
-      ['Nilai Persediaan', rp(stockValue()), '', `${state.items.filter(i => i.kind === 'barang').length} jenis barang`],
-    ] : []),
-  ].map(statCard).join('');
-
-  const ob = obligations();
-  $('obligations').innerHTML = ob.length
-    ? ob.map(([lvl, html]) => `<div class="ob ${lvl}"><span class="dot"></span><div>${html}</div></div>`).join('')
-    : '<div class="muted">Tidak ada kewajiban yang perlu ditindaklanjuti saat ini.</div>';
-
-  const months = MONTHS.map((m, i) => {
-    const key = `${year}-${String(i + 1).padStart(2, '0')}`;
-    const l = yearTx.filter(t => t.date.startsWith(key));
-    return {m, in: sum(l, 'in'), out: sum(l, 'out')};
-  });
-  const max = Math.max(1, ...months.flatMap(x => [x.in, x.out]));
-  $('monthBars').innerHTML = months.map(x => `
-    <div class="bar-group" title="${x.m}: masuk ${rp(x.in)} / keluar ${rp(x.out)}">
-      <div class="bar-pair"><div class="bar in" style="height:${x.in / max * 100}%"></div><div class="bar out" style="height:${x.out / max * 100}%"></div></div>
-      <div class="bar-label">${x.m.slice(0, 3)}</div>
-    </div>`).join('');
-
-  const cats = lr.outs.slice().sort((a, b) => b.v - a.v).slice(0, 6);
-  $('topCats').innerHTML = cats.length ? cats.map(r => `
-    <div class="cat-row"><span>${r.label}</span><span>${rp(r.v)}</span></div>
-    <div class="meter"><span style="width:${Math.max(0, r.v / cats[0].v * 100)}%"></span></div>`).join('')
-    : `<div class="empty">Belum ada beban di ${esc(year)}</div>`;
-
-  const recent = sorted(state.tx).slice(0, 8);
-  $('recentTx').innerHTML = recent.length ? `<table><tbody>${recent.map(t => `
-    <tr><td style="white-space:nowrap">${fmtDate(t.date)}</td><td>${esc(t.desc || (t.type === 'transfer' ? 'Mutasi antarakun' : catName(t.categoryId)))}</td>
-    <td class="num ${t.type === 'in' ? 'in' : t.type === 'out' ? 'out' : ''}">${t.type === 'out' ? '−' : ''}${rp(t.amount)}</td></tr>`).join('')}</tbody></table>`
-    : `<div class="empty">Belum ada transaksi. Ketuk <b>+ Transaksi</b> untuk mulai mencatat.</div>`;
-
-  $('accBalances').innerHTML = `<table><tbody>${state.accounts.map(a => `
-    <tr><td>${accLabel(a)}</td><td class="num">${rp(balance(a.id))}</td></tr>`).join('')}
-    <tr><td><b>Total</b></td><td class="num"><b>${rp(totalBalance())}</b></td></tr></tbody></table>`;
+  if (used > STORE_WARN) note(`Penyimpanan perangkat hampir penuh (${Math.round(used / 50000)}%). Unduh backup, lalu arsipkan data tahun lama agar penyimpanan tidak gagal. `, btn('backup', 'Backup sekarang'));
+  if (cloudUser && conflictKeys().length) note(`Ada ${conflictKeys().length} salinan data dari konflik sinkron. Periksa di Atur → Akun.`);
+  $('dashNotices').replaceChildren(...notices);
+  // Isi dasbor (kartu, grafik, saldo) digambar renderRoleDash di erp.js untuk semua peran. Kode dasbor keuangan
+  // lama setelah baris ini tidak pernah berjalan karena renderRoleDash selalu mengembalikan true, jadi dihapus.
+  renderRoleDash();
 }
 $('dashYear').onchange = renderDashboard;
 
@@ -1316,8 +1264,7 @@ $('dashYear').onchange = renderDashboard;
 let txLimit = TX_PAGE;
 function fillSelect(sel, items, allLabel, label = i => (i.code ? i.code + ' · ' : '') + i.name) {
   const v = sel.value;
-  sel.innerHTML = (allLabel ? `<option value="">${allLabel}</option>` : '') +
-    items.map(i => `<option value="${esc(i.id)}">${esc(label(i))}</option>`).join('');
+  sel.replaceChildren(...(allLabel ? [el('option', {value: ''}, allLabel)] : []), ...items.map(i => el('option', {value: i.id}, label(i))));
   if ([...sel.options].some(o => o.value === v)) sel.value = v;
 }
 function filteredTx() {
@@ -1334,24 +1281,25 @@ function renderTx() {
   const list = filteredTx();
   let tin = 0, tout = 0;
   for (const t of list) { if (t.type === 'in') tin += t.amount; else if (t.type === 'out') tout += t.amount; }
-  $('filterSummary').innerHTML = [
+  $('filterSummary').replaceChildren(...[
     ['Jumlah transaksi', list.length.toLocaleString('id-ID'), ''],
     ['Total pemasukan', rp(tin), 'in'], ['Total pengeluaran', rp(tout), 'out'], ['Selisih', rp(tin - tout), tin - tout >= 0 ? 'in' : 'out'],
-  ].map(statCard).join('');
+  ].map(statCardEl));
 
-  const shown = list.slice(0, txLimit);
-  $('txBody').innerHTML = shown.length ? shown.map(t => `
-    <tr>
-      <td data-label="Tanggal">${fmtDate(t.date)}${isLocked(t.date) ? ' <span class="badge" title="Periode ditutup">🔒</span>' : ''}</td><td data-label="No. bukti">${esc(t.ref)}</td>
-      <td data-label="Jenis"><span class="badge ${t.type === 'transfer' ? 'tr' : t.type}">${TYPE_LABEL[t.type]}</span></td>
-      <td data-label="Kategori">${t.type === 'transfer' ? '—' : catLabel(t.categoryId)}</td>
-      <td data-label="Akun">${esc(accName(t.accountId))}${t.type === 'transfer' ? ' → ' + esc(accName(t.toAccountId)) : ''}</td>
-      <td data-label="Uraian">${esc(t.desc)}</td>
-      <td data-label="Jumlah" class="num ${t.type === 'in' ? 'in' : t.type === 'out' ? 'out' : ''}"><b>${t.type === 'out' ? '−' : ''}${rp(t.amount)}</b></td>
-      <td data-label="" class="no-print num"><button class="btn sm" data-act="openTx" data-id="${esc(t.id)}">${isLocked(t.date) ? 'Lihat' : 'Ubah'}</button></td>
-    </tr>`).join('') + (list.length > shown.length
-      ? `<tr><td colspan="8" data-label="" style="text-align:center"><button class="btn" data-act="moreTx">Tampilkan ${Math.min(TX_PAGE, list.length - shown.length)} berikutnya (${list.length - shown.length} lagi)</button></td></tr>` : '')
-    : `<tr><td colspan="8" class="empty" data-label="">Tidak ada transaksi yang cocok.</td></tr>`;
+  const shown = list.slice(0, txLimit), body = document.createDocumentFragment(); // ratusan baris dirakit di luar dokumen
+  for (const t of shown) {
+    const tr_ = t.type === 'transfer';
+    body.append(el('tr', null,
+      el('td', {'data-label': 'Tanggal'}, fmtDate(t.date), isLocked(t.date) ? [' ', el('span', {class: 'badge', title: 'Periode ditutup'}, '🔒')] : null), el('td', {'data-label': 'No. bukti'}, t.ref),
+      el('td', {'data-label': 'Jenis'}, el('span', {class: 'badge ' + (tr_ ? 'tr' : t.type)}, TYPE_LABEL[t.type])),
+      el('td', {'data-label': 'Kategori'}, tr_ ? '—' : catLabelEl(t.categoryId)),
+      el('td', {'data-label': 'Akun'}, accName(t.accountId), tr_ ? ' → ' + accName(t.toAccountId) : null),
+      el('td', {'data-label': 'Uraian'}, t.desc),
+      el('td', {'data-label': 'Jumlah', class: 'num ' + (t.type === 'in' ? 'in' : t.type === 'out' ? 'out' : '')}, el('b', null, (t.type === 'out' ? '−' : '') + rp(t.amount))),
+      el('td', {'data-label': '', class: 'no-print num'}, el('button', {class: 'btn sm', 'data-act': 'openTx', 'data-id': t.id}, isLocked(t.date) ? 'Lihat' : 'Ubah'))));
+  }
+  if (shown.length && list.length > shown.length) body.append(el('tr', null, el('td', {colspan: 8, 'data-label': '', style: 'text-align:center'}, el('button', {class: 'btn', 'data-act': 'moreTx'}, `Tampilkan ${Math.min(TX_PAGE, list.length - shown.length)} berikutnya (${list.length - shown.length} lagi)`))));
+  $('txBody').replaceChildren(shown.length ? body : el('tr', null, el('td', {colspan: 8, class: 'empty', 'data-label': ''}, 'Tidak ada transaksi yang cocok.')));
 }
 const rerenderTx = debounce(() => { txLimit = TX_PAGE; renderTx(); });
 ['fFrom', 'fTo', 'fType', 'fAcc', 'fCat'].forEach(id => $(id).oninput = () => { txLimit = TX_PAGE; renderTx(); });
@@ -1986,25 +1934,24 @@ function renderHeader() {
   $('companyName').textContent = displayName();
   $('companyTagline').textContent = c.tagline;
   document.title = (c.name || APP_NAME) + ' · ' + APP_SUB;
-  $('brandLogo').innerHTML = logoHTML(38);
+  $('brandLogo').replaceChildren(logoEl(38));
 }
 function renderSettings() {
   const c = state.company;
-  $('logoPreview').innerHTML = logoHTML(64);
+  $('logoPreview').replaceChildren(logoEl(64));
   $('btnLogoRemove').style.display = c.logo ? '' : 'none';
   Object.entries(PROFILE_FIELDS).forEach(([id, k]) => {
     if (document.activeElement !== $(id)) $(id).value = k === 'pphRate' ? String(c[k]).replace('.', ',') : c[k] ?? '';
   });
   const {ent, last} = pphEligibility();
   $('taxInfo').textContent = last ? `${ent.label}: PPh final 0,5% berlaku ${ent.years} tahun pajak, yaitu ${c.taxYear}–${last} (PP 55/2022).` : `${ent.label}: PPh final 0,5% berlaku ${ent.years} tahun pajak sejak terdaftar (PP 55/2022).`;
-  $('accList').innerHTML = state.accounts.map(a => `<tr><td>${esc(a.code)}</td><td>${esc(a.name)}</td><td class="num">${rp(a.opening)}</td>
-    <td class="num" style="white-space:nowrap"><button class="btn sm" data-act="editAcc" data-id="${esc(a.id)}">Ubah</button> <button class="btn sm danger" data-act="delAcc" data-id="${esc(a.id)}">Hapus</button></td></tr>`).join('');
-  $('catList').innerHTML = state.categories.map(c => `<tr><td>${esc(c.code)}</td><td>${esc(c.name)}</td><td><span class="badge ${c.type === 'out' ? 'out' : 'in'}">${TYPE_LABEL[c.type]}</span></td>
-    <td><input type="checkbox" ${c.lr !== false ? 'checked' : ''} data-act="toggleLR" data-id="${esc(c.id)}" title="Dihitung di Laba Rugi"></td>
-    <td class="num" style="white-space:nowrap"><button class="btn sm" data-act="editCat" data-id="${esc(c.id)}">Ubah</button> <button class="btn sm danger" data-act="delCat" data-id="${esc(c.id)}">Hapus</button></td></tr>`).join('');
-  $('lockStatus').innerHTML = state.lockedUntil
-    ? `<div class="notice ok">Buku ditutup s.d. <b>${fmtDate(state.lockedUntil)}</b>. Transaksi, faktur, dan pelunasan bertanggal sampai hari itu tidak bisa diubah atau dihapus.</div>`
-    : '<div class="notice">Belum ada periode yang ditutup.</div>';
+  const ubahHapus = (edit, del, id) => el('td', {class: 'num', style: 'white-space:nowrap'}, el('button', {class: 'btn sm', 'data-act': edit, 'data-id': id}, 'Ubah'), ' ', el('button', {class: 'btn sm danger', 'data-act': del, 'data-id': id}, 'Hapus'));
+  $('accList').replaceChildren(...state.accounts.map(a => el('tr', null, el('td', null, a.code), el('td', null, a.name), el('td', {class: 'num'}, rp(a.opening)), ubahHapus('editAcc', 'delAcc', a.id))));
+  $('catList').replaceChildren(...state.categories.map(c => el('tr', null, el('td', null, c.code), el('td', null, c.name), el('td', null, el('span', {class: 'badge ' + (c.type === 'out' ? 'out' : 'in')}, TYPE_LABEL[c.type])),
+    el('td', null, el('input', {type: 'checkbox', checked: c.lr !== false, 'data-act': 'toggleLR', 'data-id': c.id, title: 'Dihitung di Laba Rugi'})), ubahHapus('editCat', 'delCat', c.id))));
+  $('lockStatus').replaceChildren(state.lockedUntil
+    ? el('div', {class: 'notice ok'}, 'Buku ditutup s.d. ', el('b', null, fmtDate(state.lockedUntil)), '. Transaksi, faktur, dan pelunasan bertanggal sampai hari itu tidak bisa diubah atau dihapus.')
+    : el('div', {class: 'notice'}, 'Belum ada periode yang ditutup.'));
   if (document.activeElement !== $('lockDate')) $('lockDate').value = state.lockedUntil || lastDayOf(addMonths(today().slice(0, 7), -1));
   $('auditCount').textContent = `${state.audit.length.toLocaleString('id-ID')} catatan di jejak audit.`;
   renderSecurity();
@@ -2013,37 +1960,32 @@ function renderSettings() {
 function renderAccount() {
   const box = $('accountBox');
   if (!Cloud?.enabled()) {
-    box.innerHTML = '<div class="muted">Penyimpanan server belum diaktifkan (konfigurasi Firebase di <code>firebase-config.js</code> masih kosong). Data hanya tersimpan di perangkat ini; pindahkan antar perangkat dengan Backup &amp; Pulihkan.</div>';
+    box.replaceChildren(el('div', {class: 'muted'}, 'Penyimpanan server belum diaktifkan (konfigurasi Firebase di ', el('code', null, 'firebase-config.js'), ' masih kosong). Data hanya tersimpan di perangkat ini; pindahkan antar perangkat dengan Backup & Pulihkan.'));
     return;
   }
   if (offlineAccount) {
-    box.innerHTML = '<div class="notice">Offline: memakai salinan data akun di perangkat ini. Perubahan akan tersimpan ke server setelah aplikasi dibuka kembali saat online.</div>';
+    box.replaceChildren(el('div', {class: 'notice'}, 'Offline: memakai salinan data akun di perangkat ini. Perubahan akan tersimpan ke server setelah aplikasi dibuka kembali saat online.'));
     return;
   }
   if (!cloudUser) {
-    box.innerHTML = `<div class="notice">Anda memakai aplikasi <b>tanpa akun</b>; data hanya ada di perangkat ini. Saat masuk ke akun, semua data ini otomatis tersimpan dan tersinkron ke akun tersebut.</div>
-      <button class="btn primary" data-act="goLogin">Masuk / Daftar akun</button>`;
+    box.replaceChildren(el('div', {class: 'notice'}, 'Anda memakai aplikasi ', el('b', null, 'tanpa akun'), '; data hanya ada di perangkat ini. Saat masuk ke akun, semua data ini otomatis tersimpan dan tersinkron ke akun tersebut.'),
+      el('button', {class: 'btn primary', 'data-act': 'goLogin'}, 'Masuk / Daftar akun'));
     return;
   }
   const conflicts = conflictKeys();
-  box.innerHTML = `<div>Masuk sebagai <b>@${esc(cloudInfo.username || '—')}</b></div>
-    <div class="muted" style="font-size:12px">${cloudInfo.google ? 'Akun Google · ' + esc(cloudInfo.email || '') : 'Akun username & kata sandi'}</div>
-    <div class="muted" id="syncStatus" style="margin:8px 0">${esc(syncMsg)}</div>
-    <div class="muted" style="font-size:12px;margin-bottom:8px">Akun keluar otomatis setelah 1 jam tidak dipakai.</div>
-    <div class="muted" style="font-size:12px;margin-bottom:10px">${vault
+  box.replaceChildren(frag(el('div', null, 'Masuk sebagai ', el('b', null, '@' + (cloudInfo.username || '—'))),
+    el('div', {class: 'muted', style: 'font-size:12px'}, cloudInfo.google ? 'Akun Google · ' + (cloudInfo.email || '') : 'Akun username & kata sandi'),
+    el('div', {class: 'muted', id: 'syncStatus', style: 'margin:8px 0'}, syncMsg),
+    el('div', {class: 'muted', style: 'font-size:12px;margin-bottom:8px'}, 'Akun keluar otomatis setelah 1 jam tidak dipakai.'),
+    el('div', {class: 'muted', style: 'font-size:12px;margin-bottom:10px'}, vault
       ? 'Data dienkripsi di perangkat sebelum dikirim, sehingga server pun tidak bisa membacanya.'
-      : 'Tips: pasang kata sandi di kartu Keamanan agar data dienkripsi sebelum dikirim ke server.'}</div>
-    ${conflicts.length ? `<div class="notice">Salinan dari konflik sinkron (data perangkat ini yang tidak terkirim): ${conflicts.map(k => `<button class="btn sm" data-act="dlConflict" data-id="${esc(k.split('-konflik-')[1])}">${esc(new Date(+k.split('-konflik-')[1]).toLocaleString('id-ID'))}</button>`).join(' ')} <button class="btn sm danger" data-act="clearConflicts">Hapus salinan</button></div>` : ''}
-    <details class="team-adv" style="margin:6px 0 12px">
-      <summary class="muted" style="cursor:pointer">Lanjutan: perusahaan bersama &amp; anggota tim${company ? ' · aktif' : ' · tidak dipakai'}</summary>
-      <p class="muted" style="font-size:12px;margin:8px 0">PT GM Musara Jaya dijalankan satu pemilik, dibantu tim AI di komputer. Bagian ini hanya perlu dibuka bila suatu saat ada karyawan atau CEO yang ikut memakai aplikasi dengan akunnya sendiri.</p>
-      ${companyBoxHTML()}
-    </details>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn" data-act="syncNow">Sinkron sekarang</button>
-      <button class="btn" data-act="logout">Keluar</button>
-      <button class="btn danger" data-act="deleteAccount">Hapus akun &amp; data server</button>
-    </div>`;
+      : 'Tips: pasang kata sandi di kartu Keamanan agar data dienkripsi sebelum dikirim ke server.'),
+    conflicts.length ? el('div', {class: 'notice'}, 'Salinan dari konflik sinkron (data perangkat ini yang tidak terkirim): ', conflicts.flatMap((k, i) => [i ? ' ' : '', el('button', {class: 'btn sm', 'data-act': 'dlConflict', 'data-id': k.split('-konflik-')[1]}, new Date(+k.split('-konflik-')[1]).toLocaleString('id-ID'))]), ' ', el('button', {class: 'btn sm danger', 'data-act': 'clearConflicts'}, 'Hapus salinan')) : null,
+    el('details', {class: 'team-adv', style: 'margin:6px 0 12px'},
+      el('summary', {class: 'muted', style: 'cursor:pointer'}, 'Lanjutan: perusahaan bersama & anggota tim' + (company ? ' · aktif' : ' · tidak dipakai')),
+      el('p', {class: 'muted', style: 'font-size:12px;margin:8px 0'}, 'PT GM Musara Jaya dijalankan satu pemilik, dibantu tim AI di komputer. Bagian ini hanya perlu dibuka bila suatu saat ada karyawan atau CEO yang ikut memakai aplikasi dengan akunnya sendiri.'),
+      companyBoxEl()),
+    el('div', {style: 'display:flex;gap:8px;flex-wrap:wrap'}, el('button', {class: 'btn', 'data-act': 'syncNow'}, 'Sinkron sekarang'), el('button', {class: 'btn', 'data-act': 'logout'}, 'Keluar'), el('button', {class: 'btn danger', 'data-act': 'deleteAccount'}, 'Hapus akun & data server'))));
 }
 $('btnSaveCompany').onclick = () => {
   const before = JSON.stringify({...state.company, logo: undefined});
@@ -2340,12 +2282,12 @@ let installPrompt = null;
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone;
 function renderInstall() {
   const box = $('installBox');
-  if (isStandalone()) { box.innerHTML = '<div class="muted">Aplikasi sudah terpasang di perangkat ini.</div>'; return; }
+  if (isStandalone()) { box.replaceChildren(el('div', {class: 'muted'}, 'Aplikasi sudah terpasang di perangkat ini.')); return; }
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  box.innerHTML = `<h3 style="margin-top:0">Pasang di HP</h3>` + (installPrompt
-    ? '<button class="btn accent" id="btnInstall">Pasang aplikasi</button>'
-    : ios ? '<div class="muted">Di iPhone/iPad: buka di <b>Safari</b>, ketuk tombol <b>Bagikan</b>, lalu pilih <b>Tambah ke Layar Utama</b>.</div>'
-          : '<div class="muted">Di Android: buka di <b>Chrome</b>, ketuk menu <b>⋮</b>, lalu pilih <b>Instal aplikasi</b> atau <b>Tambahkan ke layar utama</b>.</div>');
+  box.replaceChildren(el('h3', {style: 'margin-top:0'}, 'Pasang di HP'), installPrompt
+    ? el('button', {class: 'btn accent', id: 'btnInstall'}, 'Pasang aplikasi')
+    : ios ? el('div', {class: 'muted'}, 'Di iPhone/iPad: buka di ', el('b', null, 'Safari'), ', ketuk tombol ', el('b', null, 'Bagikan'), ', lalu pilih ', el('b', null, 'Tambah ke Layar Utama'), '.')
+          : el('div', {class: 'muted'}, 'Di Android: buka di ', el('b', null, 'Chrome'), ', ketuk menu ', el('b', null, '⋮'), ', lalu pilih ', el('b', null, 'Instal aplikasi'), ' atau ', el('b', null, 'Tambahkan ke layar utama'), '.'));
   if (installPrompt) $('btnInstall').onclick = async () => { installPrompt.prompt(); await installPrompt.userChoice; installPrompt = null; renderInstall(); };
 }
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; if (state) renderInstall(); });

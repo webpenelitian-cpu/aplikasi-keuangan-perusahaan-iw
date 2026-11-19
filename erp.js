@@ -3,7 +3,7 @@
 /* Modul ERP: perusahaan bersama (banyak pengguna), penjualan & CRM, pembelian & gudang, akuntansi lanjutan, dan SDM lanjutan.
    Berkas ini dimuat setelah app.js dan memakai fungsi serta data yang sama. */
 
-const APP_VERSION = '47'; // samakan dengan versi CACHE di sw.js
+const APP_VERSION = '48'; // samakan dengan versi CACHE di sw.js
 const ROLES = {owner: 'Pimpinan', finance: 'Keuangan', sales: 'Penjualan', warehouse: 'Gudang & pembelian', hr: 'SDM', viewer: 'Hanya lihat'};
 const ROLE_VIEWS = {sales: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'], warehouse: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'],
   hr: ['dashboard', 'karyawan', 'unggah', 'laporan', 'panduan', 'pengaturan'], viewer: ['dashboard', 'laporan', 'panduan', 'pengaturan']};
@@ -266,12 +266,12 @@ function applyRole() {
 }
 const canApprove = () => ['owner', 'finance'].includes(company?.role || 'owner');
 const whoAmI = () => cloudInfo?.username ? '@' + cloudInfo.username : 'Pimpinan';
-function companyBoxHTML() {
-  if (!company) return `<div class="notice" style="margin-bottom:10px"><b>Perusahaan bersama:</b> belum aktif. Buat perusahaan agar karyawan bisa masuk dengan akun masing-masing, atau gabung dengan kode undangan.
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn sm primary" data-act="createCompany">Buat perusahaan</button><button class="btn sm" data-act="joinCompany">Gabung dengan kode</button></div></div>`;
+function companyBoxEl() {
+  if (!company) return el('div', {class: 'notice', style: 'margin-bottom:10px'}, el('b', null, 'Perusahaan bersama:'), ' belum aktif. Buat perusahaan agar karyawan bisa masuk dengan akun masing-masing, atau gabung dengan kode undangan.',
+    el('div', {style: 'display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'}, el('button', {class: 'btn sm primary', 'data-act': 'createCompany'}, 'Buat perusahaan'), el('button', {class: 'btn sm', 'data-act': 'joinCompany'}, 'Gabung dengan kode')));
   const owner = company.role === 'owner';
-  return `<div class="notice ok" style="margin-bottom:10px"><b>${esc(company.name)}</b> · peran Anda: ${esc(ROLES[company.role] || company.role)}
-    <div id="memberBox" class="muted" style="margin-top:6px">${owner ? '<button class="btn sm" data-act="loadMembers">Kelola anggota</button>' : ''}${!owner ? '<button class="btn sm danger" data-act="leaveCompany">Keluar dari perusahaan</button>' : ''}</div></div>`;
+  return el('div', {class: 'notice ok', style: 'margin-bottom:10px'}, el('b', null, company.name), ' · peran Anda: ' + (ROLES[company.role] || company.role),
+    el('div', {id: 'memberBox', class: 'muted', style: 'margin-top:6px'}, owner ? el('button', {class: 'btn sm', 'data-act': 'loadMembers'}, 'Kelola anggota') : el('button', {class: 'btn sm danger', 'data-act': 'leaveCompany'}, 'Keluar dari perusahaan')));
 }
 Object.assign(ACTIONS, {
   createCompany: async () => {
