@@ -144,7 +144,7 @@ function el(tag, attrs, ...kids) {
   if (attrs) for (const k in attrs) { const v = attrs[k]; if (v != null && v !== false) e.setAttribute(k, v === true ? '' : String(v)); }
   // Jalur cepat sel tabel: satu anak teks -> satu simpul teks lewat textContent (DOM sama dengan append, lebih ringan)
   if (kids.length === 1) { const k = kids[0]; if (typeof k === 'string') { if (k !== '') e.textContent = k; return e; } if (typeof k === 'number') { e.textContent = String(k); return e; } }
-  if (kids.length) e.append(...kidsOf(kids));
+  if (kids.length) for (const k of kidsOf(kids)) e.appendChild(typeof k === 'string' ? document.createTextNode(k) : k);
   return e;
 }
 // Baris tabel besar: prototipe <tr> (atribut sel) dibuat sekali lalu dikloning; sel diisi textContent/append.
@@ -1119,35 +1119,36 @@ const accEl = a => [codeEl(a.code), a.name];
 function lrData(from, to) {
   const ins = new Map(), outs = new Map();
   // label() (string HTML lama) = kunci urut agar urutan identik, mk() = label sebagai simpul; keduanya baru dihitung saat kunci pertama kali muncul
-  const put = (m, key, label, v, mk) => { let r = m.get(key); if (!r) { r = {label: label(), mk, v: 0}; m.set(key, r); } r.v += v; };
+  // Label baru dihitung saat kunci pertama kali muncul: kind 'c' = kategori (id), 'a' = akun (objek). label = string lama (kunci urut, urutan identik), mk() = simpul.
+  const put = (m, key, kind, ref, v) => { let r = m.get(key); if (!r) { r = kind === 'c' ? {label: catLabel(ref), mk: () => catLabelEl(ref), v: 0} : {label: accHTML(ref), mk: () => accEl(ref), v: 0}; m.set(key, r); } r.v += v; };
   if (state.company.basis === 'kas') {
     for (const t of state.tx) if (inRange(t.date, from, to) && inLR(t) && !t.payrollId && !t.returnId)
-      put(t.type === 'in' ? ins : outs, t.categoryId, () => catLabel(t.categoryId), t.amount, () => catLabelEl(t.categoryId));
+      put(t.type === 'in' ? ins : outs, t.categoryId, 'c', t.categoryId, t.amount);
     for (const t of state.trades) if (inRange(t.date, from, to)) {
-      if (t.kind === 'purchase') { put(outs, accKey(ACC_BEBAN_JASA), () => accHTML(ACC_BEBAN_JASA), M().stock.svc.get(t.id) || 0, () => accEl(ACC_BEBAN_JASA)); continue; }
-      put(outs, accKey(ACC_HPP), () => accHTML(ACC_HPP), M().stock.cogs.get(t.id) || 0, () => accEl(ACC_HPP));
+      if (t.kind === 'purchase') { put(outs, accKey(ACC_BEBAN_JASA), 'a', ACC_BEBAN_JASA, M().stock.svc.get(t.id) || 0); continue; }
+      put(outs, accKey(ACC_HPP), 'a', ACC_HPP, M().stock.cogs.get(t.id) || 0);
       const c = tradeCat(t);
-      put(ins, c?.id, () => catLabel(c?.id), t.pph - (t.wapu ? 0 : t.ppn), () => catLabelEl(c?.id));
+      put(ins, c?.id, 'c', c?.id, t.pph - (t.wapu ? 0 : t.ppn));
     }
     const st = M().stock;
     for (const r of state.returns) if (inRange(r.date, from, to)) {
       const o = state.trades.find(t => t.id === r.origId), c = o && tradeCat(o);
-      if (r.kind === 'sale') { put(ins, c?.id, () => catLabel(c?.id), -r.dpp, () => catLabelEl(c?.id)); put(outs, accKey(ACC_HPP), () => accHTML(ACC_HPP), -(st.rcost.get(r.id) || 0), () => accEl(ACC_HPP)); }
-      else { put(outs, accKey(ACC_BEBAN_JASA), () => accHTML(ACC_BEBAN_JASA), -(st.rsvc.get(r.id) || 0), () => accEl(ACC_BEBAN_JASA)); put(outs, accKey(ACC_HPP), () => accHTML(ACC_HPP), st.rdiff.get(r.id) || 0, () => accEl(ACC_HPP)); }
+      if (r.kind === 'sale') { put(ins, c?.id, 'c', c?.id, -r.dpp); put(outs, accKey(ACC_HPP), 'a', ACC_HPP, -(st.rcost.get(r.id) || 0)); }
+      else { put(outs, accKey(ACC_BEBAN_JASA), 'a', ACC_BEBAN_JASA, -(st.rsvc.get(r.id) || 0)); put(outs, accKey(ACC_HPP), 'a', ACC_HPP, st.rdiff.get(r.id) || 0); }
     }
-    for (const a of state.adjusts) if (inRange(a.date, from, to)) put(outs, accKey(ACC_SELISIH), () => accHTML(ACC_SELISIH), -(st.adj.get(a.id) || 0), () => accEl(ACC_SELISIH));
+    for (const a of state.adjusts) if (inRange(a.date, from, to)) put(outs, accKey(ACC_SELISIH), 'a', ACC_SELISIH, -(st.adj.get(a.id) || 0));
     for (const p of state.payrolls) if (inRange(p.date, from, to)) {
       const s = paySum(p), g = sysCat('5-201');
-      put(outs, g?.id, () => catLabel(g?.id), s.net + s.pph + s.ee + s.deduct, () => catLabelEl(g?.id));
-      put(outs, accKey(ACC_BEBAN_BPJS), () => accHTML(ACC_BEBAN_BPJS), s.co, () => accEl(ACC_BEBAN_BPJS));
+      put(outs, g?.id, 'c', g?.id, s.net + s.pph + s.ee + s.deduct);
+      put(outs, accKey(ACC_BEBAN_BPJS), 'a', ACC_BEBAN_BPJS, s.co);
     }
   } else {
     for (const e of M().journal) {
       if (!e.date || !inRange(e.date, from, to)) continue;
       for (const [acc, dr] of [[e.dr, true], [e.cr, false]]) {
         const g = acc.code[0];
-        if (g === '4') put(ins, accKey(acc), () => accHTML(acc), dr ? -e.amt : e.amt, () => accEl(acc));
-        else if (g === '5') put(outs, accKey(acc), () => accHTML(acc), dr ? e.amt : -e.amt, () => accEl(acc));
+        if (g === '4') put(ins, accKey(acc), 'a', acc, dr ? -e.amt : e.amt);
+        else if (g === '5') put(outs, accKey(acc), 'a', acc, dr ? e.amt : -e.amt);
       }
     }
   }
@@ -1787,10 +1788,16 @@ function renderReport() {
     const list = M().journal.filter(e => e.date ? inRange(e.date, from, to) : !from);
     let td_ = 0;
     const rows = document.createDocumentFragment(); // hingga 6.000 baris: dirakit di luar dokumen
-    const rowDr = rowMaker({style: 'white-space:nowrap'}, null, null, null, {class: 'num'}, null), rowCr = rowMaker(null, null, {style: 'padding-left:28px'}, null, null, {class: 'num'});
+    // Prototipe baris jurnal: sel akun sudah berisi <span class="code">; tiap baris dikloning lalu diisi teks
+    const pDr = el('tr', null, el('td', {style: 'white-space:nowrap'}), el('td'), el('td', null, el('span', {class: 'code'})), el('td'), el('td', {class: 'num'}), el('td'));
+    const pCr = el('tr', null, el('td'), el('td'), el('td', {style: 'padding-left:28px'}, el('span', {class: 'code'})), el('td'), el('td'), el('td', {class: 'num'}));
+    const isi = (td, v) => { if (v != null && v !== '') td.textContent = String(v); };
+    const akun = (td, a) => { if (a.code != null && a.code !== '') td.firstChild.textContent = String(a.code); if (a.name != null && a.name !== '') td.appendChild(document.createTextNode(String(a.name))); };
     for (const e of list.slice(0, 3000)) {
       td_ += e.amt;
-      rows.append(rowDr(fmtDate(e.date), e.ref, accEl(e.dr), e.desc, rp(e.amt)), rowCr('', '', accEl(e.cr), '', '', rp(e.amt)));
+      const d = pDr.cloneNode(true), c = d.children; isi(c[0], fmtDate(e.date)); isi(c[1], e.ref); akun(c[2], e.dr); isi(c[3], e.desc); isi(c[4], rp(e.amt));
+      const k = pCr.cloneNode(true); akun(k.children[2], e.cr); isi(k.children[5], rp(e.amt));
+      rows.append(d, k);
     }
     doc = [kopEl('Jurnal Umum', period), tbl(thead(th('Tanggal'), th('No. Bukti'), th('Akun'), th('Keterangan'), th('Debit', 1), th('Kredit', 1)), [...rows.childNodes],
       el('tr', {class: 'total'}, el('td', {colspan: 4}, 'Total'), el('td', {class: 'num'}, rp(td_)), el('td', {class: 'num'}, rp(td_)))),
