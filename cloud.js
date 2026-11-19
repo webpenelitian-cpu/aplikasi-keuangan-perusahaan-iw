@@ -10,23 +10,39 @@ export const USERNAME_RE = /^[a-z0-9._-]{3,30}$/;
 const emailOf = u => `${u}@pengguna.invalid`;
 const err = (code, msg = code) => Object.assign(new Error(msg), {code});
 
-let A, F, auth, db, user = null;
+let A, F, auth, db, user = null, app = null, acMod = null, acStarted = false;
 
 // App Check hanya di situs terbit. Di komputer pengembang (localhost) kunci reCAPTCHA memang tidak berlaku dan
 // server Firebase juga menolak alamat itu, jadi App Check dilewati agar uji tidak dipenuhi galat reCAPTCHA.
-const appCheckOn = !!appCheckKey && !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+// Pengecualian: uji App Check lokal memasang token debug (self.FIREBASE_APPCHECK_DEBUG_TOKEN) yang terdaftar di proyek uji.
+const appCheckOn = !!appCheckKey && (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) || !!self.FIREBASE_APPCHECK_DEBUG_TOKEN);
 export const enabled = () => !!(config.apiKey && config.projectId && config.authDomain && config.appId);
 
-export async function init() {
+// App Check malas: reCAPTCHA (berat, ±1,6 dtk kerja CPU) baru dimuat tepat sebelum permintaan pertama ke server yang
+// membutuhkannya. Pengunjung yang belum masuk tidak membayar biayanya. Pemanggilannya sinkron, jadi bisa dipakai di awal
+// klik tombol masuk tanpa memutus gestur pengguna (popup Google tetap diizinkan). Auth dan Firestore mengambil token
+// App Check per permintaan, sehingga pendaftaran yang terlambat tetap ikut terbawa (diuji di tests/alat/uji-appcheck.js).
+// Rujukan: firebase/firebase-js-sdk packages/app-check/src/api.ts (initializeAppCheck), packages/auth/src/core/auth/auth_impl.ts
+// (_getAppCheckToken), packages/firestore/src/api/credentials.ts (FirebaseAppCheckTokenProvider.onInit).
+function startAppCheck() {
+  if (!acMod || acStarted) return;
+  acStarted = true;
+  acMod.initializeAppCheck(app, {provider: new acMod.ReCaptchaEnterpriseProvider(appCheckKey), isTokenAutoRefreshEnabled: true});
+}
+// Alihan login Google yang belum selesai: getRedirectResult akan langsung menghubungi server Auth
+const redirectPending = () => { try { return Object.keys(sessionStorage).some(k => k.startsWith('firebase:pendingRedirect')); } catch { return false; } };
+
+// opts.appCheckNow: perangkat ini pernah masuk akun, jadi Auth akan memeriksa sesi tersimpan ke server sejak awal
+export async function init(opts = {}) {
   if (!enabled()) return {enabled: false};
   try {
-    const [appMod, authMod, fsMod, acMod] = await Promise.all([
+    const [appMod, authMod, fsMod, ac] = await Promise.all([
       import(`${SDK}/firebase-app.js`), import(`${SDK}/firebase-auth.js`), import(`${SDK}/firebase-firestore.js`),
       appCheckOn ? import(`${SDK}/firebase-app-check.js`) : null]);
-    A = authMod; F = fsMod;
-    const app = appMod.initializeApp(config);
+    A = authMod; F = fsMod; acMod = ac;
+    app = appMod.initializeApp(config);
     // App Check: tiap permintaan ke server membawa bukti bahwa asalnya aplikasi ini (reCAPTCHA Enterprise, tanpa teka-teki)
-    if (acMod) acMod.initializeAppCheck(app, {provider: new acMod.ReCaptchaEnterpriseProvider(appCheckKey), isTokenAutoRefreshEnabled: true});
+    if (opts.appCheckNow || redirectPending()) startAppCheck();
     auth = A.getAuth(app);
     auth.languageCode = 'id';
     // Salinan data di perangkat: aplikasi tetap bisa dipakai offline dan kuota baca server lebih hemat
@@ -34,6 +50,7 @@ export async function init() {
     catch { db = F.getFirestore(app); }
     try { await A.getRedirectResult(auth); } catch { /* hasil login alihan tidak ada/gagal: tombol masuk tetap tersedia */ }
     user = await new Promise(res => { const off = A.onAuthStateChanged(auth, u => { off(); res(u); }); });
+    if (user) startAppCheck(); // semua akses Firestore terjadi setelah ada pengguna
     return {enabled: true, online: true, user};
   } catch (error) {
     return {enabled: true, online: false, user: null, error};
@@ -43,6 +60,7 @@ export async function init() {
 export async function signInGoogle() {
   const p = new A.GoogleAuthProvider();
   p.setCustomParameters({prompt: 'select_account'});
+  startAppCheck();
   try { user = (await A.signInWithPopup(auth, p)).user; return user; }
   catch (e) {
     // Popup diblokir (mis. di aplikasi terpasang iOS) → pakai alihan halaman
@@ -54,11 +72,13 @@ export async function signInGoogle() {
 }
 
 export async function signInUsername(username, pw) {
+  startAppCheck();
   user = (await A.signInWithEmailAndPassword(auth, emailOf(username), pw)).user;
   return user;
 }
 
 export async function registerUsername(username, pw) {
+  startAppCheck();
   const cred = await A.createUserWithEmailAndPassword(auth, emailOf(username), pw);
   user = cred.user;
   try { await claimUsername(username); }

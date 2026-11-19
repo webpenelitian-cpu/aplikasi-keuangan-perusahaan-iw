@@ -3710,7 +3710,7 @@ async function boot() {
 
   try { Cloud = await import('./cloud.js'); } catch { Cloud = null; }
   if (!Cloud?.enabled() || localStorage.getItem(MODE_KEY) === 'lokal') return openStore(KEY);
-  const res = await Cloud.init();
+  const res = await Cloud.init({appCheckNow: !!localStorage.getItem(LAST_UID_KEY)});
   if (res.user) { if (await idleLogoutAtStart(res.user)) return; return openAccount(res.user); }
   if (!res.online) {
     // Tanpa internet: buka salinan akun terakhir di perangkat ini bila ada
