@@ -1403,9 +1403,9 @@ function prCalc() {
   const sell = parseMoney($('ptrSell').value), buy = parseMoney($('ptrBuy').value), fee = sell - buy;
   const rate = (+state.company.pphRate || 0) / 100;
   $('ptrPayWrap').style.display = $('ptrPaid').checked ? '' : 'none';
-  $('ptrSum').innerHTML = !sell ? 'Isi harga jual dan harga beli.'
-    : fee < 0 ? `<span class="out">Harga beli lebih besar dari harga jual (rugi ${rp(-fee)}). Catat selisihnya sebagai beban lewat transaksi biasa.</span>`
-    : `Komisi (omzet PPh final): <b>${rp(fee)}</b> · titipan diteruskan: ${rp(buy)}<br><span class="muted">Perkiraan PPh final ${String(state.company.pphRate).replace('.', ',')}%: ${rp(Math.floor(fee * rate))} (dihitung; disetor bersama omzet sebulan).</span>`;
+  $('ptrSum').replaceChildren(...(!sell ? ['Isi harga jual dan harga beli.']
+    : fee < 0 ? [el('span', {class: 'out'}, `Harga beli lebih besar dari harga jual (rugi ${rp(-fee)}). Catat selisihnya sebagai beban lewat transaksi biasa.`)]
+    : ['Komisi (omzet PPh final): ', el('b', null, rp(fee)), ` · titipan diteruskan: ${rp(buy)}`, el('br'), el('span', {class: 'muted'}, `Perkiraan PPh final ${String(state.company.pphRate).replace('.', ',')}%: ${rp(Math.floor(fee * rate))} (dihitung; disetor bersama omzet sebulan).`)]));
 }
 function openPerantara() {
   if (!state.accounts.length) return toast('Tambahkan akun kas/bank dulu di menu Atur');
@@ -1555,12 +1555,12 @@ function debtTotals(kind) {
 
 function renderDebts() {
   const p = debtTotals('piutang'), u = debtTotals('utang');
-  $('debtCards').innerHTML = [
+  $('debtCards').replaceChildren(...[
     ['Piutang belum tertagih', rp(p.open), 'in', `${p.n} tagihan`],
     ['Piutang lewat jatuh tempo', rp(p.overdue), p.overdue ? 'out' : '', `${p.no} tagihan`],
     ['Utang belum dibayar', rp(u.open), 'out', `${u.n} tagihan`],
     ['Utang lewat jatuh tempo', rp(u.overdue), u.overdue ? 'out' : '', `${u.no} tagihan`],
-  ].map(statCard).join('');
+  ].map(statCardEl));
 
   const kind = $('dKind').value, st = $('dStatus').value, q = $('dSearch').value.toLowerCase();
   const list = state.debts.filter(d => {
@@ -1569,16 +1569,15 @@ function renderDebts() {
       (!q || (d.party + ' ' + (d.ref || '')).toLowerCase().includes(q));
   }).sort((a, b) => (a.due || a.date).localeCompare(b.due || b.date));
 
-  $('debtBody').innerHTML = list.length ? list.map(d => { const s = debtStatus(d); return `
-    <tr>
-      <td data-label="Jenis"><span class="badge ${d.kind === 'piutang' ? 'in' : 'out'}">${KIND_LABEL[d.kind]}</span></td>
-      <td data-label="Pihak"><b>${esc(d.party)}</b></td><td data-label="No. faktur">${esc(d.ref)}</td>
-      <td data-label="Tanggal">${fmtDate(d.date)}</td><td data-label="Jatuh tempo">${d.due ? fmtDate(d.due) : '—'}</td>
-      <td data-label="Nilai" class="num">${rp(d.amount)}</td><td data-label="Terbayar" class="num">${rp(paidOf(d))}</td>
-      <td data-label="Sisa" class="num"><b>${rp(Math.max(0, remainOf(d)))}</b></td>
-      <td data-label="Status"><span class="badge ${s.cls}">${s.label}</span></td>
-      <td data-label="" class="no-print num" style="white-space:nowrap">${s.key !== 'paid' ? `<button class="btn sm primary" data-act="openPay" data-id="${esc(d.id)}">${d.kind === 'piutang' ? 'Terima' : 'Bayar'}</button> ` : ''}<button class="btn sm" data-act="openDebt" data-id="${esc(d.id)}">Detail</button></td>
-    </tr>`; }).join('') : `<tr><td colspan="10" class="empty" data-label="">Tidak ada data piutang/utang yang cocok.</td></tr>`;
+  $('debtBody').replaceChildren(...(list.length ? list.map(d => { const s = debtStatus(d); return el('tr', null,
+      el('td', {'data-label': 'Jenis'}, el('span', {class: 'badge ' + (d.kind === 'piutang' ? 'in' : 'out')}, KIND_LABEL[d.kind])),
+      el('td', {'data-label': 'Pihak'}, el('b', null, d.party)), el('td', {'data-label': 'No. faktur'}, d.ref),
+      el('td', {'data-label': 'Tanggal'}, fmtDate(d.date)), el('td', {'data-label': 'Jatuh tempo'}, d.due ? fmtDate(d.due) : '—'),
+      el('td', {'data-label': 'Nilai', class: 'num'}, rp(d.amount)), el('td', {'data-label': 'Terbayar', class: 'num'}, rp(paidOf(d))),
+      el('td', {'data-label': 'Sisa', class: 'num'}, el('b', null, rp(Math.max(0, remainOf(d))))),
+      el('td', {'data-label': 'Status'}, el('span', {class: 'badge ' + s.cls}, s.label)),
+      el('td', {'data-label': '', class: 'no-print num', style: 'white-space:nowrap'}, s.key !== 'paid' ? [el('button', {class: 'btn sm primary', 'data-act': 'openPay', 'data-id': d.id}, d.kind === 'piutang' ? 'Terima' : 'Bayar'), ' '] : null, el('button', {class: 'btn sm', 'data-act': 'openDebt', 'data-id': d.id}, 'Detail'))); })
+    : [emptyRow(10, 'Tidak ada data piutang/utang yang cocok.')]));
 }
 ['dKind', 'dStatus'].forEach(id => $(id).oninput = renderDebts);
 $('dSearch').oninput = debounce(renderDebts);
@@ -1611,12 +1610,12 @@ function openDebt(id) {
   $('dDesc').value = d.desc || '';
   if (d.categoryId) $('dCat').value = d.categoryId;
   $('debtForm').querySelectorAll('.form-grid input, .form-grid select, .form-grid textarea').forEach(x => x.disabled = locked);
-  $('partyList').innerHTML = [...new Set(state.debts.map(x => x.party))].map(p => `<option value="${esc(p)}">`).join('');
-  $('debtPayments').innerHTML = (locked ? `<div class="notice">${esc(fromTrade ? 'Data ini dibuat otomatis dari menu Jual/Beli; ubah atau hapus dari sana.' : lockMsg())}</div>` : '') + (!editingDebt ? '' : `<h3 style="font-size:13px;margin:0 0 6px">Riwayat pembayaran</h3>` + (pays.length
-    ? `<table><tbody>${pays.map(t => `<tr><td>${fmtDate(t.date)}</td><td>${esc(t.ref)}</td><td class="num">${rp(t.amount)}</td>
-        <td class="num"><button type="button" class="btn sm" data-act="editPayment" data-id="${esc(t.id)}">Buka</button></td></tr>`).join('')}
-        <tr><td colspan="2"><b>Sisa</b></td><td class="num"><b>${rp(Math.max(0, remainOf(editingDebt)))}</b></td><td></td></tr></tbody></table>`
-    : '<div class="muted">Belum ada pembayaran.</div>'));
+  $('partyList').replaceChildren(...[...new Set(state.debts.map(x => x.party))].map(p => el('option', {value: p})));
+  $('debtPayments').replaceChildren(frag(locked ? el('div', {class: 'notice'}, fromTrade ? 'Data ini dibuat otomatis dari menu Jual/Beli; ubah atau hapus dari sana.' : lockMsg()) : null, !editingDebt ? null : [el('h3', {style: 'font-size:13px;margin:0 0 6px'}, 'Riwayat pembayaran'), pays.length
+    ? el('table', null, el('tbody', null, pays.map(t => el('tr', null, el('td', null, fmtDate(t.date)), el('td', null, t.ref), el('td', {class: 'num'}, rp(t.amount)),
+        el('td', {class: 'num'}, el('button', {type: 'button', class: 'btn sm', 'data-act': 'editPayment', 'data-id': t.id}, 'Buka')))),
+        el('tr', null, el('td', {colspan: 2}, el('b', null, 'Sisa')), el('td', {class: 'num'}, el('b', null, rp(Math.max(0, remainOf(editingDebt))))), el('td'))))
+    : el('div', {class: 'muted'}, 'Belum ada pembayaran.')]));
   $('btnSaveDebt').style.display = locked ? 'none' : '';
   $('btnDeleteDebt').style.display = editingDebt && !locked ? '' : 'none';
   $('debtDialog').showModal();
@@ -1668,7 +1667,7 @@ function openPay(id) {
   const r = remainOf(payingDebt);
   fillSelect($('pAcc'), state.accounts);
   $('payTitle').textContent = payingDebt.kind === 'piutang' ? 'Terima Pembayaran Piutang' : 'Bayar Utang';
-  $('payInfo').innerHTML = `${esc(payingDebt.party)}${payingDebt.ref ? ' · ' + esc(payingDebt.ref) : ''} — sisa <b>${rp(r)}</b>`;
+  $('payInfo').replaceChildren(frag(payingDebt.party, payingDebt.ref ? ' · ' + payingDebt.ref : '', ' — sisa ', el('b', null, rp(r))));
   $('pAccLabel').textContent = payingDebt.kind === 'piutang' ? 'Masuk ke akun' : 'Dibayar dari akun';
   $('pDate').value = today();
   $('pAmount').value = r.toLocaleString('id-ID');
@@ -2419,29 +2418,31 @@ function renderTrade() {
   const sales = inPeriod.filter(t => t.kind === 'sale'), rets = state.returns.filter(r => r.kind === 'sale' && inRange(r.date, from, to));
   const rev = sales.reduce((s, t) => s + tradeTotal(t), 0) - rets.reduce((s, r) => s + r.dpp, 0);
   const hpp = sales.reduce((s, t) => s + (cogs.get(t.id) || 0), 0) - rets.reduce((s, r) => s + (M().stock.rcost.get(r.id) || 0), 0);
-  $('tradeCards').innerHTML = [
+  $('tradeCards').replaceChildren(...[
     ['Penjualan', rp(rev), 'in', `${sales.length} transaksi`],
     ['Harga pokok (HPP)', rp(hpp), 'out'],
     ['Laba kotor', rp(rev - hpp), rev - hpp >= 0 ? 'in' : 'out', rev ? 'Margin ' + pct((rev - hpp) / rev * 100) : ''],
     ['Pembelian', rp(inPeriod.filter(t => t.kind === 'purchase').reduce((s, t) => s + tradeTotal(t), 0)), ''],
     ['Nilai persediaan', rp(stockValue()), ''],
-  ].map(statCard).join('');
+  ].map(statCardEl));
   if (tradeTab === 'items') return renderItems();
   if (tradeTab === 'vendors') return renderVendors();
   if (tradeTab === 'tax') return renderTaxRules();
   const rows = sorted(inPeriod).filter(t => (!kind || t.kind === kind) && (!q || (t.ref + ' ' + partyOf(t)).toLowerCase().includes(q)));
-  $('tradeBody').innerHTML = rows.length ? rows.slice(0, tradeLimit).map(t => {
+  const body = document.createDocumentFragment();
+  for (const t of rows.slice(0, tradeLimit)) {
     const total = tradeTotal(t), sale = t.kind === 'sale', c = cogs.get(t.id) || 0;
-    return `<tr>
-      <td data-label="Tanggal">${fmtDate(t.date)}</td><td data-label="No. bukti">${esc(t.ref)}</td>
-      <td data-label="Jenis"><span class="badge ${sale ? 'in' : 'out'}">${sale ? 'Jual' : 'Beli'}</span></td>
-      <td data-label="Pihak">${esc(partyOf(t))}</td><td data-label="Bayar">${t.pay === 'cash' ? 'Tunai' : 'Kredit'}</td>
-      <td data-label="Total" class="num"><b>${rp(total)}</b></td>
-      <td data-label="HPP" class="num">${sale ? rp(c) : '—'}</td>
-      <td data-label="Laba" class="num ${total - c >= 0 ? 'in' : 'out'}">${sale ? rp(total - c) : '—'}</td>
-      <td data-label="" class="no-print num"><button class="btn sm" data-act="openTrade" data-id="${esc(t.id)}">Buka</button></td></tr>`;
-  }).join('') + (rows.length > tradeLimit ? `<tr><td colspan="9" data-label="" style="text-align:center"><button class="btn" data-act="moreTrade">Tampilkan berikutnya (${rows.length - tradeLimit} lagi)</button></td></tr>` : '')
-    : '<tr><td colspan="9" class="empty" data-label="">Belum ada penjualan atau pembelian.</td></tr>';
+    body.append(el('tr', null,
+      el('td', {'data-label': 'Tanggal'}, fmtDate(t.date)), el('td', {'data-label': 'No. bukti'}, t.ref),
+      el('td', {'data-label': 'Jenis'}, el('span', {class: 'badge ' + (sale ? 'in' : 'out')}, sale ? 'Jual' : 'Beli')),
+      el('td', {'data-label': 'Pihak'}, partyOf(t)), el('td', {'data-label': 'Bayar'}, t.pay === 'cash' ? 'Tunai' : 'Kredit'),
+      el('td', {'data-label': 'Total', class: 'num'}, el('b', null, rp(total))),
+      el('td', {'data-label': 'HPP', class: 'num'}, sale ? rp(c) : '—'),
+      el('td', {'data-label': 'Laba', class: 'num ' + (total - c >= 0 ? 'in' : 'out')}, sale ? rp(total - c) : '—'),
+      el('td', {'data-label': '', class: 'no-print num'}, el('button', {class: 'btn sm', 'data-act': 'openTrade', 'data-id': t.id}, 'Buka'))));
+  }
+  if (rows.length > tradeLimit) body.append(el('tr', null, el('td', {colspan: 9, 'data-label': '', style: 'text-align:center'}, el('button', {class: 'btn', 'data-act': 'moreTrade'}, `Tampilkan berikutnya (${rows.length - tradeLimit} lagi)`))));
+  $('tradeBody').replaceChildren(rows.length ? body : emptyRow(9, 'Belum ada penjualan atau pembelian.'));
 }
 ['tFrom', 'tTo', 'tKind'].forEach(id => $(id).oninput = () => { tradeLimit = TX_PAGE; renderTrade(); });
 $('tSearch').oninput = debounce(() => { tradeLimit = TX_PAGE; renderTrade(); });
@@ -2449,31 +2450,32 @@ document.querySelectorAll('#tradeTabs button').forEach(b => b.onclick = () => { 
 
 function renderItems() {
   const st = M().stock.stock;
-  $('itemBody').innerHTML = state.items.length ? state.items.slice().sort((a, b) => a.name.localeCompare(b.name)).map(i => {
+  $('itemBody').replaceChildren(...(state.items.length ? state.items.slice().sort((a, b) => a.name.localeCompare(b.name)).map(i => {
     const s = st.get(i.id), low = s && i.minQty && s.qty <= i.minQty;
-    return `<tr><td data-label="Kode">${esc(i.code)}</td><td data-label="Nama"><b>${esc(i.name)}</b>${i.kind === 'jasa' ? ' <span class="badge tr">Jasa</span>' : ''}</td>
-      <td data-label="Stok" class="num ${low ? 'out' : ''}">${s ? fmtQty(s.qty) + ' ' + esc(i.unit) : '—'}</td>
-      <td data-label="HPP rata-rata" class="num">${s && s.qty ? rp(s.value / s.qty) : '—'}</td>
-      <td data-label="Harga jual" class="num">${rp(i.price)}</td><td data-label="Nilai stok" class="num">${s ? rp(s.value) : '—'}</td>
-      <td data-label="" class="no-print num" style="white-space:nowrap">${i.code ? `<button class="btn sm" data-act="printLabel" data-id="${esc(i.id)}">Label</button> ` : ''}<button class="btn sm" data-act="openItem" data-id="${esc(i.id)}">Ubah</button></td></tr>`;
-  }).join('') : '<tr><td colspan="7" class="empty" data-label="">Belum ada barang atau jasa.</td></tr>';
+    return el('tr', null, el('td', {'data-label': 'Kode'}, i.code), el('td', {'data-label': 'Nama'}, el('b', null, i.name), i.kind === 'jasa' ? [' ', el('span', {class: 'badge tr'}, 'Jasa')] : null),
+      el('td', {'data-label': 'Stok', class: 'num ' + (low ? 'out' : '')}, s ? fmtQty(s.qty) + ' ' + (i.unit ?? '') : '—'),
+      el('td', {'data-label': 'HPP rata-rata', class: 'num'}, s && s.qty ? rp(s.value / s.qty) : '—'),
+      el('td', {'data-label': 'Harga jual', class: 'num'}, rp(i.price)), el('td', {'data-label': 'Nilai stok', class: 'num'}, s ? rp(s.value) : '—'),
+      el('td', {'data-label': '', class: 'no-print num', style: 'white-space:nowrap'}, i.code ? [el('button', {class: 'btn sm', 'data-act': 'printLabel', 'data-id': i.id}, 'Label'), ' '] : null, el('button', {class: 'btn sm', 'data-act': 'openItem', 'data-id': i.id}, 'Ubah')));
+  }) : [emptyRow(7, 'Belum ada barang atau jasa.')]));
   const adj = M().stock.adj;
-  $('opBody').innerHTML = state.adjusts.slice().sort((a, b) => b.date.localeCompare(a.date)).map(a => `<tr><td data-label="Tanggal">${fmtDate(a.date)}</td><td data-label="No. bukti">${esc(a.ref)}</td>
-    <td data-label="Selisih">${a.lines.filter(l => l.diff).map(l => `${esc(itemOf(l.itemId)?.name)} ${l.diff > 0 ? '+' : ''}${fmtQty(l.diff)}`).join(', ') || 'Semua cocok'}</td><td data-label="Nilai" class="num">${rp(adj.get(a.id) || 0)}</td>
-    <td data-label="" class="no-print num"><button class="btn sm danger" data-act="delAdjust" data-id="${esc(a.id)}">Hapus</button></td></tr>`).join('') || '<tr><td colspan="5" class="empty" data-label="">Belum ada stok opname.</td></tr>';
+  $('opBody').replaceChildren(...(state.adjusts.length ? state.adjusts.slice().sort((a, b) => b.date.localeCompare(a.date)).map(a => el('tr', null, el('td', {'data-label': 'Tanggal'}, fmtDate(a.date)), el('td', {'data-label': 'No. bukti'}, a.ref),
+    el('td', {'data-label': 'Selisih'}, a.lines.filter(l => l.diff).map(l => `${itemOf(l.itemId)?.name ?? ''} ${l.diff > 0 ? '+' : ''}${fmtQty(l.diff)}`).join(', ') || 'Semua cocok'), el('td', {'data-label': 'Nilai', class: 'num'}, rp(adj.get(a.id) || 0)),
+    el('td', {'data-label': '', class: 'no-print num'}, el('button', {class: 'btn sm danger', 'data-act': 'delAdjust', 'data-id': a.id}, 'Hapus'))))
+    : [emptyRow(5, 'Belum ada stok opname.')]));
 }
 function renderVendors() {
   const bought = new Map();
   state.trades.forEach(t => { if (t.kind === 'purchase') bought.set(t.vendorId, (bought.get(t.vendorId) || 0) + tradeTotal(t)); });
   const owed = new Map();
   state.debts.forEach(d => { if (d.kind === 'utang' && d.tradeId) { const v = state.trades.find(t => t.id === d.tradeId)?.vendorId; owed.set(v, (owed.get(v) || 0) + Math.max(0, remainOf(d))); } });
-  $('vendorBody').innerHTML = state.vendors.length ? state.vendors.slice().sort((a, b) => a.name.localeCompare(b.name)).map(v => `<tr>
-    <td data-label="Vendor"><b>${esc(v.name)}</b></td><td data-label="Kontak">${esc([v.pic, v.phone].filter(Boolean).join(' · '))}</td>
-    <td data-label="Pajak">${v.pkp ? '<span class="badge in">PKP</span> ' : ''}${v.wapu ? '<span class="badge warn">WAPU</span>' : ''}</td>
-    <td data-label="Tempo">${v.terms ? v.terms + ' hari' : 'Tunai'}</td>
-    <td data-label="Total beli" class="num">${rp(bought.get(v.id) || 0)}</td><td data-label="Utang" class="num">${rp(owed.get(v.id) || 0)}</td>
-    <td data-label="" class="no-print num"><button class="btn sm" data-act="openVendor" data-id="${esc(v.id)}">Ubah</button></td></tr>`).join('')
-    : '<tr><td colspan="7" class="empty" data-label="">Belum ada vendor/supplier.</td></tr>';
+  $('vendorBody').replaceChildren(...(state.vendors.length ? state.vendors.slice().sort((a, b) => a.name.localeCompare(b.name)).map(v => el('tr', null,
+    el('td', {'data-label': 'Vendor'}, el('b', null, v.name)), el('td', {'data-label': 'Kontak'}, [v.pic, v.phone].filter(Boolean).join(' · ')),
+    el('td', {'data-label': 'Pajak'}, v.pkp ? [el('span', {class: 'badge in'}, 'PKP'), ' '] : null, v.wapu ? el('span', {class: 'badge warn'}, 'WAPU') : null),
+    el('td', {'data-label': 'Tempo'}, v.terms ? v.terms + ' hari' : 'Tunai'),
+    el('td', {'data-label': 'Total beli', class: 'num'}, rp(bought.get(v.id) || 0)), el('td', {'data-label': 'Utang', class: 'num'}, rp(owed.get(v.id) || 0)),
+    el('td', {'data-label': '', class: 'no-print num'}, el('button', {class: 'btn sm', 'data-act': 'openVendor', 'data-id': v.id}, 'Ubah'))))
+    : [emptyRow(7, 'Belum ada vendor/supplier.')]));
 }
 
 /* Dialog barang */
@@ -2495,7 +2497,7 @@ function openItem(id) {
   $('itemDialog').showModal();
 }
 moneyInput($('iPrice')); moneyInput($('iOpenCost'));
-$('iTax').innerHTML = Object.entries(TAX_TYPES).map(([k, t]) => `<option value="${k}">${esc(t.label)}</option>`).join('');
+$('iTax').replaceChildren(...Object.entries(TAX_TYPES).map(([k, t]) => el('option', {value: k}, t.label)));
 $('iTax').onchange = () => {
   const k = TAX_TYPES[$('iTax').value].kind;
   if (!$('iKind').disabled) $('iKind').value = k;
@@ -2603,12 +2605,12 @@ function setTradePay() {
   $('tDueWrap').style.display = credit ? '' : 'none';
 }
 function renderTradeLines() {
-  const opts = tradeItems().map(i => `<option value="${esc(i.id)}">${esc(i.name)}</option>`).join('');
-  $('tLines').innerHTML = tradeLines.map((l, n) => `<div class="tline" data-n="${n}">
-    <select class="tl-item" aria-label="Barang"><option value="">Pilih…</option>${opts}</select>
-    <input class="tl-qty" inputmode="decimal" placeholder="Jumlah" aria-label="Jumlah" value="${l.qty ? String(l.qty).replace('.', ',') : ''}">
-    <input class="tl-price" inputmode="numeric" placeholder="${tradeKind === 'sale' ? 'Harga jual' : 'Harga beli'}" aria-label="Harga" value="${l.price ? l.price.toLocaleString('id-ID') : ''}">
-    <button type="button" class="btn sm danger" data-act="delLine" data-id="${n}" aria-label="Hapus baris">✕</button></div>`).join('');
+  const items = tradeItems(), opts = () => items.map(i => el('option', {value: i.id}, i.name));
+  $('tLines').replaceChildren(...tradeLines.map((l, n) => el('div', {class: 'tline', 'data-n': n},
+    el('select', {class: 'tl-item', 'aria-label': 'Barang'}, el('option', {value: ''}, 'Pilih…'), opts()),
+    el('input', {class: 'tl-qty', inputmode: 'decimal', placeholder: 'Jumlah', 'aria-label': 'Jumlah', value: l.qty ? String(l.qty).replace('.', ',') : ''}),
+    el('input', {class: 'tl-price', inputmode: 'numeric', placeholder: tradeKind === 'sale' ? 'Harga jual' : 'Harga beli', 'aria-label': 'Harga', value: l.price ? l.price.toLocaleString('id-ID') : ''}),
+    el('button', {type: 'button', class: 'btn sm danger', 'data-act': 'delLine', 'data-id': n, 'aria-label': 'Hapus baris'}, '✕'))));
   $('tLines').querySelectorAll('.tline').forEach((row, n) => { row.querySelector('.tl-item').value = tradeLines[n].itemId || ''; });
   tradeSummaryBox();
 }
@@ -2625,13 +2627,13 @@ function tradeDraft() {
 }
 function tradeSummaryBox() {
   const d = tradeDraft(), total = tradeTotal(d), sale = d.kind === 'sale';
-  const tax = `<div>DPP ${rp(total)} · PPN ${rp(d.ppn)}${d.wapu && d.ppn ? ' (dipungut WAPU, tidak ' + (sale ? 'diterima' : 'dibayar ke vendor') + ')' : ''}${d.pphParts.map(x => ` · ${PPH_LABEL[x.code]} ${String(x.rate).replace('.', ',')}% ${rp(x.amt)}`).join('')}</div>
-    <div>${sale ? 'Diterima' : 'Dibayar ke vendor'}: <b>${rp(tradePay(d))}</b></div>
-    ${!sale && d.pph && !vendorOf(d.vendorId)?.npwp ? '<div class="out">Vendor belum punya NPWP di data: tarif pemotongan bisa lebih tinggi, periksa sebelum menyimpan.</div>' : ''}`;
-  if (!sale || !DATE_RE.test(d.date)) { $('tSummary').innerHTML = tax; return; }
+  const tax = () => [el('div', null, `DPP ${rp(total)} · PPN ${rp(d.ppn)}${d.wapu && d.ppn ? ' (dipungut WAPU, tidak ' + (sale ? 'diterima' : 'dibayar ke vendor') + ')' : ''}${d.pphParts.map(x => ` · ${PPH_LABEL[x.code]} ${String(x.rate).replace('.', ',')}% ${rp(x.amt)}`).join('')}`),
+    el('div', null, `${sale ? 'Diterima' : 'Dibayar ke vendor'}: `, el('b', null, rp(tradePay(d)))),
+    !sale && d.pph && !vendorOf(d.vendorId)?.npwp ? el('div', {class: 'out'}, 'Vendor belum punya NPWP di data: tarif pemotongan bisa lebih tinggi, periksa sebelum menyimpan.') : null];
+  if (!sale || !DATE_RE.test(d.date)) { $('tSummary').replaceChildren(frag(tax())); return; }
   const r = stockCalc([...state.trades.filter(t => t !== editingTrade), d]), c = r.cogs.get(d.id) || 0, short = d.lines.filter(l => r.neg.has(l.itemId));
-  $('tSummary').innerHTML = `${tax}HPP <b>${rp(c)}</b> · Laba <b class="${total - c >= 0 ? 'in' : 'out'}">${rp(total - c)}</b>${total ? ' (' + pct((total - c) / total * 100) + ')' : ''}
-    ${short.length ? `<div class="out">Stok tidak cukup: ${short.map(l => esc(itemOf(l.itemId)?.name)).join(', ')}</div>` : ''}`;
+  $('tSummary').replaceChildren(frag(tax(), 'HPP ', el('b', null, rp(c)), ' · Laba ', el('b', {class: total - c >= 0 ? 'in' : 'out'}, rp(total - c)), total ? ' (' + pct((total - c) / total * 100) + ')' : null,
+    short.length ? el('div', {class: 'out'}, 'Stok tidak cukup: ' + short.map(l => itemOf(l.itemId)?.name ?? '').join(', ')) : null));
 }
 $('tLines').addEventListener('input', e => {
   const row = e.target.closest('.tline'); if (!row) return;
@@ -2694,7 +2696,7 @@ function openTrade(id, kind) {
   $('tPo').value = t.poNo || ''; $('tCustAddr').value = t.custAddr || ''; $('tCustNpwp').value = t.custNpwp || '';
   $('tDiscount').value = t.discount ? t.discount.toLocaleString('id-ID') : '';
   $('tExtra').value = t.extra ? t.extra.toLocaleString('id-ID') : '';
-  $('custList').innerHTML = [...new Set([...state.customers.map(x => x.name), ...state.trades.filter(x => x.kind === 'sale' && x.party).map(x => x.party)])].map(p => `<option value="${esc(p)}">`).join('');
+  $('custList').replaceChildren(...[...new Set([...state.customers.map(x => x.name), ...state.trades.filter(x => x.kind === 'sale' && x.party).map(x => x.party)])].map(p => el('option', {value: p})));
   tradeLines = t.lines.length ? t.lines.map(l => ({...l})) : [{itemId: '', qty: 1, price: 0}];
   if (editingTrade) tradeSrc = null;
   if (tradeSrc) { tradeLines = tradeSrc.lines.map(l => ({...l})); $('tCust').value = tradeSrc.party || ''; $('tCustAddr').value = tradeSrc.addr || ''; $('tCustNpwp').value = tradeSrc.npwp || ''; $('tVendor').value = tradeSrc.vendorId || ''; $('tPo').value = tradeSrc.ref || ''; }
@@ -2714,7 +2716,8 @@ function openTrade(id, kind) {
   $('btnDeleteTrade').style.display = editingTrade && !ro ? '' : 'none';
   $('btnPrintTrade').style.display = editingTrade && t.kind === 'sale' ? '' : 'none';
   $('btnReturnTrade').style.display = editingTrade ? '' : 'none';
-  $('tReturns').innerHTML = editingTrade && retOf(t).length ? `<h3 style="font-size:13px;margin:14px 0 6px">Retur</h3><table><tbody>${retOf(t).map(r => `<tr><td>${fmtDate(r.date)}</td><td>${esc(r.ref)}</td><td class="num">${rp(r.dpp)}</td><td class="num"><button type="button" class="btn sm danger" data-act="delReturn" data-id="${esc(r.id)}">Hapus</button></td></tr>`).join('')}</tbody></table>` : '';
+  $('tReturns').replaceChildren(...(editingTrade && retOf(t).length ? [el('h3', {style: 'font-size:13px;margin:14px 0 6px'}, 'Retur'), el('table', null, el('tbody', null, retOf(t).map(r => el('tr', null, el('td', null, fmtDate(r.date)), el('td', null, r.ref), el('td', {class: 'num'}, rp(r.dpp)),
+    el('td', {class: 'num'}, el('button', {type: 'button', class: 'btn sm danger', 'data-act': 'delReturn', 'data-id': r.id}, 'Hapus'))))))] : []));
   $('tradeDialog').showModal();
 }
 // Membuat atau memperbarui transaksi kas / piutang-utang yang menyertai jual beli
@@ -2798,7 +2801,7 @@ function retDraftLines() {
 function retRefresh() {
   const t = returningTrade, lines = retDraftLines(), c = retCalc(t, lines), sale = t.kind === 'sale';
   $('retAccWrap').style.display = $('retSettle').value === 'cash' ? '' : 'none';
-  $('retSummary').innerHTML = `DPP ${rp(c.dpp)} · PPN ${rp(c.ppn)}${c.pph ? ' · PPh ' + rp(c.pph) : ''}<br>${$('retSettle').value === 'cash' ? (sale ? 'Uang dikembalikan ke pembeli' : 'Uang diterima dari vendor') : (sale ? 'Mengurangi piutang' : 'Mengurangi utang')}: <b>${rp(retPay(c))}</b>`;
+  $('retSummary').replaceChildren(`DPP ${rp(c.dpp)} · PPN ${rp(c.ppn)}${c.pph ? ' · PPh ' + rp(c.pph) : ''}`, el('br'), `${$('retSettle').value === 'cash' ? (sale ? 'Uang dikembalikan ke pembeli' : 'Uang diterima dari vendor') : (sale ? 'Mengurangi piutang' : 'Mengurangi utang')}: `, el('b', null, rp(retPay(c))));
 }
 function openReturn(t) {
   returningTrade = t;
@@ -2808,9 +2811,9 @@ function openReturn(t) {
   $('retRef').value = nextCode(sale ? 'RJ' : 'RB', today(), state.returns.map(r => r.ref));
   fillSelect($('retAcc'), state.accounts);
   if (t.accountId) $('retAcc').value = t.accountId;
-  $('retSettle').innerHTML = `${open ? `<option value="debt">Kurangi ${sale ? 'piutang' : 'utang'} (nota retur)</option>` : ''}<option value="cash">${sale ? 'Kembalikan uang' : 'Terima pengembalian uang'}</option>`;
+  $('retSettle').replaceChildren(...(open ? [el('option', {value: 'debt'}, `Kurangi ${sale ? 'piutang' : 'utang'} (nota retur)`)] : []), el('option', {value: 'cash'}, sale ? 'Kembalikan uang' : 'Terima pengembalian uang'));
   $('retDesc').value = '';
-  $('retLines').innerHTML = t.lines.map((l, n) => { const left = Math.round((l.qty - retQty(t, n)) * 1000) / 1000; return `<label class="f">${esc(itemOf(l.itemId)?.name)}: sisa ${fmtQty(left)} ${esc(itemOf(l.itemId)?.unit)}<input data-idx="${n}" data-max="${left}" inputmode="decimal" placeholder="Jumlah diretur"${left <= 0 ? ' disabled' : ''}></label>`; }).join('');
+  $('retLines').replaceChildren(...t.lines.map((l, n) => { const left = Math.round((l.qty - retQty(t, n)) * 1000) / 1000, it = itemOf(l.itemId); return el('label', {class: 'f'}, `${it?.name ?? ''}: sisa ${fmtQty(left)} ${it?.unit ?? ''}`, el('input', {'data-idx': n, 'data-max': left, inputmode: 'decimal', placeholder: 'Jumlah diretur', disabled: left <= 0})); }));
   retRefresh();
   $('retDialog').showModal();
 }
@@ -2858,7 +2861,8 @@ function opRows() {
   const date = $('opDate').value || today(), st = stockAsOf(date), multi = state.warehouses.length > 0, wh = whStock().get($('opWh').value) || new Map();
   const book = i => multi ? wh.get(i.id) || 0 : st.get(i.id).qty;
   $('opWhWrap').style.display = multi ? '' : 'none';
-  $('opLines').innerHTML = state.items.filter(i => st.has(i.id)).sort((a, b) => a.name.localeCompare(b.name)).map(i => `<label class="f">${esc(i.name)}: buku ${fmtQty(book(i))} ${esc(i.unit)}<input data-id="${esc(i.id)}" data-book="${book(i)}" inputmode="decimal" placeholder="Hitungan fisik"></label>`).join('') || '<div class="empty">Belum ada barang.</div>';
+  const ops = state.items.filter(i => st.has(i.id)).sort((a, b) => a.name.localeCompare(b.name));
+  $('opLines').replaceChildren(...(ops.length ? ops.map(i => el('label', {class: 'f'}, `${i.name}: buku ${fmtQty(book(i))} ${i.unit ?? ''}`, el('input', {'data-id': i.id, 'data-book': book(i), inputmode: 'decimal', placeholder: 'Hitungan fisik'}))) : [el('div', {class: 'empty'}, 'Belum ada barang.')]));
   opRefresh();
 }
 function opDraft() {
@@ -2866,7 +2870,7 @@ function opDraft() {
 }
 function opRefresh() {
   const lines = opDraft(), a = {id: 'draft', created: Date.now(), date: $('opDate').value || today(), lines}, v = stockCalc(state.trades, state.items, state.returns, [...state.adjusts, a]).adj.get('draft') || 0;
-  $('opSummary').innerHTML = lines.length ? `${lines.length} barang dihitung, ${lines.filter(l => l.diff).length} selisih. ${v < 0 ? 'Kekurangan' : 'Kelebihan'} senilai <b class="${v < 0 ? 'out' : 'in'}">${rp(Math.abs(v))}</b>` : 'Isi hitungan fisik barang yang dihitung; barang yang dikosongkan tidak dianggap dihitung.';
+  $('opSummary').replaceChildren(...(lines.length ? [`${lines.length} barang dihitung, ${lines.filter(l => l.diff).length} selisih. ${v < 0 ? 'Kekurangan' : 'Kelebihan'} senilai `, el('b', {class: v < 0 ? 'out' : 'in'}, rp(Math.abs(v)))] : ['Isi hitungan fisik barang yang dihitung; barang yang dikosongkan tidak dianggap dihitung.']));
 }
 $('opLines').addEventListener('input', opRefresh);
 $('opWh').onchange = opRows;
@@ -3117,38 +3121,38 @@ function renderHr() {
   ['emp', 'pay', 'rules', 'att', 'leave', 'kas', 'doc', 'rev', 'shift'].forEach(k => $('hr-' + k).style.display = k === hrTab ? '' : 'none');
   const ym = today().slice(0, 7), act = state.employees.filter(e => empActive(e, ym));
   const lastRun = state.payrolls.slice().sort((a, b) => b.period.localeCompare(a.period))[0], s = lastRun && paySum(lastRun);
-  $('hrCards').innerHTML = [
+  $('hrCards').replaceChildren(...[
     ['Karyawan aktif', String(act.length), '', `${act.filter(e => e.status === 'pkwtt').length} tetap · ${act.filter(e => e.status === 'pkwt').length} kontrak · ${act.filter(e => e.status === 'harian').length} harian`],
     ['Ditanggung perusahaan', s ? rp(s.co + lastRun.lines.reduce((x, l) => x + l.taxAllow, 0)) : '—', 'out', s ? 'BPJS + PPh ditanggung, ' + ymLabel(lastRun.period) : ''],
     ['Ditanggung karyawan', s ? rp(s.ee + lastRun.lines.reduce((x, l) => x + (l.taxBy === 'karyawan' ? l.pph : 0), 0)) : '—', '', s ? 'BPJS + PPh 21 dipotong gaji' : ''],
     ['Utang PPh 21', rp(journalBal(ACC_PPH21)), '', 'Belum disetor'],
     ['Utang BPJS', rp(journalBal(ACC_BPJS)), '', 'Belum disetor'],
-  ].map(statCard).join('');
+  ].map(statCardEl));
   if (hrTab === 'rules') return renderRules();
   if (['att', 'leave', 'kas'].includes(hrTab)) return renderHrExtra();
   if (['doc', 'rev', 'shift'].includes(hrTab)) return renderHrMore();
   if (hrTab === 'pay') {
-    $('payBody').innerHTML = state.payrolls.length ? state.payrolls.slice().sort((a, b) => b.period.localeCompare(a.period)).map(p => {
+    $('payBody').replaceChildren(...(state.payrolls.length ? state.payrolls.slice().sort((a, b) => b.period.localeCompare(a.period)).map(p => {
       const t = paySum(p);
-      return `<tr><td data-label="Periode"><b>${ymLabel(p.period)}</b></td><td data-label="No. bukti">${esc(p.ref)}</td><td data-label="Karyawan">${p.lines.length}</td>
-        <td data-label="Gaji bersih" class="num">${rp(t.net)}</td><td data-label="PPh 21" class="num">${rp(t.pph)}</td>
-        <td data-label="BPJS perusahaan" class="num">${rp(t.co)}</td><td data-label="BPJS karyawan" class="num">${rp(t.ee)}</td>
-        <td data-label="" class="no-print num" style="white-space:nowrap"><button class="btn sm" data-act="openPayRun" data-id="${esc(p.id)}">Detail</button></td></tr>`;
-    }).join('') : '<tr><td colspan="8" class="empty" data-label="">Belum ada penggajian.</td></tr>';
+      return el('tr', null, el('td', {'data-label': 'Periode'}, el('b', null, ymLabel(p.period))), el('td', {'data-label': 'No. bukti'}, p.ref), el('td', {'data-label': 'Karyawan'}, p.lines.length),
+        el('td', {'data-label': 'Gaji bersih', class: 'num'}, rp(t.net)), el('td', {'data-label': 'PPh 21', class: 'num'}, rp(t.pph)),
+        el('td', {'data-label': 'BPJS perusahaan', class: 'num'}, rp(t.co)), el('td', {'data-label': 'BPJS karyawan', class: 'num'}, rp(t.ee)),
+        el('td', {'data-label': '', class: 'no-print num', style: 'white-space:nowrap'}, el('button', {class: 'btn sm', 'data-act': 'openPayRun', 'data-id': p.id}, 'Detail')));
+    }) : [emptyRow(8, 'Belum ada penggajian.')]));
     return;
   }
   const now = today(), q = $('eSearch').value.toLowerCase();
   const rows = state.employees.filter(e => !q || (e.name + ' ' + e.title).toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
-  $('empBody').innerHTML = rows.length ? rows.map(e => {
+  $('empBody').replaceChildren(...(rows.length ? rows.map(e => {
     const out = e.exitDate && e.exitDate < now, soon = e.status === 'pkwt' && e.endDate && daysBetween(now, e.endDate) <= 30;
-    return `<tr><td data-label="Nama"><b>${esc(e.name)}</b><div class="muted" style="font-size:12px">${esc(e.title)}</div></td>
-      <td data-label="Status"><span class="badge ${e.status === 'pkwtt' ? 'in' : e.status === 'pkwt' ? 'warn' : 'tr'}">${EMP_STATUS[e.status]}</span>${out ? ' <span class="badge out">Keluar</span>' : ''}</td>
-      <td data-label="Mulai">${e.joinDate ? fmtDate(e.joinDate) : '—'}</td>
-      <td data-label="Kontrak s.d." class="${soon ? 'out' : ''}">${e.status === 'pkwt' && e.endDate ? fmtDate(e.endDate) : '—'}</td>
-      <td data-label="PTKP">${esc(e.ptkp)}</td>
-      <td data-label="Upah" class="num ${belowMin(e) || belowFloor(e) ? 'out' : ''}">${rp(empWage(e))}${e.status === 'harian' ? '/hari' : ''}</td>
-      <td data-label="" class="no-print num"><button class="btn sm" data-act="openEmp" data-id="${esc(e.id)}">Ubah</button></td></tr>`;
-  }).join('') : '<tr><td colspan="7" class="empty" data-label="">Belum ada data karyawan.</td></tr>';
+    return el('tr', null, el('td', {'data-label': 'Nama'}, el('b', null, e.name), el('div', {class: 'muted', style: 'font-size:12px'}, e.title)),
+      el('td', {'data-label': 'Status'}, el('span', {class: 'badge ' + (e.status === 'pkwtt' ? 'in' : e.status === 'pkwt' ? 'warn' : 'tr')}, EMP_STATUS[e.status]), out ? [' ', el('span', {class: 'badge out'}, 'Keluar')] : null),
+      el('td', {'data-label': 'Mulai'}, e.joinDate ? fmtDate(e.joinDate) : '—'),
+      el('td', {'data-label': 'Kontrak s.d.', class: soon ? 'out' : ''}, e.status === 'pkwt' && e.endDate ? fmtDate(e.endDate) : '—'),
+      el('td', {'data-label': 'PTKP'}, e.ptkp),
+      el('td', {'data-label': 'Upah', class: 'num ' + (belowMin(e) || belowFloor(e) ? 'out' : '')}, rp(empWage(e)) + (e.status === 'harian' ? '/hari' : '')),
+      el('td', {'data-label': '', class: 'no-print num'}, el('button', {class: 'btn sm', 'data-act': 'openEmp', 'data-id': e.id}, 'Ubah')));
+  }) : [emptyRow(7, 'Belum ada data karyawan.')]));
 }
 document.querySelectorAll('#hrTabs button').forEach(b => b.onclick = () => { hrTab = b.dataset.tab; renderHr(); rememberView(); });
 $('eSearch').oninput = debounce(() => renderHr());
@@ -3194,20 +3198,20 @@ function showEmpFields() {
   $('eEndWrap').style.display = st === 'pkwt' ? '' : 'none';
   $('eWageLabel').textContent = st === 'harian' ? 'Upah per hari (Rp)' : 'Gaji pokok per bulan (Rp)';
   const w = parseMoney($('eWage').value) + parseMoney($('eAllow').value), hr = state.hr, notes = [];
-  if (st !== 'harian' && hr.umpMode === 'wajib' && hr.ump && w && w < hr.ump) notes.push(`<span class="out">Upah di bawah UMP/UMK ${rp(hr.ump)}.</span>`);
-  if (st !== 'harian' && hr.umpMode === 'kesepakatan' && hr.floor && w && w < hr.floor) notes.push(`<span class="out">Upah di bawah batas bawah kesepakatan ${rp(hr.floor)}.</span>`);
+  if (st !== 'harian' && hr.umpMode === 'wajib' && hr.ump && w && w < hr.ump) notes.push(el('span', {class: 'out'}, `Upah di bawah UMP/UMK ${rp(hr.ump)}.`));
+  if (st !== 'harian' && hr.umpMode === 'kesepakatan' && hr.floor && w && w < hr.floor) notes.push(el('span', {class: 'out'}, `Upah di bawah batas bawah kesepakatan ${rp(hr.floor)}.`));
   if (st !== 'harian' && hr.umpMode === 'wajib' && !hr.ump) notes.push('Isi nilai UMP/UMK di tab Aturan agar upah bisa diperiksa.');
   if (st === 'pkwt') {
     notes.push('PKWT tidak boleh untuk pekerjaan tetap dan seluruh jangka waktunya beserta perpanjangan paling lama 5 tahun (PP 35/2021 Pasal 8).');
     const j = $('eJoin').value, end = $('eEnd').value;
-    if (j && end && monthsBetween(j, end) > 60) notes.push('<span class="out">Jangka waktu kontrak melebihi 5 tahun.</span>');
+    if (j && end && monthsBetween(j, end) > 60) notes.push(el('span', {class: 'out'}, 'Jangka waktu kontrak melebihi 5 tahun.'));
     if (j && w) {
       const m = monthsBetween(j, end || today());
       notes.push(hr.umpMode === 'kesepakatan' ? 'Uang kompensasi saat kontrak berakhir mengikuti kesepakatan (usaha mikro/kecil).'
         : m >= 1 ? `Perkiraan uang kompensasi saat kontrak berakhir: ${rp(Math.round(m / 12 * w))} (${m} bulan ÷ 12 × upah).` : '');
     }
   }
-  $('eHint').innerHTML = notes.filter(Boolean).join('<br>');
+  $('eHint').replaceChildren(...notes.filter(Boolean).flatMap((x, i) => i ? [el('br'), x] : [x]));
 }
 function openEmp(id) {
   editingEmp = id ? empOf(id) : null;
@@ -3292,28 +3296,26 @@ function runRefresh() {
     tot.net += c.net; tot.pph += c.pph; tot.co += c.coTotal; tot.ee += c.eeTotal; tot.taxAllow += c.taxAllow;
     const karyawanPph = c.taxBy === 'karyawan' ? c.pph : 0;
     const warn = otWarn(runPeriod(), runInputs(row));
-    row.querySelector('.pcalc').innerHTML = `${warn.map(x => `<div class="out">${x}</div>`).join('')}<table class="split"><thead><tr><th></th><th class="num">Perusahaan</th><th class="num">Karyawan</th></tr></thead>
-      <tr><td>JKK</td><td class="num">${rp(c.co.jkk)}</td><td class="num">—</td></tr>
-      <tr><td>JKM</td><td class="num">${rp(c.co.jkm)}</td><td class="num">—</td></tr>
-      <tr><td>JHT</td><td class="num">${rp(c.co.jht)}</td><td class="num">${rp(c.ee.jht)}</td></tr>
-      <tr><td>JP</td><td class="num">${rp(c.co.jp)}</td><td class="num">${rp(c.ee.jp)}</td></tr>
-      <tr><td>BPJS Kesehatan</td><td class="num">${rp(c.co.kes)}</td><td class="num">${rp(c.ee.kes)}</td></tr>
-      <tr><td>PPh 21 ${c.dec ? '(hitung ulang masa terakhir)' : c.status === 'harian' ? '(TER harian)' : `(TER ${TER_CAT[c.ptkp]} ${String(c.rate).replace('.', ',')}%)`}</td><td class="num">${rp(c.taxAllow)}</td><td class="num">${rp(karyawanPph)}</td></tr>
-      <tr class="total"><td>Total ditanggung</td><td class="num">${rp(c.coTotal + c.taxAllow)}</td><td class="num">${rp(c.eeTotal + karyawanPph)}</td></tr></table>
-      <div style="margin-top:6px">Upah ${rp(c.base + c.fixed)}${c.frac < 1 ? ` (prorata ${pct(c.frac * 100)})` : ''}${c.ot ? ' · lembur ' + rp(c.ot) : ''} · bruto pajak ${rp(c.bruto)} · <b>Gaji bersih ${rp(c.net)}</b>${c.net < 0 ? ' <span class="out">minus, periksa potongan</span>' : ''}</div>`;
+    const baris = (nama, co, ee, cls) => el('tr', cls ? {class: cls} : null, el('td', null, nama), el('td', {class: 'num'}, co), el('td', {class: 'num'}, ee));
+    row.querySelector('.pcalc').replaceChildren(...warn.map(x => el('div', {class: 'out'}, x)),
+      el('table', {class: 'split'}, el('thead', null, el('tr', null, el('th'), el('th', {class: 'num'}, 'Perusahaan'), el('th', {class: 'num'}, 'Karyawan'))),
+        el('tbody', null, baris('JKK', rp(c.co.jkk), '—'), baris('JKM', rp(c.co.jkm), '—'), baris('JHT', rp(c.co.jht), rp(c.ee.jht)), baris('JP', rp(c.co.jp), rp(c.ee.jp)), baris('BPJS Kesehatan', rp(c.co.kes), rp(c.ee.kes)),
+          baris(`PPh 21 ${c.dec ? '(hitung ulang masa terakhir)' : c.status === 'harian' ? '(TER harian)' : `(TER ${TER_CAT[c.ptkp]} ${String(c.rate).replace('.', ',')}%)`}`, rp(c.taxAllow), rp(karyawanPph)),
+          baris('Total ditanggung', rp(c.coTotal + c.taxAllow), rp(c.eeTotal + karyawanPph), 'total'))),
+      el('div', {style: 'margin-top:6px'}, `Upah ${rp(c.base + c.fixed)}${c.frac < 1 ? ` (prorata ${pct(c.frac * 100)})` : ''}${c.ot ? ' · lembur ' + rp(c.ot) : ''} · bruto pajak ${rp(c.bruto)} · `, el('b', null, `Gaji bersih ${rp(c.net)}`), c.net < 0 ? [' ', el('span', {class: 'out'}, 'minus, periksa potongan')] : null));
   });
-  $('runTotal').innerHTML = `Dibayar ke karyawan <b>${rp(tot.net)}</b> · PPh 21 disetor <b>${rp(tot.pph)}</b> · BPJS disetor <b>${rp(tot.co + tot.ee)}</b> (perusahaan ${rp(tot.co)}, karyawan ${rp(tot.ee)})`;
+  $('runTotal').replaceChildren('Dibayar ke karyawan ', el('b', null, rp(tot.net)), ' · PPh 21 disetor ', el('b', null, rp(tot.pph)), ' · BPJS disetor ', el('b', null, rp(tot.co + tot.ee)), ` (perusahaan ${rp(tot.co)}, karyawan ${rp(tot.ee)})`);
 }
 function renderRun() {
   const ym = runPeriod(), doneIds = new Set(state.payrolls.filter(p => p.period === ym).flatMap(p => p.lines.map(l => l.empId)));
   const emps = state.employees.filter(e => empActive(e, ym) && !doneIds.has(e.id)).sort((a, b) => a.name.localeCompare(b.name));
   $('runInfo').textContent = doneIds.size ? `${doneIds.size} karyawan sudah digaji untuk ${ymLabel(ym)} dan tidak ditampilkan lagi.` : '';
-  $('runRows').innerHTML = emps.length ? emps.map(e => `<div class="prow" data-id="${esc(e.id)}">
-    <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px"><div><b>${esc(e.name)}</b> <span class="muted">${esc(e.title)} · ${EMP_STATUS[e.status]} · ${esc(e.ptkp)}</span></div>
-    <button type="button" class="btn sm" data-act="fillThr" data-id="${esc(e.id)}">Hitung THR</button></div>
-    <div class="form-grid pin">${RUN_INPUTS.filter(([k]) => k !== 'days' || e.status === 'harian').map(([k, label, money]) => `<label class="f">${label}<input data-k="${k}" class="${money ? 'm' : ''}" inputmode="${money ? 'numeric' : 'decimal'}"></label>`).join('')}</div>
-    ${belowMin(e) ? `<div class="out" style="font-size:12px;margin-top:6px">Upah di bawah UMP/UMK ${rp(state.hr.ump)}.</div>` : ''}
-    <div class="pcalc"></div></div>`).join('') : '<div class="empty">Tidak ada karyawan yang perlu digaji pada periode ini.</div>';
+  $('runRows').replaceChildren(...(emps.length ? emps.map(e => el('div', {class: 'prow', 'data-id': e.id},
+    el('div', {style: 'display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px'}, el('div', null, el('b', null, e.name), ' ', el('span', {class: 'muted'}, `${e.title ?? ''} · ${EMP_STATUS[e.status]} · ${e.ptkp ?? ''}`)),
+      el('button', {type: 'button', class: 'btn sm', 'data-act': 'fillThr', 'data-id': e.id}, 'Hitung THR')),
+    el('div', {class: 'form-grid pin'}, RUN_INPUTS.filter(([k]) => k !== 'days' || e.status === 'harian').map(([k, label, money]) => el('label', {class: 'f'}, label, el('input', {'data-k': k, class: money ? 'm' : '', inputmode: money ? 'numeric' : 'decimal'})))),
+    belowMin(e) ? el('div', {class: 'out', style: 'font-size:12px;margin-top:6px'}, `Upah di bawah UMP/UMK ${rp(state.hr.ump)}.`) : null,
+    el('div', {class: 'pcalc'}))) : [el('div', {class: 'empty'}, 'Tidak ada karyawan yang perlu digaji pada periode ini.')]));
   $('runRef').value = nextCode('GJ', $('runDate').value || today(), state.payrolls.map(p => p.ref));
   erpRunPrefill(ym);
   runRefresh();
@@ -3362,12 +3364,12 @@ function openPayRun(id) {
   viewingRun = state.payrolls.find(p => p.id === id); if (!viewingRun) return;
   const p = viewingRun, s = paySum(p);
   $('prTitle').textContent = `Gaji ${ymLabel(p.period)} · ${p.ref}`;
-  $('prBody').innerHTML = `<table class="rtable"><thead><tr><th>Nama</th><th class="num">Bruto</th><th class="num">BPJS perusahaan</th><th class="num">BPJS karyawan</th><th class="num">PPh 21</th><th class="num">Bersih</th><th></th></tr></thead><tbody>
-    ${p.lines.map(l => `<tr><td data-label="Nama">${esc(l.name)}</td><td data-label="Bruto" class="num">${rp(l.bruto)}</td><td data-label="BPJS perusahaan" class="num">${rp(lineCo(l))}</td>
-      <td data-label="BPJS karyawan" class="num">${rp(lineEe(l))}</td><td data-label="PPh 21" class="num">${rp(l.pph)}${l.taxBy === 'perusahaan' ? ' (ditanggung)' : ''}</td><td data-label="Bersih" class="num"><b>${rp(l.net)}</b></td>
-      <td data-label="" class="num"><button type="button" class="btn sm" data-act="printSlip" data-id="${esc(l.empId)}">Slip</button></td></tr>`).join('')}
-    </tbody></table><p class="muted">Dibayar ${fmtDate(p.date)} dari ${esc(accName(p.accountId))}. Total bersih ${rp(s.net)}, PPh 21 ${rp(s.pph)}, BPJS ${rp(s.co + s.ee)}.</p>
-    ${isLocked(p.date) ? `<div class="notice">${esc(lockMsg())}</div>` : ''}`;
+  $('prBody').replaceChildren(frag(el('table', {class: 'rtable'}, el('thead', null, el('tr', null, el('th', null, 'Nama'), ['Bruto', 'BPJS perusahaan', 'BPJS karyawan', 'PPh 21', 'Bersih'].map(h => el('th', {class: 'num'}, h)), el('th'))),
+    el('tbody', null, p.lines.map(l => el('tr', null, el('td', {'data-label': 'Nama'}, l.name), el('td', {'data-label': 'Bruto', class: 'num'}, rp(l.bruto)), el('td', {'data-label': 'BPJS perusahaan', class: 'num'}, rp(lineCo(l))),
+      el('td', {'data-label': 'BPJS karyawan', class: 'num'}, rp(lineEe(l))), el('td', {'data-label': 'PPh 21', class: 'num'}, rp(l.pph) + (l.taxBy === 'perusahaan' ? ' (ditanggung)' : '')), el('td', {'data-label': 'Bersih', class: 'num'}, el('b', null, rp(l.net))),
+      el('td', {'data-label': '', class: 'num'}, el('button', {type: 'button', class: 'btn sm', 'data-act': 'printSlip', 'data-id': l.empId}, 'Slip')))))),
+    el('p', {class: 'muted'}, `Dibayar ${fmtDate(p.date)} dari ${accName(p.accountId)}. Total bersih ${rp(s.net)}, PPh 21 ${rp(s.pph)}, BPJS ${rp(s.co + s.ee)}.`),
+    isLocked(p.date) ? el('div', {class: 'notice'}, lockMsg()) : null));
   $('btnDeleteRun').style.display = isLocked(p.date) ? 'none' : '';
   $('prDialog').showModal();
 }
@@ -3554,7 +3556,7 @@ function renderAll() { memo = null; renderHeader(); renderView(currentView); }
 function start(data) {
   if (+data?.version > DATA_VERSION) {
     document.body.className = '';
-    document.body.innerHTML = '<p style="padding:20px">Data ini dibuat oleh versi aplikasi yang lebih baru. Sambungkan ke internet lalu muat ulang halaman agar data tidak tertimpa.</p>';
+    document.body.replaceChildren(el('p', {style: 'padding:20px'}, 'Data ini dibuat oleh versi aplikasi yang lebih baru. Sambungkan ke internet lalu muat ulang halaman agar data tidak tertimpa.'));
     return;
   }
   try { state = data ? sanitizeState(data) : defaultState(); }
@@ -3582,7 +3584,7 @@ function openStore(key) {
   try { raw = localStorage.getItem(key); } catch { /* penyimpanan peramban tidak tersedia (mode privat/kuota penuh): lanjut tanpa menyimpan */ }
   try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = {broken: true}; }
   if (isEnvelope(parsed)) {
-    if (!hasCrypto) { document.body.className = ''; document.body.innerHTML = '<p style="padding:20px">Data terenkripsi hanya bisa dibuka lewat alamat https.</p>'; return; }
+    if (!hasCrypto) { document.body.className = ''; document.body.replaceChildren(el('p', {style: 'padding:20px'}, 'Data terenkripsi hanya bisa dibuka lewat alamat https.')); return; }
     showLock(parsed);
   } else start(parsed);
 }
@@ -3711,7 +3713,7 @@ async function boot() {
   // Anti-clickjacking: aplikasi menolak dibuka di dalam bingkai (iframe) situs lain
   if (window.top !== window.self) {
     document.body.className = '';
-    document.body.innerHTML = '<p style="padding:20px">Demi keamanan, aplikasi ini tidak bisa dibuka di dalam situs lain.</p>';
+    document.body.replaceChildren(el('p', {style: 'padding:20px'}, 'Demi keamanan, aplikasi ini tidak bisa dibuka di dalam situs lain.'));
     return;
   }
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost'))

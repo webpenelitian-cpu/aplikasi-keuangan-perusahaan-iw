@@ -3,7 +3,7 @@
 /* Modul ERP: perusahaan bersama (banyak pengguna), penjualan & CRM, pembelian & gudang, akuntansi lanjutan, dan SDM lanjutan.
    Berkas ini dimuat setelah app.js dan memakai fungsi serta data yang sama. */
 
-const APP_VERSION = '48'; // samakan dengan versi CACHE di sw.js
+const APP_VERSION = '49'; // samakan dengan versi CACHE di sw.js
 const ROLES = {owner: 'Pimpinan', finance: 'Keuangan', sales: 'Penjualan', warehouse: 'Gudang & pembelian', hr: 'SDM', viewer: 'Hanya lihat'};
 const ROLE_VIEWS = {sales: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'], warehouse: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'],
   hr: ['dashboard', 'karyawan', 'unggah', 'laporan', 'panduan', 'pengaturan'], viewer: ['dashboard', 'laporan', 'panduan', 'pengaturan']};
@@ -291,14 +291,14 @@ Object.assign(ACTIONS, {
   leaveCompany: async () => { if (confirm('Keluar dari perusahaan ini?')) { await Cloud.leaveCompany(company.id); localStorage.removeItem(storeKey); location.reload(); } },
   loadMembers: async () => {
     const ms = await Cloud.listMembers(company.id);
-    const opts = cur => Object.entries(ROLES).filter(([k]) => k !== 'owner').map(([k, v]) => `<option value="${k}"${k === cur ? ' selected' : ''}>${esc(v)}</option>`).join('');
-    $('memberBox').innerHTML = `<table><tbody>${ms.map(m => `<tr><td>@${esc(m.name)}</td><td>${m.role === 'owner' ? 'Pimpinan' : `<select data-member="${esc(m.uid)}" aria-label="Peran">${opts(m.role)}</select>`}</td>
-      <td class="num">${m.role === 'owner' ? '' : `<button class="btn sm danger" data-act="removeMember" data-id="${esc(m.uid)}">Keluarkan</button>`}</td></tr>`).join('')}</tbody></table>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><select id="invRole" aria-label="Peran undangan">${opts('sales')}</select><button class="btn sm primary" data-act="makeInvite">Buat kode undangan</button></div><div id="invOut"></div>`;
+    const opts = cur => Object.entries(ROLES).filter(([k]) => k !== 'owner').map(([k, v]) => el('option', {value: k, selected: k === cur}, v));
+    $('memberBox').replaceChildren(el('table', null, el('tbody', null, ms.map(m => el('tr', null, el('td', null, '@' + m.name), el('td', null, m.role === 'owner' ? 'Pimpinan' : el('select', {'data-member': m.uid, 'aria-label': 'Peran'}, opts(m.role))),
+      el('td', {class: 'num'}, m.role === 'owner' ? null : el('button', {class: 'btn sm danger', 'data-act': 'removeMember', 'data-id': m.uid}, 'Keluarkan')))))),
+      el('div', {style: 'display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'}, el('select', {id: 'invRole', 'aria-label': 'Peran undangan'}, opts('sales')), el('button', {class: 'btn sm primary', 'data-act': 'makeInvite'}, 'Buat kode undangan')), el('div', {id: 'invOut'}));
   },
   makeInvite: async () => {
     const code = await Cloud.createInvite(company.id, $('invRole').value);
-    $('invOut').innerHTML = `<p>Kode (berlaku 7 hari, sekali pakai): <b style="user-select:all">${esc(code)}</b></p>`;
+    $('invOut').replaceChildren(el('p', null, 'Kode (berlaku 7 hari, sekali pakai): ', el('b', {style: 'user-select:all'}, code)));
   },
   removeMember: async id => { if (confirm('Keluarkan anggota ini?')) { await Cloud.removeMember(company.id, id); ACTIONS.loadMembers(); } },
 });
@@ -402,14 +402,14 @@ function openForm(key, id) {
   const v = formRec ? (f.load ? f.load(formRec) : formRec) : {date: today(), to: today(), year: today().slice(0, 4), active: true};
   const locked = f.dated && formRec && isLocked(formRec.date);
   $('efTitle').textContent = (formRec ? 'Ubah ' : 'Tambah ') + f.title;
-  $('efFields').innerHTML = f.fields.map(x => {
+  $('efFields').replaceChildren(...f.fields.map(x => {
     const val = v[x.k] ?? '', id_ = 'ef-' + x.k;
-    if (x.type === 'check') return `<label class="check wide"><input type="checkbox" id="${id_}"${val ? ' checked' : ''}>${esc(x.label)}</label>`;
-    if (x.type === 'area') return `<label class="f wide">${esc(x.label)}<textarea id="${id_}" rows="2" maxlength="300">${esc(val)}</textarea></label>`;
-    if (x.type === 'select') return `<label class="f">${esc(x.label)}<select id="${id_}">${x.opts().map(o => `<option value="${esc(o.id)}"${String(o.id) === String(val) ? ' selected' : ''}>${esc(o.name)}</option>`).join('')}</select></label>`;
+    if (x.type === 'check') return el('label', {class: 'check wide'}, el('input', {type: 'checkbox', id: id_, checked: !!val}), x.label);
+    if (x.type === 'area') return el('label', {class: 'f wide'}, x.label, el('textarea', {id: id_, rows: 2, maxlength: 300}, String(val)));
+    if (x.type === 'select') return el('label', {class: 'f'}, x.label, el('select', {id: id_}, x.opts().map(o => el('option', {value: o.id, selected: String(o.id) === String(val)}, o.name))));
     const shown = x.type === 'money' ? (val ? Number(val).toLocaleString('id-ID') : '') : val;
-    return `<label class="f">${esc(x.label)}<input id="${id_}" type="${x.type === 'date' ? 'date' : 'text'}" inputmode="${x.type === 'text' || x.type === 'date' ? 'text' : 'decimal'}" value="${esc(shown)}"${x.type === 'money' ? ' data-money="1"' : ''}></label>`;
-  }).join('');
+    return el('label', {class: 'f'}, x.label, el('input', {id: id_, type: x.type === 'date' ? 'date' : 'text', inputmode: x.type === 'text' || x.type === 'date' ? 'text' : 'decimal', value: shown, 'data-money': x.type === 'money' ? '1' : null}));
+  }));
   $('efForm').querySelectorAll('.bd input, .bd select, .bd textarea').forEach(x => x.disabled = !!locked);
   $('efNote').textContent = locked ? lockMsg() : '';
   $('btnEfSave').style.display = locked ? 'none' : '';
@@ -449,12 +449,12 @@ $('btnEfDel').onclick = () => {
 /* Dokumen penawaran, pesanan, permintaan, dan PO */
 const refOrder = (kind, date) => nextCode(ORDER_KINDS[kind].prefix, date, state.orders.map(o => o.ref));
 function renderOrdLines() {
-  const opts = state.items.map(i => `<option value="${esc(i.id)}">${esc(i.name)}</option>`).join('');
-  $('oLines').innerHTML = ordLines.map((l, n) => `<div class="tline" data-n="${n}"><select class="tl-item" aria-label="Barang"><option value="">Pilih…</option>${opts}</select>
-    <input class="tl-qty" inputmode="decimal" aria-label="Jumlah" placeholder="Jumlah" value="${l.qty ? String(l.qty).replace('.', ',') : ''}"><input class="tl-price" inputmode="numeric" aria-label="Harga" placeholder="Harga" value="${l.price ? l.price.toLocaleString('id-ID') : ''}">
-    <button type="button" class="btn sm danger" data-act="delOrdLine" data-id="${n}" aria-label="Hapus baris">✕</button></div>`).join('');
+  const opts = () => state.items.map(i => el('option', {value: i.id}, i.name));
+  $('oLines').replaceChildren(...ordLines.map((l, n) => el('div', {class: 'tline', 'data-n': n}, el('select', {class: 'tl-item', 'aria-label': 'Barang'}, el('option', {value: ''}, 'Pilih…'), opts()),
+    el('input', {class: 'tl-qty', inputmode: 'decimal', 'aria-label': 'Jumlah', placeholder: 'Jumlah', value: l.qty ? String(l.qty).replace('.', ',') : ''}), el('input', {class: 'tl-price', inputmode: 'numeric', 'aria-label': 'Harga', placeholder: 'Harga', value: l.price ? l.price.toLocaleString('id-ID') : ''}),
+    el('button', {type: 'button', class: 'btn sm danger', 'data-act': 'delOrdLine', 'data-id': n, 'aria-label': 'Hapus baris'}, '✕'))));
   $('oLines').querySelectorAll('.tline').forEach((r, n) => { r.querySelector('.tl-item').value = ordLines[n].itemId || ''; });
-  $('oTotal').innerHTML = `Total <b>${rp(ordLines.reduce((s, l) => s + l.qty * l.price, 0))}</b>`;
+  $('oTotal').replaceChildren('Total ', el('b', null, rp(ordLines.reduce((s, l) => s + l.qty * l.price, 0))));
 }
 $('oLines').addEventListener('input', e => {
   const row = e.target.closest('.tline'); if (!row) return;
@@ -462,7 +462,7 @@ $('oLines').addEventListener('input', e => {
   if (e.target.classList.contains('tl-item')) { l.itemId = e.target.value; if (!l.price) { l.price = itemOf(l.itemId)?.price || 0; row.querySelector('.tl-price').value = l.price ? l.price.toLocaleString('id-ID') : ''; } }
   else if (e.target.classList.contains('tl-qty')) l.qty = parseQty(e.target.value);
   else { l.price = parseMoney(e.target.value); e.target.value = l.price ? l.price.toLocaleString('id-ID') : ''; }
-  $('oTotal').innerHTML = `Total <b>${rp(ordLines.reduce((s, x) => s + x.qty * x.price, 0))}</b>`;
+  $('oTotal').replaceChildren('Total ', el('b', null, rp(ordLines.reduce((s, x) => s + x.qty * x.price, 0))));
 });
 $('btnOAddLine').onclick = () => { ordLines.push({itemId: '', qty: 1, price: 0}); renderOrdLines(); };
 function openOrder(id, seed) {
