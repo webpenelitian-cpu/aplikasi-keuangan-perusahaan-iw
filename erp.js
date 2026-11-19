@@ -3,7 +3,7 @@
 /* Modul ERP: perusahaan bersama (banyak pengguna), penjualan & CRM, pembelian & gudang, akuntansi lanjutan, dan SDM lanjutan.
    Berkas ini dimuat setelah app.js dan memakai fungsi serta data yang sama. */
 
-const APP_VERSION = '52'; // samakan dengan versi CACHE di sw.js
+const APP_VERSION = '53'; // samakan dengan versi CACHE di sw.js
 const ROLES = {owner: 'Pimpinan', finance: 'Keuangan', sales: 'Penjualan', warehouse: 'Gudang & pembelian', hr: 'SDM', viewer: 'Hanya lihat'};
 const ROLE_VIEWS = {sales: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'], warehouse: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'],
   hr: ['dashboard', 'karyawan', 'unggah', 'laporan', 'panduan', 'pengaturan'], viewer: ['dashboard', 'laporan', 'panduan', 'pengaturan']};
@@ -24,29 +24,39 @@ function erpDefaults() {
   return {customers: [], orders: [], warehouses: [], transfers: [], centers: [], assets: [], journals: [], budgets: [], attendance: [], leaves: [], kasbons: [],
     salespeople: [], contacts: [], batches: [], recurring: [], recons: [], empdocs: [], reviews: [], shifts: []};
 }
+// Pembersih per jenis data ERP; obj/optId/oneOf/absNum dari app.js (lihat sanitizeState)
+const cleanAccRef = a => { const o = obj(a); return {code: cleanStr(o.code, 20), name: cleanStr(o.name, 120)}; };
+const cleanCustomer = c => { const o = obj(c); return {id: cleanId(o.id), name: cleanStr(o.name, 120), pic: cleanStr(o.pic, 120), phone: cleanStr(o.phone, 40), email: cleanStr(o.email, 120),
+  address: cleanStr(o.address, 300), npwp: cleanStr(o.npwp, 30), terms: absNum(o.terms), wapu: o.wapu === true, limit: absNum(o.limit), disc: cleanPct(o.disc, 0)}; };
+const cleanOrder = x => { const o = obj(x); return {id: cleanId(o.id), created: cleanNum(o.created), kind: oneOf(ORDER_KINDS, o.kind, 'quote'), date: cleanDate(o.date), ref: cleanStr(o.ref, 40),
+  partyId: optId(o.partyId), lines: list(o.lines).map(cleanLine).filter(l => l.itemId && l.qty > 0), status: oneOf(ORDER_STATUS, o.status, 'draft'),
+  approvedBy: cleanStr(o.approvedBy, 60), fromId: optId(o.fromId), due: cleanDate(o.due), note: cleanStr(o.note)}; };
+const cleanWarehouse = w => { const o = obj(w); return {id: cleanId(o.id), name: cleanStr(o.name, 120), address: cleanStr(o.address, 300)}; };
+const cleanTransfer = t => { const o = obj(t); return {id: cleanId(o.id), created: cleanNum(o.created), date: cleanDate(o.date), ref: cleanStr(o.ref, 40), fromId: o.fromId ? cleanId(o.fromId) : '', toId: o.toId ? cleanId(o.toId) : '',
+  itemId: cleanId(o.itemId), qty: cleanQty(o.qty), desc: cleanStr(o.desc)}; };
+const cleanCenter = c => { const o = obj(c); return {id: cleanId(o.id), code: cleanStr(o.code, 20), name: cleanStr(o.name, 120)}; };
+const cleanAsset = a => { const o = obj(a); return {id: cleanId(o.id), created: cleanNum(o.created), code: cleanStr(o.code, 30), name: cleanStr(o.name, 120), date: cleanDate(o.date), cost: absNum(o.cost), life: absNum(o.life),
+  residual: absNum(o.residual), group: oneOf(ASSET_GROUPS, String(o.group), '0'), opening: o.opening === true}; };
+const cleanJournal = j => { const o = obj(j); return {id: cleanId(o.id), created: cleanNum(o.created), date: cleanDate(o.date), ref: cleanStr(o.ref, 40), desc: cleanStr(o.desc), dr: cleanAccRef(o.dr), cr: cleanAccRef(o.cr), amount: absNum(o.amount)}; };
+const cleanBudget = b => { const o = obj(b); return {id: cleanId(o.id), year: cleanStr(o.year, 4), categoryId: cleanId(o.categoryId), amount: absNum(o.amount)}; };
+const cleanAttendance = a => { const o = obj(a); return {id: cleanId(o.id), empId: cleanId(o.empId), date: cleanDate(o.date), status: oneOf(ATT_STATUS, o.status, 'hadir')}; };
+const cleanLeave = l => { const o = obj(l); return {id: cleanId(o.id), created: cleanNum(o.created), empId: cleanId(o.empId), type: oneOf(LEAVE_TYPES, o.type, 'tahunan'), date: cleanDate(o.date), to: cleanDate(o.to), days: absNum(o.days),
+  status: oneOf(ORDER_STATUS, o.status, 'draft'), approvedBy: cleanStr(o.approvedBy, 60), note: cleanStr(o.note, 300)}; };
+const cleanKasbon = k => { const o = obj(k); return {id: cleanId(o.id), created: cleanNum(o.created), empId: cleanId(o.empId), date: cleanDate(o.date), ref: cleanStr(o.ref, 40), amount: absNum(o.amount), accountId: cleanId(o.accountId), note: cleanStr(o.note, 300)}; };
 function sanitizeErp(d) {
-  const num = v => Math.abs(cleanNum(v)), oneOf = (v, o, def) => Object.hasOwn(o, v) ? v : def, acc = a => ({code: cleanStr(a?.code, 20), name: cleanStr(a?.name, 120)});
   return {
     ...sanitizeMore(d),
-    customers: list(d.customers).map(c => ({id: cleanId(c?.id), name: cleanStr(c?.name, 120), pic: cleanStr(c?.pic, 120), phone: cleanStr(c?.phone, 40), email: cleanStr(c?.email, 120),
-      address: cleanStr(c?.address, 300), npwp: cleanStr(c?.npwp, 30), terms: num(c?.terms), wapu: c?.wapu === true, limit: num(c?.limit), disc: cleanPct(c?.disc, 0)})).filter(c => c.id && c.name),
-    orders: list(d.orders).map(o => ({id: cleanId(o?.id), created: cleanNum(o?.created), kind: oneOf(o?.kind, ORDER_KINDS, 'quote'), date: cleanDate(o?.date), ref: cleanStr(o?.ref, 40),
-      partyId: o?.partyId ? cleanId(o.partyId) : null, lines: list(o?.lines).map(cleanLine).filter(l => l.itemId && l.qty > 0), status: oneOf(o?.status, ORDER_STATUS, 'draft'),
-      approvedBy: cleanStr(o?.approvedBy, 60), fromId: o?.fromId ? cleanId(o.fromId) : null, due: cleanDate(o?.due), note: cleanStr(o?.note)})).filter(o => o.id && o.date),
-    warehouses: list(d.warehouses).map(w => ({id: cleanId(w?.id), name: cleanStr(w?.name, 120), address: cleanStr(w?.address, 300)})).filter(w => w.id && w.name),
-    transfers: list(d.transfers).map(t => ({id: cleanId(t?.id), created: cleanNum(t?.created), date: cleanDate(t?.date), ref: cleanStr(t?.ref, 40), fromId: t?.fromId ? cleanId(t.fromId) : '', toId: t?.toId ? cleanId(t.toId) : '',
-      itemId: cleanId(t?.itemId), qty: cleanQty(t?.qty), desc: cleanStr(t?.desc)})).filter(t => t.id && t.date && t.itemId && t.qty > 0),
-    centers: list(d.centers).map(c => ({id: cleanId(c?.id), code: cleanStr(c?.code, 20), name: cleanStr(c?.name, 120)})).filter(c => c.id && c.name),
-    assets: list(d.assets).map(a => ({id: cleanId(a?.id), created: cleanNum(a?.created), code: cleanStr(a?.code, 30), name: cleanStr(a?.name, 120), date: cleanDate(a?.date), cost: num(a?.cost), life: num(a?.life),
-      residual: num(a?.residual), group: oneOf(String(a?.group), ASSET_GROUPS, '0'), opening: a?.opening === true})).filter(a => a.id && a.name && a.date),
-    journals: list(d.journals).map(j => ({id: cleanId(j?.id), created: cleanNum(j?.created), date: cleanDate(j?.date), ref: cleanStr(j?.ref, 40), desc: cleanStr(j?.desc), dr: acc(j?.dr), cr: acc(j?.cr), amount: num(j?.amount)}))
-      .filter(j => j.id && j.date && j.amount > 0 && j.dr.code && j.cr.code),
-    budgets: list(d.budgets).map(b => ({id: cleanId(b?.id), year: cleanStr(b?.year, 4), categoryId: cleanId(b?.categoryId), amount: num(b?.amount)})).filter(b => b.id && b.categoryId),
-    attendance: list(d.attendance).map(a => ({id: cleanId(a?.id), empId: cleanId(a?.empId), date: cleanDate(a?.date), status: oneOf(a?.status, ATT_STATUS, 'hadir')})).filter(a => a.id && a.empId && a.date),
-    leaves: list(d.leaves).map(l => ({id: cleanId(l?.id), created: cleanNum(l?.created), empId: cleanId(l?.empId), type: oneOf(l?.type, LEAVE_TYPES, 'tahunan'), date: cleanDate(l?.date), to: cleanDate(l?.to), days: num(l?.days),
-      status: oneOf(l?.status, ORDER_STATUS, 'draft'), approvedBy: cleanStr(l?.approvedBy, 60), note: cleanStr(l?.note, 300)})).filter(l => l.id && l.empId && l.date),
-    kasbons: list(d.kasbons).map(k => ({id: cleanId(k?.id), created: cleanNum(k?.created), empId: cleanId(k?.empId), date: cleanDate(k?.date), ref: cleanStr(k?.ref, 40), amount: num(k?.amount), accountId: cleanId(k?.accountId), note: cleanStr(k?.note, 300)}))
-      .filter(k => k.id && k.empId && k.date),
+    customers: list(d.customers).map(cleanCustomer).filter(c => c.id && c.name),
+    orders: list(d.orders).map(cleanOrder).filter(o => o.id && o.date),
+    warehouses: list(d.warehouses).map(cleanWarehouse).filter(w => w.id && w.name),
+    transfers: list(d.transfers).map(cleanTransfer).filter(t => t.id && t.date && t.itemId && t.qty > 0),
+    centers: list(d.centers).map(cleanCenter).filter(c => c.id && c.name),
+    assets: list(d.assets).map(cleanAsset).filter(a => a.id && a.name && a.date),
+    journals: list(d.journals).map(cleanJournal).filter(j => j.id && j.date && j.amount > 0 && j.dr.code && j.cr.code),
+    budgets: list(d.budgets).map(cleanBudget).filter(b => b.id && b.categoryId),
+    attendance: list(d.attendance).map(cleanAttendance).filter(a => a.id && a.empId && a.date),
+    leaves: list(d.leaves).map(cleanLeave).filter(l => l.id && l.empId && l.date),
+    kasbons: list(d.kasbons).map(cleanKasbon).filter(k => k.id && k.empId && k.date),
   };
 }
 function mergeErp(S, L, m) {
@@ -79,9 +89,9 @@ const FIN_COLS = new Set(['journals', 'assets', 'budgets', 'recons', 'recurring'
 const limitedRole = () => !!company && !['owner', 'finance'].includes(company.role);
 // Pemilik catatan (jenis/id → uid) diambil dari nama kelompok yang dijaga server, bukan dari isi catatan
 let recOwner = new Map();
+const bucketMonth = (kind, rec) => kind === 1 || kind === 3 ? String(rec.date || rec.ts || '').slice(0, 7) || 'x' : '';
 function bucketOf(col, id, rec) {
-  const kind = SYNC_COLS[col], dated = kind === 1 || kind === 3;
-  const when = dated ? String(rec.date || rec.ts || '').slice(0, 7) || 'x' : '';
+  const kind = SYNC_COLS[col], when = bucketMonth(kind, rec);
   // Jejak audit tiap akun punya kelompok sendiri yang memuat uid-nya, jadi penulisnya dibuktikan oleh aturan server
   if (col === 'audit' && rec.u) return {sub: 'buckets', id: `audit~${when}~${rec.u}~${shardOf(id)}`};
   if (kind >= 2) return {sub: 'hrdata', id: `${col}~${when}~${shardOf(id)}`};
@@ -103,39 +113,56 @@ let bucketStray = 0, shadow = new Map(), remote = new Map(), remoteReady = notRe
 // companyFresh: data perusahaan belum ada di server, jadi seluruh isi state harus diunggah
 let companyFresh = false;
 const companyShadow = () => { shadow = companyFresh ? new Map() : flatten(state); companyFresh = false; };
-function companyData() {
-  const d = {version: DATA_VERSION, audit: [], accounts: [], categories: [], tx: [], debts: [], security: state?.security || {autoLockMin: 5}}; let stray = 0;
-  for (const col of Object.keys(SYNC_COLS)) d[col] ||= [];
-  // Urutan: kelompok bersama dulu, lalu kelompok ber-uid. Catatan ber-id sama di kelompok ber-uid diabaikan,
-  // sehingga peran terbatas tidak bisa menimpa catatan bersama dengan menyalin id-nya ke kelompok miliknya
-  const rank = ([key]) => { const [sub, bid] = key.split('/'), p = bid.split('~'); return (p.length === 4 && p[0] !== 'audit' ? 2 : 0) + (sub === 'buckets' && FIN_COLS.has(p[0]) ? 1 : 0); };
-  const seen = new Set(), owners = new Map();
-  for (const [key, r] of [...remote].sort((a, b) => rank(a) - rank(b) || a[0].localeCompare(b[0]))) {
-    const [sub, bid] = key.split('/'), parts = bid.split('~'), col = parts[0];
-    if (col === 'settings') { if (bid === 'settings~~0' && sub === 'buckets') for (const k of SETTING_KEYS) if (r[k]) d[k] = r[k].v; continue; }
-    // Identitas diambil dari nama kelompok yang dijaga server, bukan dari isi catatan yang ditulis peramban
-    if (col === 'audit') { const owner = parts[3] === undefined ? undefined : parts[2]; for (const a of Object.values(r)) { const rest = {...a}; delete rest.u; d.audit.push(owner ? {...rest, u: owner} : rest); } continue; }
-    // Data karyawan hanya sah dari hrdata, data keuangan internal dari fin (atau tempat lamanya sebelum dipindah)
-    if ((SYNC_COLS[col] >= 2) !== (sub === 'hrdata') || (sub === 'fin' && !FIN_COLS.has(col))) continue;
-    const by = sub === 'buckets' && parts.length === 4 ? parts[2] : '';
-    // Server hanya bisa mengunci bulan lewat nama kelompok. Catatan bertanggal lain yang diselipkan ke kelompok ini tidak dipakai,
-    // sehingga bulan yang sudah ditutup tetap aman dari aplikasi yang dimodifikasi
-    if (d[col]) for (const [rid, x] of Object.entries(r)) {
-      if (x?.id !== rid || ([1, 3].includes(SYNC_COLS[col]) && String(x?.date || x?.ts || '').slice(0, 7) !== parts[1])) { stray++; continue; }
-      if (seen.has(col + '/' + rid)) { if (by) stray++; continue; }
-      seen.add(col + '/' + rid); if (by) owners.set(col + '/' + rid, by);
-      d[col].push(x);
-    }
+// Urutan: kelompok bersama dulu, lalu kelompok ber-uid. Catatan ber-id sama di kelompok ber-uid diabaikan,
+// sehingga peran terbatas tidak bisa menimpa catatan bersama dengan menyalin id-nya ke kelompok miliknya
+const remoteRank = ([key]) => { const [sub, bid] = key.split('/'), p = bid.split('~'); return (p.length === 4 && p[0] !== 'audit' ? 2 : 0) + (sub === 'buckets' && FIN_COLS.has(p[0]) ? 1 : 0); };
+function readSettings(d, sub, bid, r) { if (bid === 'settings~~0' && sub === 'buckets') for (const k of SETTING_KEYS) if (r[k]) d[k] = r[k].v; }
+// Identitas diambil dari nama kelompok yang dijaga server, bukan dari isi catatan yang ditulis peramban
+function readAudit(d, parts, r) {
+  const owner = parts[3] === undefined ? undefined : parts[2];
+  for (const a of Object.values(r)) { const rest = {...a}; delete rest.u; d.audit.push(owner ? {...rest, u: owner} : rest); }
+}
+// Data karyawan hanya sah dari hrdata, data keuangan internal dari fin (atau tempat lamanya sebelum dipindah)
+const wrongSub = (col, sub) => (SYNC_COLS[col] >= 2) !== (sub === 'hrdata') || (sub === 'fin' && !FIN_COLS.has(col));
+// Server hanya bisa mengunci bulan lewat nama kelompok. Catatan bertanggal lain yang diselipkan ke kelompok ini tidak dipakai,
+// sehingga bulan yang sudah ditutup tetap aman dari aplikasi yang dimodifikasi
+const strayRec = (col, rid, x, month) => x?.id !== rid || ([1, 3].includes(SYNC_COLS[col]) && String(x?.date || x?.ts || '').slice(0, 7) !== month);
+function readBucket(d, acc, col, sub, parts, r) {
+  const by = sub === 'buckets' && parts.length === 4 ? parts[2] : '';
+  for (const [rid, x] of Object.entries(r)) {
+    if (strayRec(col, rid, x, parts[1])) { acc.stray++; continue; }
+    const k = col + '/' + rid;
+    if (acc.seen.has(k)) { if (by) acc.stray++; continue; }
+    acc.seen.add(k); if (by) acc.owners.set(k, by);
+    d[col].push(x);
   }
-  bucketStray = stray; recOwner = owners;
+}
+function emptyCompanyData() {
+  const d = {version: DATA_VERSION, audit: [], accounts: [], categories: [], tx: [], debts: [], security: state?.security || {autoLockMin: 5}};
+  for (const col of Object.keys(SYNC_COLS)) d[col] ||= [];
+  return d;
+}
+function companyData() {
+  const d = emptyCompanyData(), acc = {stray: 0, seen: new Set(), owners: new Map()};
+  for (const [key, r] of [...remote].sort((a, b) => remoteRank(a) - remoteRank(b) || a[0].localeCompare(b[0]))) {
+    const [sub, bid] = key.split('/'), parts = bid.split('~'), col = parts[0];
+    if (col === 'settings') readSettings(d, sub, bid, r);
+    else if (col === 'audit') readAudit(d, parts, r);
+    else if (!wrongSub(col, sub) && d[col]) readBucket(d, acc, col, sub, parts, r);
+  }
+  bucketStray = acc.stray; recOwner = acc.owners;
   d.accounts.sort((a, b) => a.code.localeCompare(b.code)); d.categories.sort((a, b) => a.code.localeCompare(b.code));
   d.audit.sort((a, b) => a.ts.localeCompare(b.ts));
   return d;
 }
-function companyPersist() {
-  // Catatan baru dari peran terbatas disimpan di kelompok ber-uid miliknya
-  if (limitedRole() && cloudUser) for (const [k, e] of flatten(state)) if (!shadow.has(k) && !recOwner.has(k) && e.sub === 'buckets' && !/^(audit|settings)$/.test(k.split('/')[0])) recOwner.set(k, cloudUser.uid);
-  const now = flatten(state), groups = new Map();
+// Catatan baru dari peran terbatas disimpan di kelompok ber-uid miliknya
+function claimNewRecords() {
+  if (!limitedRole() || !cloudUser) return;
+  for (const [k, e] of flatten(state)) if (!shadow.has(k) && !recOwner.has(k) && e.sub === 'buckets' && !/^(audit|settings)$/.test(k.split('/')[0])) recOwner.set(k, cloudUser.uid);
+}
+// Kelompok yang berubah dibanding salinan terakhir yang dikirim (shadow)
+function changedGroups(now) {
+  const groups = new Map();
   const group = e => { const k = e.sub + '|' + e.bid; if (!groups.has(k)) groups.set(k, {sub: e.sub, bid: e.bid, set: {}, del: []}); return groups.get(k); };
   for (const [k, e] of now) {
     const old = shadow.get(k);
@@ -145,28 +172,34 @@ function companyPersist() {
     if (old && old.bid !== e.bid) group(old).del.push(old.rid);
   }
   for (const [k, o] of shadow) if (!now.has(k)) group(o).del.push(o.rid);
+  return groups;
+}
+const foreignGroup = g => { const p = g.bid.split('~'); return g.sub === 'buckets' && p[0] !== 'audit' && g.bid !== 'settings~~0' && !(p.length === 4 && p[2] === cloudUser?.uid); };
+// Peran terbatas: perubahan atas catatan orang lain tidak dikirim (server pasti menolak); tampilan dikembalikan ke data server
+function dropForeign(groups) {
+  if (!limitedRole()) return;
+  let blocked = 0;
+  for (const [k, g] of groups) if (foreignGroup(g)) { groups.delete(k); blocked++; }
+  if (blocked) { toast('Catatan buatan orang lain hanya bisa diubah atau dihapus pimpinan atau keuangan. Perubahan itu dibatalkan.'); setTimeout(companyRebuild, 0); }
+}
+function persistDone(res) {
+  const bad = res.find(r => r.status === 'rejected');
+  if (bad) {
+    const code = bad.reason?.code || bad.reason?.message || 'tidak diketahui';
+    setSync('Gagal menyimpan ke server: ' + code);
+    toast(code === 'permission-denied' ? 'Sebagian perubahan ditolak server: peran Anda tidak mengizinkannya, atau bulannya sudah ditutup buku (misalnya isian offline yang terkirim setelah tutup buku). Periksa kembali data tersebut.' : 'Gagal menyimpan ke server: ' + code);
+    companyRebuild();
+  } else setSync('Tersimpan di server · ' + new Date().toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}));
+}
+function companyPersist() {
+  claimNewRecords();
+  const now = flatten(state), groups = changedGroups(now);
   shadow = now;
-  // Peran terbatas: perubahan atas catatan orang lain tidak dikirim (server pasti menolak); tampilan dikembalikan ke data server
-  if (limitedRole()) {
-    let blocked = 0;
-    for (const [k, g] of groups) {
-      const p = g.bid.split('~');
-      if (g.sub === 'buckets' && p[0] !== 'audit' && g.bid !== 'settings~~0' && !(p.length === 4 && p[2] === cloudUser?.uid)) { groups.delete(k); blocked++; }
-    }
-    if (blocked) { toast('Catatan buatan orang lain hanya bisa diubah atau dihapus pimpinan atau keuangan. Perubahan itu dibatalkan.'); setTimeout(companyRebuild, 0); }
-  }
+  dropForeign(groups);
   if (!groups.size) return Promise.resolve();
   setSync(navigator.onLine ? 'Menyimpan ke server…' : 'Offline: tersimpan di perangkat, dikirim otomatis saat online.');
   const writes = [...groups.values()].map(async g => Cloud.writeBucket(company.id, g.sub, g.bid, g.set, g.del));
-  return Promise.allSettled(writes).then(res => {
-    const bad = res.find(r => r.status === 'rejected');
-    if (bad) {
-      const code = bad.reason?.code || bad.reason?.message || 'tidak diketahui';
-      setSync('Gagal menyimpan ke server: ' + code);
-      toast(code === 'permission-denied' ? 'Sebagian perubahan ditolak server: peran Anda tidak mengizinkannya, atau bulannya sudah ditutup buku (misalnya isian offline yang terkirim setelah tutup buku). Periksa kembali data tersebut.' : 'Gagal menyimpan ke server: ' + code);
-      companyRebuild();
-    } else setSync('Tersimpan di server · ' + new Date().toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}));
-  });
+  return Promise.allSettled(writes).then(persistDone);
 }
 function companyRebuild() {
   // Data dari pengguna lain ditunda selama formulir terbuka agar isian tidak hilang, lalu dicoba lagi
@@ -196,22 +229,39 @@ function companyWatch() {
 }
 // Perusahaan terakhir yang dibuka di perangkat ini, agar tetap bisa dibuka saat offline. Hanya penanda; hak akses tetap diperiksa server.
 const coMemoKey = () => KEY + ':co-of:' + cloudUser.uid;
+// Server tidak terjangkau dan salinan perangkat belum lengkap: pakai perusahaan terakhir yang dibuka di perangkat ini
+function companyFromMemo() {
+  let m = null; try { m = JSON.parse(localStorage.getItem(coMemoKey())); } catch { /* penyimpanan peramban tidak tersedia (mode privat/kuota penuh): lanjut tanpa menyimpan */ }
+  if (!m?.id || !ROLES[m.role]) return null;
+  return {cid: m.id, member: {active: true, role: m.role}, co: {name: m.name}};
+}
+// Perusahaan akun ini menurut server: {cid, member, co}; null = server tak terjangkau dan tidak ada penanda yang sah
+async function companyLookup() {
+  try {
+    const cid = await Cloud.getCompanyId();
+    let member = null, co = null;
+    if (cid) { member = await Cloud.getMember(cid); co = await Cloud.getCompany(cid); }
+    return {cid, member, co};
+  } catch { return companyFromMemo(); }
+}
+const coName = co => co?.name || '';
+function rememberCompany(cid, member, co) {
+  try { localStorage.setItem(coMemoKey(), JSON.stringify({id: cid, role: member.role, name: coName(co)})); } catch { /* penyimpanan peramban tidak tersedia (mode privat/kuota penuh): lanjut tanpa menyimpan */ }
+}
 async function openCompany() {
-  let cid, member = null, co = null;
-  try { cid = await Cloud.getCompanyId(); if (cid) { member = await Cloud.getMember(cid); co = await Cloud.getCompany(cid); } }
-  catch {
-    // Server tidak terjangkau dan salinan perangkat belum lengkap: pakai perusahaan terakhir yang dibuka di perangkat ini
-    let m = null; try { m = JSON.parse(localStorage.getItem(coMemoKey())); } catch { /* penyimpanan peramban tidak tersedia (mode privat/kuota penuh): lanjut tanpa menyimpan */ }
-    if (!m?.id || !ROLES[m.role]) return false;
-    cid = m.id; member = {active: true, role: m.role}; co = {name: m.name};
-  }
+  const found = await companyLookup();
+  if (!found) return false;
+  const {cid, member, co} = found;
   if (!cid || !member?.active) { localStorage.removeItem(coMemoKey()); return false; }
-  try { localStorage.setItem(coMemoKey(), JSON.stringify({id: cid, role: member.role, name: co?.name || ''})); } catch { /* penyimpanan peramban tidak tersedia (mode privat/kuota penuh): lanjut tanpa menyimpan */ }
-  company = {id: cid, name: co?.name || '', role: member.role};
+  rememberCompany(cid, member, co);
+  company = {id: cid, name: coName(co), role: member.role};
   storeKey = KEY + ':co:' + cid;
   localStorage.removeItem(storeKey); // versi lama menyimpan salinan tanpa enkripsi di sini
   await companyWatch();
   unwatch.push(Cloud.watchMember(cid, m => { if (!m?.active || m.role !== company.role) location.reload(); }));
+  return companyOpenData(member);
+}
+async function companyOpenData(member) {
   let data = companyData();
   if (bucketsFromCache && !data.accounts.length) {
     // Offline dan data perusahaan belum pernah tersimpan di perangkat ini. Membuka data kosong berisiko menimpa
@@ -273,20 +323,23 @@ function companyBoxEl() {
   return el('div', {class: 'notice ok', style: 'margin-bottom:10px'}, el('b', null, company.name), ' · peran Anda: ' + (ROLES[company.role] || company.role),
     el('div', {id: 'memberBox', class: 'muted', style: 'margin-top:6px'}, owner ? el('button', {class: 'btn sm', 'data-act': 'loadMembers'}, 'Kelola anggota') : el('button', {class: 'btn sm danger', 'data-act': 'leaveCompany'}, 'Keluar dari perusahaan')));
 }
+const myUsername = () => cloudInfo?.username || '';
+// Pesan galat server: kode yang dikenal punya pesan khusus, selain itu awalan + kode/pesan asli
+const cloudErrMsg = (e, code, special, prefix) => e?.code === code ? special : prefix + (e?.code || e?.message);
 Object.assign(ACTIONS, {
   createCompany: async () => {
     const name = prompt('Nama perusahaan:', state.company.name); if (!name?.trim()) return;
     if (!confirm('Seluruh data di akun ini akan disalin ke perusahaan bersama. Anggota dapat melihat data sesuai perannya, dan kata sandi enkripsi perangkat tidak dipakai lagi untuk data ini. Salinan pribadi tetap tersimpan. Lanjutkan?')) return;
     try {
       await saving; if (dirty) await pushNow();
-      await Cloud.createCompany(name.trim().slice(0, 120), cloudInfo?.username || '');
+      await Cloud.createCompany(name.trim().slice(0, 120), myUsername());
       toast('Perusahaan dibuat. Memuat ulang…'); setTimeout(() => location.reload(), 1000); // data disalin saat aplikasi terbuka kembali
-    } catch (e) { toast(e?.code === 'permission-denied' ? 'Ditolak server: aturan Firestore terbaru belum dipasang.' : 'Gagal membuat perusahaan: ' + (e?.code || e?.message)); }
+    } catch (e) { toast(cloudErrMsg(e, 'permission-denied', 'Ditolak server: aturan Firestore terbaru belum dipasang.', 'Gagal membuat perusahaan: ')); }
   },
   joinCompany: async () => {
     const code = prompt('Masukkan kode undangan:'); if (!code?.trim()) return;
-    try { await Cloud.joinCompany(code.trim().toLowerCase(), cloudInfo?.username || ''); location.reload(); }
-    catch (e) { toast(e?.code === 'invite-invalid' ? 'Kode undangan tidak berlaku.' : 'Gagal bergabung: ' + (e?.code || e?.message)); }
+    try { await Cloud.joinCompany(code.trim().toLowerCase(), myUsername()); location.reload(); }
+    catch (e) { toast(cloudErrMsg(e, 'invite-invalid', 'Kode undangan tidak berlaku.', 'Gagal bergabung: ')); }
   },
   leaveCompany: async () => { if (confirm('Keluar dari perusahaan ini?')) { await Cloud.leaveCompany(company.id); localStorage.removeItem(storeKey); location.reload(); } },
   loadMembers: async () => {
@@ -402,19 +455,28 @@ function openForm(key, id) {
   const v = formRec ? (f.load ? f.load(formRec) : formRec) : {date: today(), to: today(), year: today().slice(0, 4), active: true};
   const locked = f.dated && formRec && isLocked(formRec.date);
   $('efTitle').textContent = (formRec ? 'Ubah ' : 'Tambah ') + f.title;
-  $('efFields').replaceChildren(...f.fields.map(x => {
-    const val = v[x.k] ?? '', id_ = 'ef-' + x.k;
-    if (x.type === 'check') return el('label', {class: 'check wide'}, el('input', {type: 'checkbox', id: id_, checked: !!val}), x.label);
-    if (x.type === 'area') return el('label', {class: 'f wide'}, x.label, el('textarea', {id: id_, rows: 2, maxlength: 300}, String(val)));
-    if (x.type === 'select') return el('label', {class: 'f'}, x.label, el('select', {id: id_}, x.opts().map(o => el('option', {value: o.id, selected: String(o.id) === String(val)}, o.name))));
-    const shown = x.type === 'money' ? (val ? Number(val).toLocaleString('id-ID') : '') : val;
-    return el('label', {class: 'f'}, x.label, el('input', {id: id_, type: x.type === 'date' ? 'date' : 'text', inputmode: x.type === 'text' || x.type === 'date' ? 'text' : 'decimal', value: shown, 'data-money': x.type === 'money' ? '1' : null}));
-  }));
+  $('efFields').replaceChildren(...f.fields.map(x => efField(x, v)));
+  efLock(locked);
+  $('efDialog').showModal();
+}
+// Satu isian formulir ERP sesuai jenisnya: centang, teks panjang, pilihan, atau masukan satu baris (uang/tanggal/teks/angka)
+function efField(x, v) {
+  const val = v[x.k] ?? '', id_ = 'ef-' + x.k;
+  if (x.type === 'check') return el('label', {class: 'check wide'}, el('input', {type: 'checkbox', id: id_, checked: !!val}), x.label);
+  if (x.type === 'area') return el('label', {class: 'f wide'}, x.label, el('textarea', {id: id_, rows: 2, maxlength: 300}, String(val)));
+  if (x.type === 'select') return el('label', {class: 'f'}, x.label, el('select', {id: id_}, x.opts().map(o => el('option', {value: o.id, selected: String(o.id) === String(val)}, o.name))));
+  return efInput(x, id_, val);
+}
+function efInput(x, id_, val) {
+  const shown = x.type === 'money' ? (val ? Number(val).toLocaleString('id-ID') : '') : val;
+  return el('label', {class: 'f'}, x.label, el('input', {id: id_, type: x.type === 'date' ? 'date' : 'text', inputmode: x.type === 'text' || x.type === 'date' ? 'text' : 'decimal', value: shown, 'data-money': x.type === 'money' ? '1' : null}));
+}
+// Periode yang sudah ditutup buku: isian hanya bisa dilihat
+function efLock(locked) {
   $('efForm').querySelectorAll('.bd input, .bd select, .bd textarea').forEach(x => x.disabled = !!locked);
   $('efNote').textContent = locked ? lockMsg() : '';
   $('btnEfSave').style.display = locked ? 'none' : '';
   $('btnEfDel').style.display = formRec && !locked ? '' : 'none';
-  $('efDialog').showModal();
 }
 $('efFields').addEventListener('input', e => { if (e.target.dataset.money) { const n = parseMoney(e.target.value); e.target.value = n ? n.toLocaleString('id-ID') : ''; } });
 $('btnEfCancel').onclick = () => $('efDialog').close();
@@ -535,14 +597,20 @@ $('btnODeliv').onclick = () => { if (ordEditing) printOrder(ordEditing, true); }
 
 /* Gudang: jumlah per lokasi; nilai persediaan tetap dihitung untuk seluruh perusahaan */
 const whName = id => id ? state.warehouses.find(w => w.id === id)?.name || '(terhapus)' : 'Gudang utama';
+// Stok per gudang ('' = gudang utama/tanpa gudang): m = gudang -> (barang -> jumlah)
+function whPut(m, wh, item, q) { const k = wh || ''; if (!m.has(k)) m.set(k, new Map()); m.get(k).set(item, Math.round(((m.get(k).get(item) || 0) + q) * 1000) / 1000); }
+const whStocked = id => itemOf(id)?.kind === 'barang';
+// Jual/beli dan retur memindahkan barang stok di gudang transaksinya (retur memakai gudang transaksi asal)
+function whTradeMoves(m) {
+  for (const t of state.trades) for (const l of t.lines) if (whStocked(l.itemId)) whPut(m, t.whId, l.itemId, t.kind === 'purchase' ? l.qty : -l.qty);
+  for (const r of state.returns) { const o = state.trades.find(t => t.id === r.origId); for (const l of r.lines) if (whStocked(l.itemId)) whPut(m, o?.whId, l.itemId, r.kind === 'sale' ? l.qty : -l.qty); }
+}
 function whStock() {
-  const m = new Map(), put = (wh, item, q) => { const k = wh || ''; if (!m.has(k)) m.set(k, new Map()); m.get(k).set(item, Math.round(((m.get(k).get(item) || 0) + q) * 1000) / 1000); };
-  state.items.forEach(i => { if (i.kind === 'barang') put('', i.id, i.openQty); });
-  const stocked = id => itemOf(id)?.kind === 'barang';
-  for (const t of state.trades) for (const l of t.lines) if (stocked(l.itemId)) put(t.whId, l.itemId, t.kind === 'purchase' ? l.qty : -l.qty);
-  for (const r of state.returns) { const o = state.trades.find(t => t.id === r.origId); for (const l of r.lines) if (stocked(l.itemId)) put(o?.whId, l.itemId, r.kind === 'sale' ? l.qty : -l.qty); }
-  for (const a of state.adjusts) for (const l of a.lines) put(a.whId, l.itemId, l.diff);
-  for (const t of state.transfers) { put(t.fromId, t.itemId, -t.qty); put(t.toId, t.itemId, t.qty); }
+  const m = new Map();
+  state.items.forEach(i => { if (i.kind === 'barang') whPut(m, '', i.id, i.openQty); });
+  whTradeMoves(m);
+  for (const a of state.adjusts) for (const l of a.lines) whPut(m, a.whId, l.itemId, l.diff);
+  for (const t of state.transfers) { whPut(m, t.fromId, t.itemId, -t.qty); whPut(m, t.toId, t.itemId, t.qty); }
   return m;
 }
 
@@ -738,6 +806,16 @@ function dashPage({title, sub, alerts = [], kpis, chart, side, panels = []}) {
     panels.length ? el('div', {class: 'grid dash-panels'}, panels) : null);
 }
 
+// Peringatan dasbor penjualan: piutang lewat tempo, pesanan tertunda, penawaran hampir berakhir, tindak lanjut, batas kredit
+function salesAlerts(ar, so, backlog, expiring, followUp, overLimit) {
+  return [
+    ...(ar.no ? [['bad', [`${ar.no} tagihan lewat jatuh tempo senilai `, B(rp(ar.overdue)), '. Lakukan penagihan.']]] : []),
+    ...(so.length ? [['warn', `${so.length} pesanan belum selesai dikirim atau ditagih, senilai ${rp(backlog)}.`]] : []),
+    ...(expiring.length ? [['warn', `${expiring.length} penawaran berakhir dalam 7 hari: ${expiring.slice(0, 3).map(o => txt(o.ref)).join(', ')}. Tindak lanjuti ke pelanggan.`]] : []),
+    ...(followUp.length ? [['warn', `${followUp.length} pelanggan perlu ditindaklanjuti hari ini.`]] : []),
+    ...(overLimit.length ? [['bad', `Piutang melebihi batas kredit: ${overLimit.slice(0, 3).map(c => txt(c.name)).join(', ')}.`]] : []),
+  ];
+}
 function salesDash() {
   const now = today(), ym = now.slice(0, 7), m = salesIn(ym + '-01', now), p = salesIn(addMonths(ym, -1) + '-01', sameDayPrev());
   const target = state.budgets.filter(b => b.year === now.slice(0, 4) && ['4-101', '4-102'].includes(catOf(b.categoryId)?.code)).reduce((s, b) => s + b.amount, 0) / 12;
@@ -754,13 +832,7 @@ function salesDash() {
   const top = map => [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
   const followUp = state.contacts.filter(c => c.next && c.next <= now && !state.contacts.some(x => x.customerId === c.customerId && x.date > c.date));
   const overLimit = state.customers.filter(c => c.limit && custOpen(c.name) > c.limit);
-  const alerts = [
-    ...(ar.no ? [['bad', [`${ar.no} tagihan lewat jatuh tempo senilai `, B(rp(ar.overdue)), '. Lakukan penagihan.']]] : []),
-    ...(so.length ? [['warn', `${so.length} pesanan belum selesai dikirim atau ditagih, senilai ${rp(backlog)}.`]] : []),
-    ...(expiring.length ? [['warn', `${expiring.length} penawaran berakhir dalam 7 hari: ${expiring.slice(0, 3).map(o => txt(o.ref)).join(', ')}. Tindak lanjuti ke pelanggan.`]] : []),
-    ...(followUp.length ? [['warn', `${followUp.length} pelanggan perlu ditindaklanjuti hari ini.`]] : []),
-    ...(overLimit.length ? [['bad', `Piutang melebihi batas kredit: ${overLimit.slice(0, 3).map(c => txt(c.name)).join(', ')}.`]] : []),
-  ];
+  const alerts = salesAlerts(ar, so, backlog, expiring, followUp, overLimit);
   return dashPage({title: 'Dasbor Penjualan', sub: 'Pencapaian penjualan, peluang, dan penagihan.', alerts,
     kpis: [[`Penjualan ${MONTHS[+ym.slice(5) - 1]}`, rp(m.rev), '', delta(m.rev, p.rev)], ['Pencapaian target', target ? pct(m.rev / target * 100) : '—', '', target ? `Target ${rp(target)} sebulan` : 'Isi anggaran pendapatan di ERP'],
       ['Nilai rata-rata invoice', rp(m.n ? m.rev / m.n : 0), '', `${m.n} invoice`], ['Konversi penawaran', q90.length ? pct(won / q90.length * 100) : '—', '', `${won} dari ${q90.length} penawaran, 90 hari`],
@@ -880,6 +952,11 @@ function integrityIssues() {
   if (lost.length) out.push(['bad', `${lost.length} jual/beli tidak punya catatan kas atau piutang/utang: ${lost.slice(0, 3).map(t => txt(t.ref)).join(', ')}.`]);
   return out;
 }
+// Panel pimpinan: target pendapatan setahun dan perbandingan dengan periode sama tahun lalu
+function targetRows(y, target, L, ytd, lastYtd) {
+  return [tr('Target pendapatan ' + y, target ? rp(target) : 'Belum diisi'), tr('Tercapai', target ? pct(L.ti / target * 100) : '—'), tr('Pendapatan sampai hari ini', rp(ytd.ti)),
+    tr('Periode sama tahun lalu', rp(lastYtd.ti)), tr('Perubahan', lastYtd.ti ? pct((ytd.ti - lastYtd.ti) / lastYtd.ti * 100) : '—')];
+}
 function ownerDash() {
   const now = today(), ym = now.slice(0, 7), y = now.slice(0, 4), m = salesIn(ym + '-01', now), p = salesIn(addMonths(ym, -1) + '-01', sameDayPrev()), L = lrData(y + '-01-01', y + '-12-31'), ar = debtTotals('piutang'), rv = runway();
   const waitPO = state.orders.filter(o => o.status === 'draft' && ORDER_KINDS[o.kind].approval), waitLv = state.leaves.filter(l => l.status === 'draft');
@@ -892,7 +969,7 @@ function ownerDash() {
       ['Kas & bank', rp(totalBalance()), '', `Daya tahan ${rv ? num1(rv) + ' bulan' : '—'}`], ['Piutang lewat tempo', rp(ar.overdue), ar.overdue ? 'out' : '', `${ar.no} tagihan`], ['Menunggu keputusan', String(waitPO.length + waitLv.length), waitPO.length + waitLv.length ? 'out' : '', `${act} karyawan aktif`]],
     chart: trend('Pendapatan dan beban 6 bulan', [{name: 'Pendapatan', vals: lrMonth.map(l => l.ti)}, {name: 'Beban', vals: lrMonth.map(l => l.to)}]),
     side: panel('Menunggu keputusan', decide, 'Tidak ada yang menunggu persetujuan.'),
-    panels: [panel('Target dan tahun lalu', [tr('Target pendapatan ' + y, target ? rp(target) : 'Belum diisi'), tr('Tercapai', target ? pct(L.ti / target * 100) : '—'), tr('Pendapatan sampai hari ini', rp(ytd.ti)), tr('Periode sama tahun lalu', rp(lastYtd.ti)), tr('Perubahan', lastYtd.ti ? pct((ytd.ti - lastYtd.ti) / lastYtd.ti * 100) : '—')], ''),
+    panels: [panel('Target dan tahun lalu', targetRows(y, target, L, ytd, lastYtd), ''),
       panel('Proyeksi kas 3 bulan', cashForecast().map(([m, v]) => tr(m, rp(v))), ''), panel('Saldo per akun', balances(), 'Belum ada akun.'), panel('Beban terbesar tahun ini', expenses(), 'Belum ada beban.'), panel('Umur piutang', meterRows(aging('piutang')), '')]});
 }
 // Akun pimpinan melihat semua dasbor dalam satu halaman, dipisah per bagian dan bisa dilompati lewat menu di atas
@@ -1162,29 +1239,33 @@ Object.assign(ACTIONS, {
     orderSeedFrom = null; openOrder(null, {kind: 'pr', date: today(), status: 'draft', partyId: null, note: 'Dibuat dari saran pesan ulang', lines});
   },
 });
-function moreReport(type, from, to, period) {
+// Laporan tambahan: satu fungsi per jenis
+function komisiReport(from, to, period) {
   const td = v => el('td', null, v), n = v => el('td', {class: 'num'}, v);
-  if (type === 'komisi') {
-    const rows = state.salespeople.map(s => { const v = state.trades.reduce((x, t) => t.kind === 'sale' && t.salesId === s.id && inRange(t.date, from, to) ? x + tradeTotal(t) : x, 0); return [s, v]; });
-    return [kopEl('Penjualan dan Komisi', period), tbl(thead(th('Nama'), th('Penjualan', 1), th('Komisi %', 1), th('Komisi', 1)),
-      rows.length ? rows.map(([s, v]) => el('tr', null, td(s.name), n(rp(v)), n(`${String(s.rate).replace('.', ',')}%`), n(rp(v * s.rate / 100)))) : el('tr', null, el('td', {colspan: 4, class: 'muted'}, 'Belum ada tenaga penjual.')),
-      el('tr', {class: 'total'}, td('Total'), n(rp(rows.reduce((s, r) => s + r[1], 0))), td(), n(rp(rows.reduce((s, r) => s + r[1] * r[0].rate / 100, 0))))), signEl()];
-  }
-  if (type === 'pph21') {
-    const y = (to || today()).slice(0, 4), m = new Map();
-    for (const p of state.payrolls) if (p.period.startsWith(y)) for (const l of p.lines) { const r = m.get(l.empId) || {name: l.name, ptkp: l.ptkp, n: 0, bruto: 0, iur: 0, pph: 0}; r.n++; r.bruto += l.bruto; r.iur += l.ee.jht + l.ee.jp; r.pph += l.pph; r.name = l.name; m.set(l.empId, r); }
-    const rows = [...m.values()];
-    return [kopEl('Rekap Penghasilan dan PPh 21 Setahun', 'Tahun ' + y), tbl(thead(th('Nama'), th('PTKP'), th('Bulan', 1), th('Bruto', 1), th('Iuran JHT/JP', 1), th('PPh 21', 1)),
-      rows.length ? rows.map(r => el('tr', null, td(r.name), td(r.ptkp), n(r.n), n(rp(r.bruto)), n(rp(r.iur)), n(rp(r.pph)))) : el('tr', null, el('td', {colspan: 6, class: 'muted'}, 'Belum ada penggajian tahun ini.'))),
-      pMuted('Bahan penyusunan bukti potong. Bukti potong resmi tetap diterbitkan lewat Coretax.'), signEl()];
-  }
-  if (type === 'ringkasan') {
-    const y = (to || today()).slice(0, 4), prev = String(+y - 1), months = Array.from({length: 12}, (_, i) => `${y}-${String(i + 1).padStart(2, '0')}`);
-    const rows = months.map(ym => { const l = lrData(ym + '-01', lastDayOf(ym)), p = lrData(prev + ym.slice(4) + '-01', lastDayOf(prev + ym.slice(4))); return {ym, l, p, cash: cashOf(ym, 'in') - cashOf(ym, 'out')}; });
-    const sum = f => rows.reduce((s, r) => s + f(r), 0);
-    return [kopEl('Ringkasan Bulanan', 'Tahun ' + y), tbl(thead(th('Bulan'), th('Pendapatan', 1), th('Tahun lalu', 1), th('Laba kotor', 1), th('Laba bersih', 1), th('Arus kas', 1)),
-      rows.map(r => el('tr', null, td(ymLabel(r.ym)), n(rp(r.l.ti)), n(rp(r.p.ti)), n(rp(r.l.ti - r.l.hpp)), n(rp(r.l.net)), n(rp(r.cash)))),
-      el('tr', {class: 'total'}, td('Total'), n(rp(sum(r => r.l.ti))), n(rp(sum(r => r.p.ti))), n(rp(sum(r => r.l.ti - r.l.hpp))), n(rp(sum(r => r.l.net))), n(rp(sum(r => r.cash))))), signEl()];
-  }
-  return '';
+  const rows = state.salespeople.map(s => { const v = state.trades.reduce((x, t) => t.kind === 'sale' && t.salesId === s.id && inRange(t.date, from, to) ? x + tradeTotal(t) : x, 0); return [s, v]; });
+  return [kopEl('Penjualan dan Komisi', period), tbl(thead(th('Nama'), th('Penjualan', 1), th('Komisi %', 1), th('Komisi', 1)),
+    rows.length ? rows.map(([s, v]) => el('tr', null, td(s.name), n(rp(v)), n(`${String(s.rate).replace('.', ',')}%`), n(rp(v * s.rate / 100)))) : el('tr', null, el('td', {colspan: 4, class: 'muted'}, 'Belum ada tenaga penjual.')),
+    el('tr', {class: 'total'}, td('Total'), n(rp(rows.reduce((s, r) => s + r[1], 0))), td(), n(rp(rows.reduce((s, r) => s + r[1] * r[0].rate / 100, 0))))), signEl()];
+}
+function pph21Report(from, to) {
+  const td = v => el('td', null, v), n = v => el('td', {class: 'num'}, v);
+  const y = (to || today()).slice(0, 4), m = new Map();
+  for (const p of state.payrolls) if (p.period.startsWith(y)) for (const l of p.lines) { const r = m.get(l.empId) || {name: l.name, ptkp: l.ptkp, n: 0, bruto: 0, iur: 0, pph: 0}; r.n++; r.bruto += l.bruto; r.iur += l.ee.jht + l.ee.jp; r.pph += l.pph; r.name = l.name; m.set(l.empId, r); }
+  const rows = [...m.values()];
+  return [kopEl('Rekap Penghasilan dan PPh 21 Setahun', 'Tahun ' + y), tbl(thead(th('Nama'), th('PTKP'), th('Bulan', 1), th('Bruto', 1), th('Iuran JHT/JP', 1), th('PPh 21', 1)),
+    rows.length ? rows.map(r => el('tr', null, td(r.name), td(r.ptkp), n(r.n), n(rp(r.bruto)), n(rp(r.iur)), n(rp(r.pph)))) : el('tr', null, el('td', {colspan: 6, class: 'muted'}, 'Belum ada penggajian tahun ini.'))),
+    pMuted('Bahan penyusunan bukti potong. Bukti potong resmi tetap diterbitkan lewat Coretax.'), signEl()];
+}
+function ringkasanReport(from, to) {
+  const td = v => el('td', null, v), n = v => el('td', {class: 'num'}, v);
+  const y = (to || today()).slice(0, 4), prev = String(+y - 1), months = Array.from({length: 12}, (_, i) => `${y}-${String(i + 1).padStart(2, '0')}`);
+  const rows = months.map(ym => { const l = lrData(ym + '-01', lastDayOf(ym)), p = lrData(prev + ym.slice(4) + '-01', lastDayOf(prev + ym.slice(4))); return {ym, l, p, cash: cashOf(ym, 'in') - cashOf(ym, 'out')}; });
+  const sum = f => rows.reduce((s, r) => s + f(r), 0);
+  return [kopEl('Ringkasan Bulanan', 'Tahun ' + y), tbl(thead(th('Bulan'), th('Pendapatan', 1), th('Tahun lalu', 1), th('Laba kotor', 1), th('Laba bersih', 1), th('Arus kas', 1)),
+    rows.map(r => el('tr', null, td(ymLabel(r.ym)), n(rp(r.l.ti)), n(rp(r.p.ti)), n(rp(r.l.ti - r.l.hpp)), n(rp(r.l.net)), n(rp(r.cash)))),
+    el('tr', {class: 'total'}, td('Total'), n(rp(sum(r => r.l.ti))), n(rp(sum(r => r.p.ti))), n(rp(sum(r => r.l.ti - r.l.hpp))), n(rp(sum(r => r.l.net))), n(rp(sum(r => r.cash))))), signEl()];
+}
+const MORE_REPORTS = {komisi: komisiReport, pph21: pph21Report, ringkasan: ringkasanReport};
+function moreReport(type, from, to, period) {
+  return Object.hasOwn(MORE_REPORTS, type) ? MORE_REPORTS[type](from, to, period) : '';
 }
