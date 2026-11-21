@@ -96,22 +96,36 @@ async function readXlsx(buf) {
   }
   return {rows, date1904};
 }
+// Pemisah kolom: titik koma bila di baris pertama sama atau lebih banyak dari koma (Excel berbahasa Indonesia)
+function csvSep(text) {
+  const first = text.split(/\r?\n/, 1)[0];
+  return (first.match(/;/g) || []).length >= (first.match(/,/g) || []).length ? ';' : ',';
+}
+function csvEndRow(P) {
+  P.cells.push(P.cell); P.cell = '';
+  if (P.cells.some(x => x.trim())) P.rows.push({line: P.line, cells: P.cells});
+  P.cells = []; P.line++;
+}
+// Satu karakter: di dalam kutip ("" = kutip literal) atau di luar (pemisah, baris baru, \r diabaikan); hasil = indeks terakhir yang dipakai
+function csvChar(P, text, i) {
+  const ch = text[i];
+  if (P.q) {
+    if (ch !== '"') P.cell += ch;
+    else if (text[i + 1] === '"') { P.cell += '"'; return i + 1; }
+    else P.q = false;
+  } else if (ch === '"') P.q = true;
+  else if (ch === P.sep) { P.cells.push(P.cell); P.cell = ''; }
+  else if (ch === '\n') csvEndRow(P);
+  else if (ch !== '\r') P.cell += ch;
+  return i;
+}
 function readCsv(text) {
   text = text.replace(/^\uFEFF/, '');
-  const first = text.split(/\r?\n/, 1)[0], sep = (first.match(/;/g) || []).length >= (first.match(/,/g) || []).length ? ';' : ',', rows = [];
-  let cell = '', cells = [], q = false, line = 1;
-  const endRow = () => { cells.push(cell); cell = ''; if (cells.some(x => x.trim())) rows.push({line, cells}); cells = []; line++; };
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; }
-    else if (ch === '"') q = true;
-    else if (ch === sep) { cells.push(cell); cell = ''; }
-    else if (ch === '\n') endRow();
-    else if (ch !== '\r') cell += ch;
-  }
-  if (cell || cells.length) endRow();
-  if (rows.length > XL_MAX_ROWS + 1) throw new Error(`Paling banyak ${XL_MAX_ROWS.toLocaleString('id-ID')} baris per file.`);
-  return {rows, date1904: false};
+  const P = {sep: csvSep(text), rows: [], cell: '', cells: [], q: false, line: 1};
+  for (let i = 0; i < text.length; i++) i = csvChar(P, text, i);
+  if (P.cell || P.cells.length) csvEndRow(P);
+  if (P.rows.length > XL_MAX_ROWS + 1) throw new Error(`Paling banyak ${XL_MAX_ROWS.toLocaleString('id-ID')} baris per file.`);
+  return {rows: P.rows, date1904: false};
 }
 
 /* ---------- Membaca isi sel sesuai jenis kolom ---------- */
@@ -246,6 +260,27 @@ const LISTS = {akun: asList(() => state.accounts), barang: () => state.items.map
 const PAY = {cash: 'Tunai', credit: 'Kredit'}, TXT = {in: 'Pemasukan', out: 'Pengeluaran', transfer: 'Mutasi'}, DEBT = {piutang: 'Piutang', utang: 'Utang'}, ITEM_KIND = {barang: 'Barang', jasa: 'Jasa'}, GENDER = {L: 'Laki-laki', P: 'Perempuan'}, TAXBY = {karyawan: 'Karyawan', perusahaan: 'Perusahaan'};
 const labelOf = o => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v?.label ?? v]));
 const TRADE_TAIL = [C('wh', 'Gudang', 'text', {list: 'gudang', ex: 'Gudang utama', note: 'Kosongkan untuk gudang utama.'}), C('fpNo', 'No. Faktur Pajak', 'text', {max: 40}), C('fpDate', 'Tanggal Faktur Pajak', 'date'), C('desc', 'Keterangan', 'text', {max: 500})];
+// Validasi impor: kode barang unik (di file dan di data), tanggal kontrak PKWT, nomor bukti kas unik
+function itemCodeCheck(r, cur, x) {
+  if (!r.code) return;
+  const k = norm(r.code);
+  if (x.codes.has(k)) throw new Error(`Kode ${r.code} sama dengan baris ${x.codes.get(k)}`);
+  x.codes.set(k, x.line);
+  if (state.items.some(i => i !== cur && norm(i.code) === k)) throw new Error(`Kode ${r.code} sudah dipakai barang lain`);
+}
+function pkwtCheck(r) {
+  if (r.status !== 'pkwt') { r.endDate = ''; return; }
+  if (!r.endDate) throw new Error('Isi tanggal berakhir kontrak (PKWT)');
+  if (r.endDate <= r.joinDate) throw new Error('Tanggal berakhir harus setelah tanggal mulai');
+  if (monthsBetween(r.joinDate, r.endDate) > 60) throw new Error('PKWT paling lama 5 tahun termasuk perpanjangan');
+}
+function txRefCheck(v, x) {
+  if (!v.ref) return;
+  const k = norm(v.ref);
+  if (x.refs.has(k)) throw new Error(`No. bukti sama dengan baris ${x.refs.get(k)}`);
+  x.refs.set(k, x.line);
+  if (state.tx.some(t => t.ref === v.ref)) throw new Error(`No. bukti ${v.ref} sudah dipakai`);
+}
 const UNGGAH = {
   customers: {title: 'Pelanggan', group: 'Penjualan', roles: ['sales'], update: true, desc: 'Daftar pelanggan, kontak, tempo, dan batas kredit.',
     cols: [R('name', 'Nama Pelanggan', 'text', {ex: 'PT Maju Bersama'}), C('pic', 'Kontak PIC', 'text', {ex: 'Budi'}), C('phone', 'Telepon', 'digits', {max: 40, ex: '08xxxxxxxxxx'}), C('email', 'Email', 'text', {ex: 'beli@contoh.co.id'}), C('npwp', 'NPWP', 'digits', {ex: '16 angka tanpa titik'}),
@@ -265,7 +300,7 @@ const UNGGAH = {
     row: master('items', 'barang', () => ({name: '', code: '', kind: 'barang', taxType: '', unit: '', price: 0, minQty: 0, leadDays: 0, openQty: 0, openCost: 0}), (r, cur, x) => {
       r.taxType ||= r.kind === 'jasa' ? 'jasa' : 'bkp';
       if (TAX_TYPES[r.taxType].kind !== r.kind) throw new Error('Jenis pajak tidak sesuai dengan jenis barang/jasa');
-      if (r.code) { const k = norm(r.code); if (x.codes.has(k)) throw new Error(`Kode ${r.code} sama dengan baris ${x.codes.get(k)}`); x.codes.set(k, x.line); if (state.items.some(i => i !== cur && norm(i.code) === k)) throw new Error(`Kode ${r.code} sudah dipakai barang lain`); }
+      itemCodeCheck(r, cur, x);
       if (r.kind === 'jasa') r.openQty = r.openCost = 0;
       if (cur) { r.openQty = cur.openQty; r.openCost = cur.openCost; } else if (state.lockedUntil && r.openQty) throw new Error('Stok awal tidak bisa diisi setelah tutup buku; catat sebagai pembelian');
     })},
@@ -310,7 +345,7 @@ const UNGGAH = {
     row: master('employees', 'karyawan', () => ({created: Date.now(), name: '', nik: '', npwp: '', title: '', gender: 'L', status: 'pkwtt', joinDate: '', endDate: '', exitDate: '', ptkp: 'TK/0', wage: 0, allow: 0, taxBy: 'karyawan', bpjsTk: true, bpjsKes: true, bpjsTkNo: '', bpjsKesNo: '', bank: ''}), r => {
       if (r.nik && !/^\d{16}$/.test(r.nik)) throw new Error('NIK harus 16 angka');
       if (!(r.wage > 0)) throw new Error('Isi upah');
-      if (r.status === 'pkwt') { if (!r.endDate) throw new Error('Isi tanggal berakhir kontrak (PKWT)'); if (r.endDate <= r.joinDate) throw new Error('Tanggal berakhir harus setelah tanggal mulai'); if (monthsBetween(r.joinDate, r.endDate) > 60) throw new Error('PKWT paling lama 5 tahun termasuk perpanjangan'); } else r.endDate = '';
+      pkwtCheck(r);
       if (r.exitDate && r.exitDate < r.joinDate) throw new Error('Tanggal keluar tidak boleh sebelum tanggal mulai');
       return belowMin(r) || belowFloor(r) ? 'Upah di bawah batas di tab Aturan' : '';
     })},
@@ -344,7 +379,7 @@ const UNGGAH = {
       const a = accRef(v.account), to = v.type === 'transfer' ? accRef(v.to, 'Akun tujuan') : null, cat = v.type === 'transfer' ? null : catRef(v.cat, v.type);
       if (to?.id === a.id) throw new Error('Akun asal dan tujuan harus berbeda');
       const center = v.center ? ref(state.centers, v.center, 'Pusat biaya', 'code', 'name') : null;
-      if (v.ref) { const k = norm(v.ref); if (x.refs.has(k)) throw new Error(`No. bukti sama dengan baris ${x.refs.get(k)}`); x.refs.set(k, x.line); if (state.tx.some(t => t.ref === v.ref)) throw new Error(`No. bukti ${v.ref} sudah dipakai`); }
+      txRefCheck(v, x);
       return {label: `${v.ref || 'Otomatis'} · ${rp(v.amount)}`, mode: 'baru', apply() {
         let r = v.ref;
         if (!r) { const base = nextRef(v.type, v.date), pre = base.slice(0, base.lastIndexOf('-') + 1); let n = parseInt(base.slice(pre.length)); r = base; while (x.refs.has(norm(r))) r = pre + String(++n).padStart(3, '0'); }
@@ -429,21 +464,34 @@ const templateBytes = key => zipStore(templateFiles(key));
 // ugCheck (serentak) dan ugCheckAsync (memberi jeda per UG_CHUNK baris) menjalankan langkah yang sama persis
 function ugCheck(key, file, update) { const it = ugCheckSteps(key, file, update); let r; while (!(r = it.next()).done); return r.value; }
 async function ugCheckAsync(key, file, update) { const it = ugCheckSteps(key, file, update); for (;;) { const r = it.next(); if (r.done) return r.value; await ugPause(); } }
+// Judul kolom file -> posisi kolom; kolom wajib yang hilang atau file tanpa baris data = galat fatal
+function ugHeadMap(head) {
+  const pos = new Map(); head.cells.forEach((h, i) => { if (h !== undefined) pos.set(headKey(h), i); });
+  return pos;
+}
+function ugFatal(s, pos, body) {
+  const missing = s.cols.filter(c => c.req && !pos.has(norm(c.h)));
+  if (missing.length) return `Kolom ${missing.map(c => c.h).join(', ')} tidak ditemukan. Pastikan memakai template ${s.title}.`;
+  if (!body.length) return 'Belum ada baris data di bawah judul kolom.';
+  return '';
+}
+// Satu baris data: nilai per kolom lalu aturan baris template; galat menjadi baris merah berlabel isi pertama baris itu
+function ugRowItem(s, pos, r, x, date1904) {
+  try {
+    const v = {}; for (const c of s.cols) v[c.k] = pos.has(norm(c.h)) ? cellValue(c, r.cells[pos.get(norm(c.h))], date1904) : '';
+    return s.row(v, x);
+  } catch (e) { return {err: e.message, label: String(r.cells.find(c => c !== undefined && c !== '') ?? '').slice(0, 60)}; }
+}
 function* ugCheckSteps(key, file, update) {
   const s = UNGGAH[key], [head, ...body] = file.rows, out = {key, items: [], fatal: ''};
   if (!head) { out.fatal = 'File kosong.'; return out; }
-  const pos = new Map(); head.cells.forEach((h, i) => { if (h !== undefined) pos.set(headKey(h), i); });
-  const missing = s.cols.filter(c => c.req && !pos.has(norm(c.h)));
-  if (missing.length) { out.fatal = `Kolom ${missing.map(c => c.h).join(', ')} tidak ditemukan. Pastikan memakai template ${s.title}.`; return out; }
-  if (!body.length) { out.fatal = 'Belum ada baris data di bawah judul kolom.'; return out; }
+  const pos = ugHeadMap(head), fatal = ugFatal(s, pos, body);
+  if (fatal) { out.fatal = fatal; return out; }
   const x = {update, seen: new Map(), codes: new Map(), refs: new Map(), groups: new Map(), line: 0};
   for (const [n, r] of body.entries()) {
     if (n && n % UG_CHUNK === 0) yield;
-    x.line = r.line; let item;
-    try {
-      const v = {}; for (const c of s.cols) v[c.k] = pos.has(norm(c.h)) ? cellValue(c, r.cells[pos.get(norm(c.h))], file.date1904) : '';
-      item = s.row(v, x);
-    } catch (e) { item = {err: e.message, label: String(r.cells.find(c => c !== undefined && c !== '') ?? '').slice(0, 60)}; }
+    x.line = r.line;
+    const item = ugRowItem(s, pos, r, x, file.date1904);
     item.line = r.line; out.items.push(item);
   }
   if (s.finish && out.items.every(i => !i.err)) s.finish(x);
@@ -473,14 +521,20 @@ function renderUnggah() {
   $('ugUpdateWrap').hidden = !s.update;
   $('ugNeed').replaceChildren('Kolom wajib: ', ...s.cols.filter(c => c.req).flatMap((c, i) => [i ? ', ' : '', el('b', null, c.h)]).filter(Boolean), '.');
 }
+// Satu baris hasil pemeriksaan impor: status (salah/dilewati/diperbarui/baru) dan catatannya
+const ugTag = i => i.err ? ['Salah', 'out'] : i.skip ? ['Dilewati', 'warn'] : i.mode === 'ubah' ? ['Diperbarui', 'tr'] : ['Baru', 'in'];
+function ugItemRow(i) {
+  const t = ugTag(i);
+  return el('tr', null, el('td', {'data-label': 'Baris'}, i.line), el('td', {'data-label': 'Status'}, el('span', {class: 'badge ' + t[1]}, t[0])),
+    el('td', {'data-label': 'Data'}, i.label), el('td', {'data-label': 'Catatan', class: i.err ? 'out' : ''}, i.err || i.skip || i.warn || ''));
+}
 function ugShow() {
   const p = ugPlan, box = $('ugResult'); if (!p) { box.replaceChildren(); return; }
   if (p.fatal) { box.replaceChildren(el('div', {class: 'notice'}, p.fatal)); return; }
-  const ready = p.added + p.changed, s = UNGGAH[p.key], tag = i => i.err ? ['Salah', 'out'] : i.skip ? ['Dilewati', 'warn'] : i.mode === 'ubah' ? ['Diperbarui', 'tr'] : ['Baru', 'in'];
+  const ready = p.added + p.changed, s = UNGGAH[p.key];
   const rows = [...p.items].sort((a, b) => !!b.err - !!a.err || !!b.warn - !!a.warn || a.line - b.line).slice(0, 300);
   const body = document.createDocumentFragment(); // ratusan baris dirakit di luar dokumen, lalu dipasang sekali
-  for (const i of rows) { const t = tag(i); body.append(el('tr', null, el('td', {'data-label': 'Baris'}, i.line), el('td', {'data-label': 'Status'}, el('span', {class: 'badge ' + t[1]}, t[0])),
-    el('td', {'data-label': 'Data'}, i.label), el('td', {'data-label': 'Catatan', class: i.err ? 'out' : ''}, i.err || i.skip || i.warn || ''))); }
+  for (const i of rows) body.append(ugItemRow(i));
   box.replaceChildren(
     el('div', {class: 'grid cards'}, statCardEl(['Siap disimpan', ready.toLocaleString('id-ID'), 'in', p.docs ? `${p.docs} dokumen` : `${p.added} baru, ${p.changed} diperbarui`]), statCardEl(['Dilewati', String(p.skipped), '', 'Sudah ada di aplikasi']), statCardEl(['Perlu diperbaiki', String(p.errors), p.errors ? 'out' : '', 'Baris yang salah'])),
     el('div', {class: 'card', style: 'margin-top:12px'},

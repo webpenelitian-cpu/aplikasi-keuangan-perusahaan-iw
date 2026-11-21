@@ -3,7 +3,7 @@
 /* Modul ERP: perusahaan bersama (banyak pengguna), penjualan & CRM, pembelian & gudang, akuntansi lanjutan, dan SDM lanjutan.
    Berkas ini dimuat setelah app.js dan memakai fungsi serta data yang sama. */
 
-const APP_VERSION = '53'; // samakan dengan versi CACHE di sw.js
+const APP_VERSION = '54'; // samakan dengan versi CACHE di sw.js
 const ROLES = {owner: 'Pimpinan', finance: 'Keuangan', sales: 'Penjualan', warehouse: 'Gudang & pembelian', hr: 'SDM', viewer: 'Hanya lihat'};
 const ROLE_VIEWS = {sales: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'], warehouse: ['dashboard', 'transaksi', 'jualbeli', 'erp', 'hutang', 'unggah', 'laporan', 'panduan', 'pengaturan'],
   hr: ['dashboard', 'karyawan', 'unggah', 'laporan', 'panduan', 'pengaturan'], viewer: ['dashboard', 'laporan', 'panduan', 'pengaturan']};
@@ -25,38 +25,40 @@ function erpDefaults() {
     salespeople: [], contacts: [], batches: [], recurring: [], recons: [], empdocs: [], reviews: [], shifts: []};
 }
 // Pembersih per jenis data ERP; obj/optId/oneOf/absNum dari app.js (lihat sanitizeState)
-const cleanAccRef = a => { const o = obj(a); return {code: cleanStr(o.code, 20), name: cleanStr(o.name, 120)}; };
-const cleanCustomer = c => { const o = obj(c); return {id: cleanId(o.id), name: cleanStr(o.name, 120), pic: cleanStr(o.pic, 120), phone: cleanStr(o.phone, 40), email: cleanStr(o.email, 120),
-  address: cleanStr(o.address, 300), npwp: cleanStr(o.npwp, 30), terms: absNum(o.terms), wapu: o.wapu === true, limit: absNum(o.limit), disc: cleanPct(o.disc, 0)}; };
-const cleanOrder = x => { const o = obj(x); return {id: cleanId(o.id), created: cleanNum(o.created), kind: oneOf(ORDER_KINDS, o.kind, 'quote'), date: cleanDate(o.date), ref: cleanStr(o.ref, 40),
+const CLEAN_ERP = {
+  accRef(a) { const o = obj(a); return {code: cleanStr(o.code, 20), name: cleanStr(o.name, 120)}; },
+  customer(c) { const o = obj(c); return {id: cleanId(o.id), name: cleanStr(o.name, 120), pic: cleanStr(o.pic, 120), phone: cleanStr(o.phone, 40), email: cleanStr(o.email, 120),
+  address: cleanStr(o.address, 300), npwp: cleanStr(o.npwp, 30), terms: absNum(o.terms), wapu: o.wapu === true, limit: absNum(o.limit), disc: cleanPct(o.disc, 0)}; },
+  order(x) { const o = obj(x); return {id: cleanId(o.id), created: cleanNum(o.created), kind: oneOf(ORDER_KINDS, o.kind, 'quote'), date: cleanDate(o.date), ref: cleanStr(o.ref, 40),
   partyId: optId(o.partyId), lines: list(o.lines).map(cleanLine).filter(l => l.itemId && l.qty > 0), status: oneOf(ORDER_STATUS, o.status, 'draft'),
-  approvedBy: cleanStr(o.approvedBy, 60), fromId: optId(o.fromId), due: cleanDate(o.due), note: cleanStr(o.note)}; };
-const cleanWarehouse = w => { const o = obj(w); return {id: cleanId(o.id), name: cleanStr(o.name, 120), address: cleanStr(o.address, 300)}; };
-const cleanTransfer = t => { const o = obj(t); return {id: cleanId(o.id), created: cleanNum(o.created), date: cleanDate(o.date), ref: cleanStr(o.ref, 40), fromId: o.fromId ? cleanId(o.fromId) : '', toId: o.toId ? cleanId(o.toId) : '',
-  itemId: cleanId(o.itemId), qty: cleanQty(o.qty), desc: cleanStr(o.desc)}; };
-const cleanCenter = c => { const o = obj(c); return {id: cleanId(o.id), code: cleanStr(o.code, 20), name: cleanStr(o.name, 120)}; };
-const cleanAsset = a => { const o = obj(a); return {id: cleanId(o.id), created: cleanNum(o.created), code: cleanStr(o.code, 30), name: cleanStr(o.name, 120), date: cleanDate(o.date), cost: absNum(o.cost), life: absNum(o.life),
-  residual: absNum(o.residual), group: oneOf(ASSET_GROUPS, String(o.group), '0'), opening: o.opening === true}; };
-const cleanJournal = j => { const o = obj(j); return {id: cleanId(o.id), created: cleanNum(o.created), date: cleanDate(o.date), ref: cleanStr(o.ref, 40), desc: cleanStr(o.desc), dr: cleanAccRef(o.dr), cr: cleanAccRef(o.cr), amount: absNum(o.amount)}; };
-const cleanBudget = b => { const o = obj(b); return {id: cleanId(o.id), year: cleanStr(o.year, 4), categoryId: cleanId(o.categoryId), amount: absNum(o.amount)}; };
-const cleanAttendance = a => { const o = obj(a); return {id: cleanId(o.id), empId: cleanId(o.empId), date: cleanDate(o.date), status: oneOf(ATT_STATUS, o.status, 'hadir')}; };
-const cleanLeave = l => { const o = obj(l); return {id: cleanId(o.id), created: cleanNum(o.created), empId: cleanId(o.empId), type: oneOf(LEAVE_TYPES, o.type, 'tahunan'), date: cleanDate(o.date), to: cleanDate(o.to), days: absNum(o.days),
-  status: oneOf(ORDER_STATUS, o.status, 'draft'), approvedBy: cleanStr(o.approvedBy, 60), note: cleanStr(o.note, 300)}; };
-const cleanKasbon = k => { const o = obj(k); return {id: cleanId(o.id), created: cleanNum(o.created), empId: cleanId(o.empId), date: cleanDate(o.date), ref: cleanStr(o.ref, 40), amount: absNum(o.amount), accountId: cleanId(o.accountId), note: cleanStr(o.note, 300)}; };
+  approvedBy: cleanStr(o.approvedBy, 60), fromId: optId(o.fromId), due: cleanDate(o.due), note: cleanStr(o.note)}; },
+  warehouse(w) { const o = obj(w); return {id: cleanId(o.id), name: cleanStr(o.name, 120), address: cleanStr(o.address, 300)}; },
+  transfer(t) { const o = obj(t); return {id: cleanId(o.id), created: cleanNum(o.created), date: cleanDate(o.date), ref: cleanStr(o.ref, 40), fromId: o.fromId ? cleanId(o.fromId) : '', toId: o.toId ? cleanId(o.toId) : '',
+  itemId: cleanId(o.itemId), qty: cleanQty(o.qty), desc: cleanStr(o.desc)}; },
+  center(c) { const o = obj(c); return {id: cleanId(o.id), code: cleanStr(o.code, 20), name: cleanStr(o.name, 120)}; },
+  asset(a) { const o = obj(a); return {id: cleanId(o.id), created: cleanNum(o.created), code: cleanStr(o.code, 30), name: cleanStr(o.name, 120), date: cleanDate(o.date), cost: absNum(o.cost), life: absNum(o.life),
+  residual: absNum(o.residual), group: oneOf(ASSET_GROUPS, String(o.group), '0'), opening: o.opening === true}; },
+  journal(j) { const o = obj(j); return {id: cleanId(o.id), created: cleanNum(o.created), date: cleanDate(o.date), ref: cleanStr(o.ref, 40), desc: cleanStr(o.desc), dr: CLEAN_ERP.accRef(o.dr), cr: CLEAN_ERP.accRef(o.cr), amount: absNum(o.amount)}; },
+  budget(b) { const o = obj(b); return {id: cleanId(o.id), year: cleanStr(o.year, 4), categoryId: cleanId(o.categoryId), amount: absNum(o.amount)}; },
+  attendance(a) { const o = obj(a); return {id: cleanId(o.id), empId: cleanId(o.empId), date: cleanDate(o.date), status: oneOf(ATT_STATUS, o.status, 'hadir')}; },
+  leave(l) { const o = obj(l); return {id: cleanId(o.id), created: cleanNum(o.created), empId: cleanId(o.empId), type: oneOf(LEAVE_TYPES, o.type, 'tahunan'), date: cleanDate(o.date), to: cleanDate(o.to), days: absNum(o.days),
+  status: oneOf(ORDER_STATUS, o.status, 'draft'), approvedBy: cleanStr(o.approvedBy, 60), note: cleanStr(o.note, 300)}; },
+  kasbon(k) { const o = obj(k); return {id: cleanId(o.id), created: cleanNum(o.created), empId: cleanId(o.empId), date: cleanDate(o.date), ref: cleanStr(o.ref, 40), amount: absNum(o.amount), accountId: cleanId(o.accountId), note: cleanStr(o.note, 300)}; },
+};
 function sanitizeErp(d) {
   return {
     ...sanitizeMore(d),
-    customers: list(d.customers).map(cleanCustomer).filter(c => c.id && c.name),
-    orders: list(d.orders).map(cleanOrder).filter(o => o.id && o.date),
-    warehouses: list(d.warehouses).map(cleanWarehouse).filter(w => w.id && w.name),
-    transfers: list(d.transfers).map(cleanTransfer).filter(t => t.id && t.date && t.itemId && t.qty > 0),
-    centers: list(d.centers).map(cleanCenter).filter(c => c.id && c.name),
-    assets: list(d.assets).map(cleanAsset).filter(a => a.id && a.name && a.date),
-    journals: list(d.journals).map(cleanJournal).filter(j => j.id && j.date && j.amount > 0 && j.dr.code && j.cr.code),
-    budgets: list(d.budgets).map(cleanBudget).filter(b => b.id && b.categoryId),
-    attendance: list(d.attendance).map(cleanAttendance).filter(a => a.id && a.empId && a.date),
-    leaves: list(d.leaves).map(cleanLeave).filter(l => l.id && l.empId && l.date),
-    kasbons: list(d.kasbons).map(cleanKasbon).filter(k => k.id && k.empId && k.date),
+    customers: list(d.customers).map(CLEAN_ERP.customer).filter(c => c.id && c.name),
+    orders: list(d.orders).map(CLEAN_ERP.order).filter(o => o.id && o.date),
+    warehouses: list(d.warehouses).map(CLEAN_ERP.warehouse).filter(w => w.id && w.name),
+    transfers: list(d.transfers).map(CLEAN_ERP.transfer).filter(t => t.id && t.date && t.itemId && t.qty > 0),
+    centers: list(d.centers).map(CLEAN_ERP.center).filter(c => c.id && c.name),
+    assets: list(d.assets).map(CLEAN_ERP.asset).filter(a => a.id && a.name && a.date),
+    journals: list(d.journals).map(CLEAN_ERP.journal).filter(j => j.id && j.date && j.amount > 0 && j.dr.code && j.cr.code),
+    budgets: list(d.budgets).map(CLEAN_ERP.budget).filter(b => b.id && b.categoryId),
+    attendance: list(d.attendance).map(CLEAN_ERP.attendance).filter(a => a.id && a.empId && a.date),
+    leaves: list(d.leaves).map(CLEAN_ERP.leave).filter(l => l.id && l.empId && l.date),
+    kasbons: list(d.kasbons).map(CLEAN_ERP.kasbon).filter(k => k.id && k.empId && k.date),
   };
 }
 function mergeErp(S, L, m) {
@@ -578,13 +580,17 @@ $('btnOInv').onclick = () => {
   tradeSrc = {srcId: o.id, ref: o.ref, lines: orderRemain(o), party: sale ? c?.name : '', addr: c?.address, npwp: c?.npwp, vendorId: sale ? '' : o.partyId};
   goView('jualbeli'); openTrade(null, sale ? 'sale' : 'purchase');
 };
+// Surat jalan mencetak sisa yang belum dikirim (bila ada); dokumen lain mencetak semua baris
+const orderPrintLines = (o, delivery) => delivery && orderRemain(o).length ? orderRemain(o) : o.lines;
+const orderParty = (k, p) => el('div', null, el('div', {class: 'inv-lbl'}, k.side === 'sale' ? 'Kepada' : 'Vendor'), el('b', null, p?.name || '—'), p?.address ? [el('br'), p.address] : null);
+// Tanggal, masa berlaku (penawaran) atau tanggal diperlukan, dan penyetuju
+const orderKv = (o, kvRow) => [kvRow('Tanggal', fmtDate(o.date)), o.due ? kvRow(o.kind === 'quote' ? 'Berlaku s.d.' : 'Tanggal diperlukan', fmtDate(o.due)) : null, o.approvedBy ? kvRow('Disetujui', o.approvedBy) : null];
 function printOrder(o, delivery) {
-  const k = ORDER_KINDS[o.kind], c = state.company, p = k.side === 'sale' ? custOf(o.partyId) : vendorOf(o.partyId), lines = delivery ? orderRemain(o).length ? orderRemain(o) : o.lines : o.lines;
+  const k = ORDER_KINDS[o.kind], c = state.company, p = k.side === 'sale' ? custOf(o.partyId) : vendorOf(o.partyId), lines = orderPrintLines(o, delivery);
   const kvRow = (a, b) => el('tr', null, el('td', null, a), el('td', null, b)), ttd = t => el('div', null, t, el('div', {class: 'sp'}), '(..............)');
   $('printArea').replaceChildren(el('div', {class: 'inv'}, el('div', {class: 'inv-top'}, el('div', {class: 'inv-co'}, logoEl(56), el('div', null, el('b', null, c.name || 'Nama Perusahaan'), c.address)),
     el('div', {class: 'inv-title'}, el('h1', {style: 'font-size:22px'}, delivery ? 'SURAT JALAN' : k.title), el('div', null, el('b', null, o.ref)))),
-    el('div', {class: 'inv-meta'}, el('div', null, el('div', {class: 'inv-lbl'}, k.side === 'sale' ? 'Kepada' : 'Vendor'), el('b', null, p?.name || '—'), p?.address ? [el('br'), p.address] : null),
-      tblC('inv-kv', kvRow('Tanggal', fmtDate(o.date)), o.due ? kvRow(o.kind === 'quote' ? 'Berlaku s.d.' : 'Tanggal diperlukan', fmtDate(o.due)) : null, o.approvedBy ? kvRow('Disetujui', o.approvedBy) : null)),
+    el('div', {class: 'inv-meta'}, orderParty(k, p), tblC('inv-kv', ...orderKv(o, kvRow))),
     el('table', {class: 'lines'}, el('thead', null, el('tr', null, el('th', null, 'No'), el('th', null, 'Deskripsi'), el('th', {class: 'num'}, 'Jumlah'), delivery ? null : [el('th', {class: 'num'}, 'Harga'), el('th', {class: 'num'}, 'Subtotal')])),
       el('tbody', null, lines.map((l, n) => el('tr', null, el('td', null, n + 1), el('td', null, itemOf(l.itemId)?.name), el('td', {class: 'num'}, `${fmtQty(l.qty)} ${itemOf(l.itemId)?.unit ?? ''}`), delivery ? null : [el('td', {class: 'num'}, rp(l.price)), el('td', {class: 'num'}, rp(l.qty * l.price))])))),
     delivery ? null : el('div', {class: 'inv-bottom'}, el('div'), tblC('inv-sum', el('tr', {class: 'grand'}, el('td', null, 'Total'), el('td', null, rp(orderTotal(o)))))),
@@ -697,37 +703,44 @@ function erpObligations() {
   out.push(...moreObligations());
   return out;
 }
-function erpReport(type, from, to, period) {
-  const asOf = to || today(), td = v => el('td', null, v), n = v => el('td', {class: 'num'}, v);
-  if (type === 'aset') {
+// Laporan ERP: satu fungsi per jenis
+const ERP_REPORTS = {
+  aset(from, to) {
+    const asOf = to || today(), td = v => el('td', null, v), n = v => el('td', {class: 'num'}, v);
     const last = lastDayOf(addMonths(today().slice(0, 7), -1)), end = asOf < last ? asOf : last; let c = 0, d = 0;
     const rows = state.assets.filter(a => a.date <= asOf).map(a => { const x = depTo(a, end); c += a.cost; d += x; return el('tr', null, td(a.code), td(a.name), td(fmtDate(a.date)), n(a.life), n(rp(a.cost)), n(rp(x)), n(rp(a.cost - x))); });
     return [kopEl('Daftar Aset Tetap', 'Per ' + fmtDate(asOf)), tbl(thead(th('Kode'), th('Aset'), th('Perolehan'), th('Bulan', 1), th('Harga', 1), th('Akum. susut', 1), th('Nilai buku', 1)), rows,
       el('tr', {class: 'total'}, el('td', {colspan: 4}, 'Total'), n(rp(c)), n(rp(d)), n(rp(c - d)))), pMuted('Metode garis lurus, mulai bulan perolehan. Penyusutan fiskal dapat berbeda; sesuaikan saat SPT Tahunan.'), signEl()];
-  }
-  if (type === 'anggaran') {
+  },
+  anggaran(from, to) {
+    const asOf = to || today(), td = v => el('td', null, v), n = v => el('td', {class: 'num'}, v);
     const y = asOf.slice(0, 4), list_ = state.budgets.filter(b => b.year === y);
     return [kopEl('Anggaran dan Realisasi', 'Tahun ' + y), tbl(thead(th('Kategori'), th('Anggaran', 1), th('Realisasi', 1), th('Selisih', 1), th('%', 1)),
       list_.length ? list_.map(b => { const a = actualOf(b); return el('tr', null, td(catLabelEl(b.categoryId)), n(rp(b.amount)), n(rp(a)), n(rp(b.amount - a)), n(b.amount ? pct(a / b.amount * 100) : '—')); }) : el('tr', null, el('td', {colspan: 5, class: 'muted'}, 'Belum ada anggaran tahun ini.'))), signEl()];
-  }
-  if (type === 'aruskas') {
+  },
+  aruskas(from, to, period) {
+    const td = v => el('td', null, v), n = v => el('td', {class: 'num'}, v);
     const G = {op: ['Aktivitas operasi', 0, 0], inv: ['Aktivitas investasi', 0, 0], fin: ['Aktivitas pendanaan', 0, 0]};
     const grp = t => { const code = (t.debtId ? '' : catOf(t.categoryId)?.code) || ''; return /^1-4/.test(code) ? 'inv' : /^(3-|2-20)/.test(code) ? 'fin' : 'op'; };
     for (const t of state.tx) if (t.type !== 'transfer' && inRange(t.date, from, to)) G[grp(t)][t.type === 'in' ? 1 : 2] += t.amount;
     const net = Object.values(G).reduce((s, g) => s + g[1] - g[2], 0);
     return [kopEl('Laporan Arus Kas', period), tbl(thead(th(''), th('Masuk', 1), th('Keluar', 1), th('Bersih', 1)), Object.values(G).map(g => el('tr', null, td(g[0]), n(rp(g[1])), n(rp(g[2])), n(rp(g[1] - g[2])))),
       el('tr', {class: 'total'}, el('td', {colspan: 3}, 'Kenaikan (penurunan) kas'), n(rp(net)))), signEl()];
-  }
-  if (type === 'pusat') {
+  },
+  pusat(from, to, period) {
+    const td = v => el('td', null, v), n = v => el('td', {class: 'num'}, v);
     const m = new Map();
     for (const t of state.tx) if (t.type !== 'transfer' && inRange(t.date, from, to)) { const r = m.get(t.centerId || '') || [0, 0]; r[t.type === 'in' ? 0 : 1] += t.amount; m.set(t.centerId || '', r); }
     return [kopEl('Kas per Cabang/Proyek', period), tbl(thead(th('Pusat biaya'), th('Masuk', 1), th('Keluar', 1), th('Bersih', 1)), [...m.entries()].map(([id, r]) => el('tr', null, td(state.centers.find(c => c.id === id)?.name || 'Tanpa pusat biaya'), n(rp(r[0])), n(rp(r[1])), n(rp(r[0] - r[1]))))), signEl()];
-  }
-  if (type === 'absensi') {
+  },
+  absensi(from, to, period) {
+    const asOf = to || today(), td = v => el('td', null, v), n = v => el('td', {class: 'num'}, v);
     return [kopEl('Rekap Kehadiran', period), tbl(thead(th('Nama'), Object.values(ATT_STATUS).map(v => th(v, 1)), th('Cuti terpakai ' + asOf.slice(0, 4), 1)),
       state.employees.map(e => el('tr', null, td(e.name), Object.keys(ATT_STATUS).map(k => n(state.attendance.filter(a => a.empId === e.id && a.status === k && inRange(a.date, from, to)).length)), n(leaveUsed(e.id, asOf.slice(0, 4)))))), signEl()];
-  }
-  return '';
+  },
+};
+function erpReport(type, from, to, period) {
+  return Object.hasOwn(ERP_REPORTS, type) ? ERP_REPORTS[type](from, to, period) : '';
 }
 Object.assign(ACTIONS, {
   erpTab: k => { erpTab = k; renderErp(); },
@@ -886,6 +899,18 @@ function warehouseDash() {
       panel('Segera kedaluwarsa', [...expired, ...soon].slice(0, 6).map(b => tr(txt(itemOf(b.itemId)?.name), txt(b.batch), fmtDate(b.exp))), 'Tidak ada batch mendekati kedaluwarsa.')]});
 }
 
+// Peringatan dasbor SDM: gaji bulan lalu, upah di bawah batas, kontrak/dokumen berakhir, cuti menunggu, absensi hari ini
+function hrAlerts({paid, act, prev, under, ending, wait, todayAtt, umpMissing, docs}) {
+  return [
+    ...(!paid && act.length ? [['bad', `Gaji ${ymLabel(prev)} belum diproses.`]] : []),
+    ...(under.length ? [['bad', `${under.length} karyawan bergaji di bawah batas yang diatur.`]] : []),
+    ...(ending.length ? [['warn', `${ending.length} kontrak berakhir dalam 30 hari.`]] : []),
+    ...(wait.length ? [['warn', `${wait.length} pengajuan cuti menunggu persetujuan.`]] : []),
+    ...(act.length > todayAtt.length ? [['warn', `Absensi hari ini belum diisi untuk ${act.length - todayAtt.length} karyawan.`]] : []),
+    ...(umpMissing ? [['warn', 'Isi nilai UMP/UMK di Karyawan → Aturan.']] : []),
+    ...(docs.length ? [['warn', `${docs.length} dokumen karyawan berakhir dalam 30 hari.`]] : []),
+  ];
+}
 function hrDash() {
   const now = today(), ym = now.slice(0, 7), prev = addMonths(ym, -1), act = state.employees.filter(e => empActive(e, ym)), hr = state.hr;
   const monthAtt = state.attendance.filter(a => a.date.startsWith(ym)), hadir = monthAtt.filter(a => a.status === 'hadir').length, absent = monthAtt.filter(a => ['alpa', 'sakit', 'izin'].includes(a.status)).length;
@@ -896,15 +921,7 @@ function hrDash() {
   const paid = state.payrolls.some(p => p.period === prev), under = act.filter(e => belowMin(e) || belowFloor(e));
   const docs = state.empdocs.filter(x => x.exp && x.exp <= days(now, 30)), shiftNow = state.shifts.filter(s => s.date === now);
   const lastScore = act.map(e => [e, sorted(state.reviews.filter(r => r.empId === e.id))[0]]).filter(x => x[1]);
-  const alerts = [
-    ...(!paid && act.length ? [['bad', `Gaji ${ymLabel(prev)} belum diproses.`]] : []),
-    ...(under.length ? [['bad', `${under.length} karyawan bergaji di bawah batas yang diatur.`]] : []),
-    ...(ending.length ? [['warn', `${ending.length} kontrak berakhir dalam 30 hari.`]] : []),
-    ...(wait.length ? [['warn', `${wait.length} pengajuan cuti menunggu persetujuan.`]] : []),
-    ...(act.length > todayAtt.length ? [['warn', `Absensi hari ini belum diisi untuk ${act.length - todayAtt.length} karyawan.`]] : []),
-    ...(hr.umpMode === 'wajib' && !hr.ump && act.length ? [['warn', 'Isi nilai UMP/UMK di Karyawan → Aturan.']] : []),
-    ...(docs.length ? [['warn', `${docs.length} dokumen karyawan berakhir dalam 30 hari.`]] : []),
-  ];
+  const alerts = hrAlerts({paid, act, prev, under, ending, wait, todayAtt, umpMissing: hr.umpMode === 'wajib' && !hr.ump && act.length, docs});
   const n = f => act.filter(f).length;
   return dashPage({title: 'Dasbor SDM', sub: 'Tenaga kerja, kehadiran, kontrak, dan biaya gaji.', alerts,
     kpis: [['Karyawan aktif', String(act.length), '', `${n(e => e.status === 'pkwtt')} tetap · ${n(e => e.status === 'pkwt')} kontrak · ${n(e => e.status === 'harian')} harian`], ['Tingkat kehadiran', monthAtt.length ? pct(hadir / monthAtt.length * 100) : '—', '', 'Bulan ini, dari absensi terisi'],
@@ -1085,22 +1102,24 @@ function sanitizeMore(d) {
 
 /* Tab ERP tambahan */
 let reconAcc = '';
+// Rekonsiliasi bank: transaksi yang sudah cocok dengan rekening koran, saldo cocok, dan riwayatnya
+function reconView(go, table, td, h3) {
+  reconAcc = state.accounts.some(a => a.id === reconAcc) ? reconAcc : state.accounts[0]?.id || '';
+  const a = state.accounts.find(x => x.id === reconAcc), rows = sorted(state.tx.filter(t => effect(t, reconAcc) !== 0));
+  const cleared = (a?.opening || 0) + rows.reduce((s, t) => s + (t.cleared ? effect(t, reconAcc) : 0), 0), open_ = rows.filter(t => !t.cleared);
+  return go(el('div', {class: 'toolbar'}, el('label', {class: 'f'}, 'Akun', el('select', {id: 'reconAcc'}, state.accounts.map(x => el('option', {value: x.id, selected: x.id === reconAcc}, x.name)))),
+    el('label', {class: 'f'}, 'Saldo rekening koran (Rp)', el('input', {id: 'reconStmt', inputmode: 'numeric'})), el('button', {class: 'btn primary', 'data-act': 'saveRecon'}, 'Simpan rekonsiliasi')),
+    el('div', {class: 'tsum', id: 'reconSum', 'data-book': cleared, style: 'margin-bottom:12px'}, 'Saldo buku yang sudah cocok ', el('b', null, rp(cleared)), ' · Saldo buku keseluruhan ', el('b', null, rp(balance(reconAcc))), ` · ${open_.length} transaksi belum dicocokkan`),
+    table(['Cocok', 'Tanggal', 'No. bukti', 'Uraian', 'Jumlah'], rows.slice(0, 200).map(t => el('tr', null, td('Cocok', el('input', {type: 'checkbox', 'data-clr': t.id, checked: !!t.cleared, 'aria-label': 'Cocok dengan rekening koran'})), td('Tanggal', fmtDate(t.date)), td('No. bukti', t.ref), td('Uraian', t.desc), td('Jumlah', rp(effect(t, reconAcc)), 'num'), el('td', {class: 'no-print'}))), 'Belum ada transaksi di akun ini.'),
+    h3('Riwayat rekonsiliasi'), table(['Tanggal', 'Akun', 'Rekening koran', 'Saldo cocok', 'Selisih'], sorted(state.recons).slice(0, 12).map(r => el('tr', null, td('Tanggal', fmtDate(r.date)), td('Akun', accName(r.accountId)), td('Rekening koran', rp(r.stmt), 'num'), td('Saldo cocok', rp(r.book), 'num'), td('Selisih', rp(r.diff), 'num ' + (r.diff ? 'out' : '')), el('td', {class: 'no-print'}))), 'Belum ada rekonsiliasi.'));
+}
 function renderErpMore(box, table, td, open, add, h3) {
   const go = (...nodes) => { box.replaceChildren(...nodes); return true; };
   if (erpTab === 'contacts') return go(add('+ Kontak', 'formNew'), table(['Tanggal', 'Pelanggan', 'Catatan', 'Tindak lanjut'], sorted(state.contacts).map(c => el('tr', null, td('Tanggal', fmtDate(c.date)), td('Pelanggan', custOf(c.customerId)?.name), td('Catatan', [c.channel, c.note].filter(Boolean).join(' · ')), td('Tindak lanjut', c.next ? fmtDate(c.next) : '—'), open('formEdit', c.id, 'Ubah'))), 'Belum ada riwayat kontak.'));
   if (erpTab === 'salespeople') { const ym = today().slice(0, 7); return go(add('+ Tenaga penjual', 'formNew'), table(['Nama', 'Target', 'Penjualan bulan ini', 'Komisi'], state.salespeople.map(s => { const v = salesBy(s.id, ym); return el('tr', null, td('Nama', el('b', null, s.name)), td('Target', rp(s.target), 'num'), td('Penjualan bulan ini', rp(v), 'num'), td('Komisi', rp(v * s.rate / 100), 'num'), open('formEdit', s.id, 'Ubah')); }), 'Belum ada tenaga penjual.')); }
   if (erpTab === 'batches') return go(add('+ Batch', 'formNew'), table(['Barang', 'No. batch', 'Kedaluwarsa', 'Jumlah'], state.batches.slice().sort((a, b) => (a.exp || '9').localeCompare(b.exp || '9')).map(b => el('tr', null, td('Barang', itemOf(b.itemId)?.name), td('No. batch', b.batch), td('Kedaluwarsa', b.exp ? fmtDate(b.exp) : '—', b.exp && b.exp < today() ? 'out' : ''), td('Jumlah', fmtQty(b.qty), 'num'), open('formEdit', b.id, 'Ubah'))), 'Belum ada batch. Keluarkan barang yang kedaluwarsanya paling dekat lebih dulu.'));
   if (erpTab === 'recurring') { const ym = today().slice(0, 7); return go(add('+ Tagihan berulang', 'formNew'), table(['Nama', 'Jatuh tempo', 'Jumlah', 'Bulan ini'], state.recurring.map(r => el('tr', null, td('Nama', [el('b', null, r.name), r.active ? null : [' ', el('span', {class: 'badge warn'}, 'Nonaktif')]]), td('Jatuh tempo', 'Tanggal ' + r.day), td('Jumlah', rp(r.amount), 'num'), td('Bulan ini', r.lastYm === ym ? el('span', {class: 'badge in'}, 'Tercatat') : el('button', {class: 'btn sm primary', 'data-act': 'postRecurring', 'data-id': r.id}, 'Catat')), open('formEdit', r.id, 'Ubah'))), 'Belum ada tagihan berulang.')); }
-  if (erpTab === 'recon') {
-    reconAcc = state.accounts.some(a => a.id === reconAcc) ? reconAcc : state.accounts[0]?.id || '';
-    const a = state.accounts.find(x => x.id === reconAcc), rows = sorted(state.tx.filter(t => effect(t, reconAcc) !== 0));
-    const cleared = (a?.opening || 0) + rows.reduce((s, t) => s + (t.cleared ? effect(t, reconAcc) : 0), 0), open_ = rows.filter(t => !t.cleared);
-    return go(el('div', {class: 'toolbar'}, el('label', {class: 'f'}, 'Akun', el('select', {id: 'reconAcc'}, state.accounts.map(x => el('option', {value: x.id, selected: x.id === reconAcc}, x.name)))),
-      el('label', {class: 'f'}, 'Saldo rekening koran (Rp)', el('input', {id: 'reconStmt', inputmode: 'numeric'})), el('button', {class: 'btn primary', 'data-act': 'saveRecon'}, 'Simpan rekonsiliasi')),
-      el('div', {class: 'tsum', id: 'reconSum', 'data-book': cleared, style: 'margin-bottom:12px'}, 'Saldo buku yang sudah cocok ', el('b', null, rp(cleared)), ' · Saldo buku keseluruhan ', el('b', null, rp(balance(reconAcc))), ` · ${open_.length} transaksi belum dicocokkan`),
-      table(['Cocok', 'Tanggal', 'No. bukti', 'Uraian', 'Jumlah'], rows.slice(0, 200).map(t => el('tr', null, td('Cocok', el('input', {type: 'checkbox', 'data-clr': t.id, checked: !!t.cleared, 'aria-label': 'Cocok dengan rekening koran'})), td('Tanggal', fmtDate(t.date)), td('No. bukti', t.ref), td('Uraian', t.desc), td('Jumlah', rp(effect(t, reconAcc)), 'num'), el('td', {class: 'no-print'}))), 'Belum ada transaksi di akun ini.'),
-      h3('Riwayat rekonsiliasi'), table(['Tanggal', 'Akun', 'Rekening koran', 'Saldo cocok', 'Selisih'], sorted(state.recons).slice(0, 12).map(r => el('tr', null, td('Tanggal', fmtDate(r.date)), td('Akun', accName(r.accountId)), td('Rekening koran', rp(r.stmt), 'num'), td('Saldo cocok', rp(r.book), 'num'), td('Selisih', rp(r.diff), 'num ' + (r.diff ? 'out' : '')), el('td', {class: 'no-print'}))), 'Belum ada rekonsiliasi.'));
-  }
+  if (erpTab === 'recon') return reconView(go, table, td, h3);
   if (erpTab === 'pr' && reorderList().length) { queueMicrotask(() => { const t = box.querySelector('.toolbar'); if (t) t.append(' ', el('button', {class: 'btn', 'data-act': 'prFromReorder'}, `Buat dari saran pesan ulang (${reorderList().length})`)); }); }
   return false;
 }
@@ -1240,32 +1259,33 @@ Object.assign(ACTIONS, {
   },
 });
 // Laporan tambahan: satu fungsi per jenis
-function komisiReport(from, to, period) {
-  const td = v => el('td', null, v), n = v => el('td', {class: 'num'}, v);
-  const rows = state.salespeople.map(s => { const v = state.trades.reduce((x, t) => t.kind === 'sale' && t.salesId === s.id && inRange(t.date, from, to) ? x + tradeTotal(t) : x, 0); return [s, v]; });
-  return [kopEl('Penjualan dan Komisi', period), tbl(thead(th('Nama'), th('Penjualan', 1), th('Komisi %', 1), th('Komisi', 1)),
-    rows.length ? rows.map(([s, v]) => el('tr', null, td(s.name), n(rp(v)), n(`${String(s.rate).replace('.', ',')}%`), n(rp(v * s.rate / 100)))) : el('tr', null, el('td', {colspan: 4, class: 'muted'}, 'Belum ada tenaga penjual.')),
-    el('tr', {class: 'total'}, td('Total'), n(rp(rows.reduce((s, r) => s + r[1], 0))), td(), n(rp(rows.reduce((s, r) => s + r[1] * r[0].rate / 100, 0))))), signEl()];
-}
-function pph21Report(from, to) {
-  const td = v => el('td', null, v), n = v => el('td', {class: 'num'}, v);
-  const y = (to || today()).slice(0, 4), m = new Map();
-  for (const p of state.payrolls) if (p.period.startsWith(y)) for (const l of p.lines) { const r = m.get(l.empId) || {name: l.name, ptkp: l.ptkp, n: 0, bruto: 0, iur: 0, pph: 0}; r.n++; r.bruto += l.bruto; r.iur += l.ee.jht + l.ee.jp; r.pph += l.pph; r.name = l.name; m.set(l.empId, r); }
-  const rows = [...m.values()];
-  return [kopEl('Rekap Penghasilan dan PPh 21 Setahun', 'Tahun ' + y), tbl(thead(th('Nama'), th('PTKP'), th('Bulan', 1), th('Bruto', 1), th('Iuran JHT/JP', 1), th('PPh 21', 1)),
-    rows.length ? rows.map(r => el('tr', null, td(r.name), td(r.ptkp), n(r.n), n(rp(r.bruto)), n(rp(r.iur)), n(rp(r.pph)))) : el('tr', null, el('td', {colspan: 6, class: 'muted'}, 'Belum ada penggajian tahun ini.'))),
-    pMuted('Bahan penyusunan bukti potong. Bukti potong resmi tetap diterbitkan lewat Coretax.'), signEl()];
-}
-function ringkasanReport(from, to) {
-  const td = v => el('td', null, v), n = v => el('td', {class: 'num'}, v);
-  const y = (to || today()).slice(0, 4), prev = String(+y - 1), months = Array.from({length: 12}, (_, i) => `${y}-${String(i + 1).padStart(2, '0')}`);
-  const rows = months.map(ym => { const l = lrData(ym + '-01', lastDayOf(ym)), p = lrData(prev + ym.slice(4) + '-01', lastDayOf(prev + ym.slice(4))); return {ym, l, p, cash: cashOf(ym, 'in') - cashOf(ym, 'out')}; });
-  const sum = f => rows.reduce((s, r) => s + f(r), 0);
-  return [kopEl('Ringkasan Bulanan', 'Tahun ' + y), tbl(thead(th('Bulan'), th('Pendapatan', 1), th('Tahun lalu', 1), th('Laba kotor', 1), th('Laba bersih', 1), th('Arus kas', 1)),
-    rows.map(r => el('tr', null, td(ymLabel(r.ym)), n(rp(r.l.ti)), n(rp(r.p.ti)), n(rp(r.l.ti - r.l.hpp)), n(rp(r.l.net)), n(rp(r.cash)))),
-    el('tr', {class: 'total'}, td('Total'), n(rp(sum(r => r.l.ti))), n(rp(sum(r => r.p.ti))), n(rp(sum(r => r.l.ti - r.l.hpp))), n(rp(sum(r => r.l.net))), n(rp(sum(r => r.cash))))), signEl()];
-}
-const MORE_REPORTS = {komisi: komisiReport, pph21: pph21Report, ringkasan: ringkasanReport};
+const MORE_REPORTS = {
+  komisi(from, to, period) {
+    const td = v => el('td', null, v), n = v => el('td', {class: 'num'}, v);
+    const rows = state.salespeople.map(s => { const v = state.trades.reduce((x, t) => t.kind === 'sale' && t.salesId === s.id && inRange(t.date, from, to) ? x + tradeTotal(t) : x, 0); return [s, v]; });
+    return [kopEl('Penjualan dan Komisi', period), tbl(thead(th('Nama'), th('Penjualan', 1), th('Komisi %', 1), th('Komisi', 1)),
+      rows.length ? rows.map(([s, v]) => el('tr', null, td(s.name), n(rp(v)), n(`${String(s.rate).replace('.', ',')}%`), n(rp(v * s.rate / 100)))) : el('tr', null, el('td', {colspan: 4, class: 'muted'}, 'Belum ada tenaga penjual.')),
+      el('tr', {class: 'total'}, td('Total'), n(rp(rows.reduce((s, r) => s + r[1], 0))), td(), n(rp(rows.reduce((s, r) => s + r[1] * r[0].rate / 100, 0))))), signEl()];
+  },
+  pph21(from, to) {
+    const td = v => el('td', null, v), n = v => el('td', {class: 'num'}, v);
+    const y = (to || today()).slice(0, 4), m = new Map();
+    for (const p of state.payrolls) if (p.period.startsWith(y)) for (const l of p.lines) { const r = m.get(l.empId) || {name: l.name, ptkp: l.ptkp, n: 0, bruto: 0, iur: 0, pph: 0}; r.n++; r.bruto += l.bruto; r.iur += l.ee.jht + l.ee.jp; r.pph += l.pph; r.name = l.name; m.set(l.empId, r); }
+    const rows = [...m.values()];
+    return [kopEl('Rekap Penghasilan dan PPh 21 Setahun', 'Tahun ' + y), tbl(thead(th('Nama'), th('PTKP'), th('Bulan', 1), th('Bruto', 1), th('Iuran JHT/JP', 1), th('PPh 21', 1)),
+      rows.length ? rows.map(r => el('tr', null, td(r.name), td(r.ptkp), n(r.n), n(rp(r.bruto)), n(rp(r.iur)), n(rp(r.pph)))) : el('tr', null, el('td', {colspan: 6, class: 'muted'}, 'Belum ada penggajian tahun ini.'))),
+      pMuted('Bahan penyusunan bukti potong. Bukti potong resmi tetap diterbitkan lewat Coretax.'), signEl()];
+  },
+  ringkasan(from, to) {
+    const td = v => el('td', null, v), n = v => el('td', {class: 'num'}, v);
+    const y = (to || today()).slice(0, 4), prev = String(+y - 1), months = Array.from({length: 12}, (_, i) => `${y}-${String(i + 1).padStart(2, '0')}`);
+    const rows = months.map(ym => { const l = lrData(ym + '-01', lastDayOf(ym)), p = lrData(prev + ym.slice(4) + '-01', lastDayOf(prev + ym.slice(4))); return {ym, l, p, cash: cashOf(ym, 'in') - cashOf(ym, 'out')}; });
+    const sum = f => rows.reduce((s, r) => s + f(r), 0);
+    return [kopEl('Ringkasan Bulanan', 'Tahun ' + y), tbl(thead(th('Bulan'), th('Pendapatan', 1), th('Tahun lalu', 1), th('Laba kotor', 1), th('Laba bersih', 1), th('Arus kas', 1)),
+      rows.map(r => el('tr', null, td(ymLabel(r.ym)), n(rp(r.l.ti)), n(rp(r.p.ti)), n(rp(r.l.ti - r.l.hpp)), n(rp(r.l.net)), n(rp(r.cash)))),
+      el('tr', {class: 'total'}, td('Total'), n(rp(sum(r => r.l.ti))), n(rp(sum(r => r.p.ti))), n(rp(sum(r => r.l.ti - r.l.hpp))), n(rp(sum(r => r.l.net))), n(rp(sum(r => r.cash))))), signEl()];
+  },
+};
 function moreReport(type, from, to, period) {
   return Object.hasOwn(MORE_REPORTS, type) ? MORE_REPORTS[type](from, to, period) : '';
 }

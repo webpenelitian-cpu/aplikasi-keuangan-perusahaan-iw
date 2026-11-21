@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <!-- Skrip hanya dari situs ini dan SDK resmi Firebase/Google; koneksi hanya ke layanan Google untuk login & penyimpanan -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com https://www.google.com/recaptcha/; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://www.google.com/recaptcha/; frame-src https://*.firebaseapp.com https://*.web.app https://accounts.google.com https://www.google.com/recaptcha/; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-U01oRKbYBHoNbZrgguwz4Adg3v5e/oCB7oTd0+EUoww=' https://www.gstatic.com https://apis.google.com https://www.google.com/recaptcha/; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://www.google.com/recaptcha/; frame-src https://*.firebaseapp.com https://*.web.app https://accounts.google.com https://www.google.com/recaptcha/; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="referrer" content="no-referrer">
 <title>PT GM Musara Jaya · Sistem Keuangan &amp; Operasional</title>
 <meta name="description" content="Sistem keuangan dan operasional PT GM Musara Jaya: kas &amp; bank, jual beli, stok, piutang &amp; utang, pajak, dan invoice.">
@@ -432,6 +432,9 @@ body[data-role=viewer] #btnAdd,body[data-role=viewer] #btnPerantara,body[data-ro
 <script src="panduan.js" defer></script>
 </head>
 <body class="booting">
+<!-- Layar masuk tampil sejak awal bagi perangkat yang belum pernah masuk akun (syarat sama dengan lazyAuth() di app.js;
+     nama kunci = MODE_KEY dan LAST_UID_KEY). Diizinkan CSP lewat hash sha256, bukan unsafe-inline; ubah isi = ubah hash. -->
+<script>(()=>{try{if(window.top!==window.self||localStorage.getItem('keuangan-mode')==='lokal'||localStorage.getItem('keuangan-last-uid')||Object.keys(sessionStorage).some(k=>k.startsWith('firebase:pendingRedirect')))return;document.body.className='auth';}catch{}})();</script>
 <noscript><p style="padding:20px">Aktifkan JavaScript untuk memakai aplikasi ini.</p></noscript>
 
 <!-- LAYAR LOGIN -->

@@ -30,7 +30,7 @@ function startAppCheck() {
   acMod.initializeAppCheck(app, {provider: new acMod.ReCaptchaEnterpriseProvider(appCheckKey), isTokenAutoRefreshEnabled: true});
 }
 // Alihan login Google yang belum selesai: getRedirectResult akan langsung menghubungi server Auth
-const redirectPending = () => { try { return Object.keys(sessionStorage).some(k => k.startsWith('firebase:pendingRedirect')); } catch { return false; } };
+export const redirectPending = () => { try { return Object.keys(sessionStorage).some(k => k.startsWith('firebase:pendingRedirect')); } catch { return false; } };
 
 // opts.appCheckNow: perangkat ini pernah masuk akun, jadi Auth akan memeriksa sesi tersimpan ke server sejak awal
 export async function init(opts = {}) {
